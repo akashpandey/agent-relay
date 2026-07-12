@@ -1,0 +1,74 @@
+#!/usr/bin/env sh
+set -eu
+
+timeout="${AGY_PRINT_TIMEOUT:-20m}"
+workspace="$(pwd -P)"
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat <<'EOF'
+Usage:
+  antigravity-subagent "task"
+  printf '%s\n' "task" | antigravity-subagent
+
+Environment:
+  AGY_MODEL          Model label exactly as shown below.
+  AGY_PRINT_TIMEOUT  Print-mode timeout, default: 20m.
+  AGY_LOG_FILE       Optional agy log file path.
+  AGY_LOGS           Print wrapper banner to stderr. Default: 1.
+
+Examples:
+  AGY_MODEL='Gemini 3.5 Flash (Low)' antigravity-subagent "Fix the bug"
+  AGY_MODEL='Claude Sonnet 4.6 (Thinking)' antigravity-subagent "Review this repo"
+  AGY_MODEL='GPT-OSS 120B (Medium)' antigravity-subagent "Implement TASK.md"
+
+Antigravity models:
+  Gemini 3.5 Flash (Medium)
+  Gemini 3.5 Flash (High)
+  Gemini 3.5 Flash (Low)
+  Gemini 3.1 Pro (Low)
+  Gemini 3.1 Pro (High)
+  Claude Sonnet 4.6 (Thinking)
+  Claude Opus 4.6 (Thinking)
+  GPT-OSS 120B (Medium)
+
+Refresh live list:
+  agy models
+EOF
+  exit 0
+fi
+
+if [ "$#" -gt 0 ]; then
+  user_prompt="$*"
+else
+  user_prompt="$(cat)"
+fi
+
+prompt="You are running as a non-interactive coding subagent.
+Workspace: $workspace
+
+Rules:
+- Treat the workspace above as the project root.
+- Write requested files under that workspace unless the prompt gives a different absolute path.
+- Do not put deliverables in Antigravity scratch.
+- After editing, summarize changed files and verification commands.
+
+Task:
+$user_prompt"
+
+log_flag="${AGY_LOGS:-1}"
+
+set -- --print "$prompt" --add-dir "$workspace" --dangerously-skip-permissions --print-timeout "$timeout"
+
+if [ "${AGY_MODEL:-}" ]; then
+  set -- --model "$AGY_MODEL" "$@"
+fi
+
+if [ "${AGY_LOG_FILE:-}" ]; then
+  set -- --log-file "$AGY_LOG_FILE" "$@"
+fi
+
+if [ "$log_flag" = "1" ]; then
+  echo "antigravity-subagent: workspace=$workspace model=${AGY_MODEL:-default} timeout=$timeout log_file=${AGY_LOG_FILE:-default}" >&2
+fi
+
+exec "$HOME/.local/bin/agy" "$@"

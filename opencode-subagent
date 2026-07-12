@@ -1,0 +1,111 @@
+#!/usr/bin/env sh
+set -eu
+
+workspace="$(pwd -P)"
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat <<'EOF'
+Usage:
+  opencode-subagent "task"
+  printf '%s\n' "task" | opencode-subagent
+
+Environment:
+  OPENCODE_MODEL    Model in provider/model format.
+  OPENCODE_VARIANT  Optional model variant, e.g. high.
+  OPENCODE_AGENT    Optional opencode agent name.
+  OPENCODE_TIMEOUT  Optional timeout in seconds. Default: 1800.
+  OPENCODE_LOGS     Print opencode logs to stderr. Default: 1.
+
+Examples:
+  OPENCODE_MODEL='openai/gpt-5.4-mini' opencode-subagent "Fix the bug"
+  OPENCODE_MODEL='opencode-go/qwen3.7-plus' opencode-subagent "Review this repo"
+  OPENCODE_MODEL='zai-coding-plan/glm-5.2' opencode-subagent "Implement TASK.md"
+
+OpenAI models:
+  openai/gpt-5.4
+  openai/gpt-5.4-fast
+  openai/gpt-5.4-mini
+  openai/gpt-5.4-mini-fast
+  openai/gpt-5.5
+  openai/gpt-5.5-fast
+  openai/gpt-5.6-sol
+  openai/gpt-5.6-sol-fast
+  openai/gpt-5.6-sol-pro
+  openai/gpt-5.6-terra
+  openai/gpt-5.6-terra-fast
+  openai/gpt-5.6-terra-pro
+
+OpenCode Go models:
+  opencode-go/deepseek-v4-flash
+  opencode-go/deepseek-v4-pro
+  opencode-go/glm-5.1
+  opencode-go/glm-5.2
+  opencode-go/kimi-k2.6
+  opencode-go/kimi-k2.7-code
+  opencode-go/mimo-v2.5
+  opencode-go/mimo-v2.5-pro
+  opencode-go/minimax-m2.7
+  opencode-go/minimax-m3
+  opencode-go/qwen3.6-plus
+  opencode-go/qwen3.7-max
+  opencode-go/qwen3.7-plus
+
+Z.AI Coding Plan models:
+  zai-coding-plan/glm-4.7
+  zai-coding-plan/glm-5-turbo
+  zai-coding-plan/glm-5.1
+  zai-coding-plan/glm-5.2
+
+Refresh live lists:
+  opencode models openai
+  opencode models opencode-go
+  opencode models zai-coding-plan
+EOF
+  exit 0
+fi
+
+if [ "$#" -gt 0 ]; then
+  user_prompt="$*"
+else
+  user_prompt="$(cat)"
+fi
+
+prompt="You are running as a non-interactive coding subagent.
+Workspace: $workspace
+
+Rules:
+- Treat the workspace above as the project root.
+- Write requested files under that workspace unless the prompt gives a different absolute path.
+- After editing, summarize changed files and verification commands.
+
+Task:
+$user_prompt"
+
+timeout_seconds="${OPENCODE_TIMEOUT:-1800}"
+log_flag="${OPENCODE_LOGS:-1}"
+
+set -- run --dir "$workspace" --auto
+
+if [ "${OPENCODE_MODEL:-}" ]; then
+  set -- "$@" --model "$OPENCODE_MODEL"
+fi
+
+if [ "${OPENCODE_VARIANT:-}" ]; then
+  set -- "$@" --variant "$OPENCODE_VARIANT"
+fi
+
+if [ "${OPENCODE_AGENT:-}" ]; then
+  set -- "$@" --agent "$OPENCODE_AGENT"
+fi
+
+if [ "$log_flag" = "1" ]; then
+  set -- "$@" --print-logs
+fi
+
+echo "opencode-subagent: workspace=$workspace model=${OPENCODE_MODEL:-default} agent=${OPENCODE_AGENT:-default} timeout=${timeout_seconds}s logs=${log_flag}" >&2
+
+if [ "$timeout_seconds" -gt 0 ] 2>/dev/null && command -v timeout >/dev/null 2>&1; then
+  exec timeout --foreground "$timeout_seconds"s "$HOME/.opencode/bin/opencode" "$@" "$prompt"
+fi
+
+exec "$HOME/.opencode/bin/opencode" "$@" "$prompt"
