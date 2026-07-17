@@ -1,0 +1,100 @@
+#!/usr/bin/env sh
+set -eu
+
+workspace="$(pwd -P)"
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat <<'EOF'
+Usage:
+  OPENCODE_MODEL_CHAIN='opencode-go/glm-5.2,zai-coding-plan/glm-5.2' opencode-subagent-fallback "task"
+  printf '%s\n' "task" | OPENCODE_MODEL_CHAIN='...' opencode-subagent-fallback
+
+Tries each model in OPENCODE_MODEL_CHAIN (comma-separated, priority order) with a
+cheap probe call first. The first model whose probe does not hit a quota/rate-limit
+error gets the real task. Skipped models and the reason are printed to stderr, and
+the model that actually ran the task is printed on success.
+
+This exists because a model can be silently exhausted mid-session (monthly quota,
+rate limit) and the failure looks identical to "the model is slow/stuck" unless you
+check for it up front. See ~/subagents/README.md for the incident that motivated this.
+
+Environment:
+  OPENCODE_MODEL_CHAIN   Required. Comma-separated provider/model list, in priority order.
+  OPENCODE_PROBE_TIMEOUT Seconds for the cheap probe call per model. Default: 30.
+  OPENCODE_TIMEOUT       Seconds for the real task once a model is selected. Default: 1800.
+  OPENCODE_VARIANT       Passed through to opencode-subagent for the real task.
+  OPENCODE_AGENT         Passed through to opencode-subagent for the real task.
+  OPENCODE_LOGS          Passed through to opencode-subagent for the real task. Default: 1.
+
+Quota/rate-limit signatures it detects (case-insensitive):
+  usage limit, quota, rate limit, 429, insufficient_quota, AI_APICallError
+EOF
+  exit 0
+fi
+
+if [ "$#" -gt 0 ]; then
+  user_prompt="$*"
+else
+  user_prompt="$(cat)"
+fi
+
+chain="${OPENCODE_MODEL_CHAIN:-}"
+if [ -z "$chain" ]; then
+  echo "opencode-subagent-fallback: OPENCODE_MODEL_CHAIN is required (comma-separated provider/model list). See --help." >&2
+  exit 1
+fi
+
+probe_timeout="${OPENCODE_PROBE_TIMEOUT:-30}"
+real_timeout="${OPENCODE_TIMEOUT:-1800}"
+
+# ponytail: fixed alternation of known quota/rate-limit phrases, not a general error
+# classifier — widen this list if a new provider's wording doesn't match.
+quota_pattern='usage limit|quota|rate limit|429|insufficient_quota|AI_APICallError'
+
+old_ifs="$IFS"
+IFS=','
+set -- $chain
+IFS="$old_ifs"
+
+selected_model=""
+for candidate in "$@"; do
+  candidate="$(printf '%s' "$candidate" | sed 's/^ *//; s/ *$//')"
+  [ -z "$candidate" ] && continue
+
+  probe_log="$(mktemp)"
+  probe_ok=1
+  if OPENCODE_MODEL="$candidate" OPENCODE_TIMEOUT="$probe_timeout" OPENCODE_LOGS=1 \
+      "$HOME/.local/bin/opencode-subagent" "Reply with exactly one word: OK" \
+      >"$probe_log" 2>&1; then
+    probe_ok=0
+  fi
+
+  if grep -qiE "$quota_pattern" "$probe_log"; then
+    echo "opencode-subagent-fallback: skipping $candidate (quota/rate-limit signature detected)" >&2
+    rm -f "$probe_log"
+    continue
+  fi
+
+  if [ "$probe_ok" -ne 0 ]; then
+    echo "opencode-subagent-fallback: skipping $candidate (probe failed, non-quota error — see log)" >&2
+    tail -5 "$probe_log" >&2
+    rm -f "$probe_log"
+    continue
+  fi
+
+  rm -f "$probe_log"
+  selected_model="$candidate"
+  break
+done
+
+if [ -z "$selected_model" ]; then
+  echo "opencode-subagent-fallback: every model in the chain failed its probe ($chain)" >&2
+  exit 1
+fi
+
+echo "opencode-subagent-fallback: selected model=$selected_model" >&2
+
+exec env OPENCODE_MODEL="$selected_model" OPENCODE_TIMEOUT="$real_timeout" \
+  OPENCODE_VARIANT="${OPENCODE_VARIANT:-}" OPENCODE_AGENT="${OPENCODE_AGENT:-}" \
+  OPENCODE_LOGS="${OPENCODE_LOGS:-1}" \
+  "$HOME/.local/bin/opencode-subagent" "$user_prompt"

@@ -28,6 +28,7 @@ That makes them useful as lightweight building blocks inside terminal workflows,
 Included wrappers:
 
 - `opencode-subagent`
+- `opencode-subagent-fallback`
 - `antigravity-subagent`
 
 ## What they are good for
@@ -154,6 +155,43 @@ Best fit:
 - coding tasks that benefit from `opencode`'s tool/runtime setup
 - runs where session/log visibility matters
 - cases where you want to see startup, stream, and loop progress
+
+## opencode-subagent-fallback
+
+Motivation: a model can hit its monthly quota or a rate limit mid-session with
+no warning — `opencode-go/glm-5.2` did exactly this once, several minutes into
+a real task, after already burning real work. The failure looked identical to
+"the model is being slow," and the wasted turns weren't discovered until the
+transcript was checked by hand. This wrapper probes before committing to the
+real task, so quota exhaustion is caught in seconds, not minutes, and falls
+over to the next model in a priority chain automatically.
+
+Environment variables:
+
+- `OPENCODE_MODEL_CHAIN` - required, comma-separated `provider/model` list in priority order
+- `OPENCODE_PROBE_TIMEOUT` - seconds for the cheap probe call per candidate, default `30`
+- `OPENCODE_TIMEOUT` - seconds for the real task once a model is selected, default `1800`
+- `OPENCODE_VARIANT`, `OPENCODE_AGENT`, `OPENCODE_LOGS` - passed through to `opencode-subagent` for the real task
+
+Behavior:
+
+- for each model in the chain, sends a one-word probe prompt through `opencode-subagent` with a short timeout
+- greps the probe output for known quota/rate-limit phrasing (`usage limit`, `quota`, `rate limit`, `429`, `insufficient_quota`, `AI_APICallError`)
+- skips a candidate on a quota/rate-limit match or any other probe failure, logging why to stderr
+- the first candidate that probes clean gets the real task, on the real `OPENCODE_TIMEOUT`
+- prints which model was actually selected to stderr
+
+Example:
+
+```bash
+OPENCODE_MODEL_CHAIN='opencode-go/glm-5.2,zai-coding-plan/glm-5.2,zai-coding-plan/glm-5-turbo' \
+  opencode-subagent-fallback "Build the UI described in TASK.md"
+```
+
+Best fit:
+
+- any dispatch where you'd otherwise hardcode one model and hope it's not exhausted
+- long delegation sessions (like a multi-task implementation plan) where quota can run out partway through
 
 ## antigravity-subagent
 
