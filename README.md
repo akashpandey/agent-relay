@@ -261,12 +261,30 @@ its probe and real task calls.
 The `logs/` directory is gitignored and not rotated — clean it out
 periodically if it grows (`rm -rf ~/subagents/logs/*`).
 
+## Process Cleanup
+
+A subagent can leave things running after it exits — a `npm run dev &`
+it forgot to stop, a background server started to "test" something. Both
+wrappers clean this up automatically:
+
+1. The underlying CLI runs under `setsid`, its own process group. On exit,
+   the wrapper sends `SIGTERM` then `SIGKILL` to that whole group — this
+   catches an ordinary backgrounded child.
+2. That alone isn't enough: `nohup cmd & disown` (or any other detach-from-
+   the-shell trick) escapes the process group entirely into its own
+   session. To catch that too, each wrapper snapshots every pid on the
+   machine before the run starts, and on exit finds every pid that's new
+   *and* whose `/proc/<pid>/cwd` still resolves under the workspace
+   directory, and kills those as well.
+
+This runs every time, regardless of whether the underlying CLI exited
+cleanly, hit its timeout, or errored — the wrapper's own `set -e` cannot be
+allowed to skip cleanup just because the subagent itself failed. Ceiling: a
+process that changes directory away from the workspace after spawning still
+escapes step 2 — no current subagent task does this, so it isn't handled.
+
 ## Notes
 
 - These wrappers are intentionally thin. They only normalize prompt shape and runtime flags.
 - They may need local path changes if your `opencode` or `agy` binaries live elsewhere.
 - They assume the current working directory is the repo or workspace you want the subagent to operate on.
-- Both wrappers pipe their subprocess through `tee` to write the run log, which means a
-  plain `$?` after the pipeline would report `tee`'s exit status, not the subagent's. POSIX
-  `sh` has no `PIPESTATUS`, so the real exit code is captured to a temp file and re-exited
-  explicitly — if you're editing these scripts, keep that pattern intact.

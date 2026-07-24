@@ -80,10 +80,69 @@ if [ "$log_flag" = "1" ]; then
   echo "antigravity-subagent: workspace=$workspace model=${AGY_MODEL:-default} timeout=$timeout log_file=${AGY_LOG_FILE:-default} run_log=$log_file" >&2
 fi
 
-exit_file="$(mktemp)"
-# ponytail: POSIX sh has no PIPESTATUS, so the real exit code is smuggled
-# through a temp file instead of trusting $? after the tee pipeline.
-{ "$HOME/.local/bin/agy" "$@"; echo "$?" >"$exit_file"; } 2>&1 | tee -a "$log_file"
-status="$(cat "$exit_file")"
-rm -f "$exit_file"
+# ponytail: snapshot every pid that exists before this run starts (space-
+# separated, not the newline-separated `ls` default — a case-pattern
+# membership test against a newline-joined string silently never matches),
+# so we can find whatever's new afterward. A plain process-group kill isn't
+# enough — `nohup cmd & disown` (or an agent's own detached-background
+# tooling) fully escapes the group into its own session, which is exactly
+# how a forgotten dev server survives the wrapper exiting.
+before_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
+
+setsid "$HOME/.local/bin/agy" "$@" >"$log_file" 2>&1 &
+cmd_pid=$!
+tail -f "$log_file" &
+tail_pid=$!
+
+# ponytail: `wait` returns the waited-on process's exit status, which is
+# routinely nonzero (timeouts, model errors). Under `set -e` a bare `wait`
+# call there aborts the script on the spot — every cleanup line below it
+# would silently never run. set +e/-e brackets just this one call so the
+# real status still gets captured deliberately, not lost to errexit.
+set +e
+wait "$cmd_pid"
+status=$?
+set -e
+
+kill "$tail_pid" >/dev/null 2>&1 || true
+wait "$tail_pid" 2>/dev/null || true
+
+if command -v pkill >/dev/null 2>&1; then
+  pkill -TERM -g "$cmd_pid" >/dev/null 2>&1 || true
+  sleep 1
+  pkill -KILL -g "$cmd_pid" >/dev/null 2>&1 || true
+fi
+
+# ponytail: catch what the group-kill missed — any pid that appeared during
+# this run and is still rooted (via /proc/<pid>/cwd) under the workspace
+# directory. Ceiling: a process that chdir's away from the workspace after
+# spawning still escapes this; that's not a pattern any current subagent
+# task does, so not handling it here.
+workspace_real="$(cd "$workspace" && pwd -P)"
+after_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
+new_pids=""
+for pid in $after_pids; do
+  case " $before_pids " in
+    *" $pid "*) ;;
+    *) new_pids="$new_pids $pid" ;;
+  esac
+done
+
+for sig in TERM KILL; do
+  if [ "$sig" = "KILL" ]; then
+    sleep 1
+  fi
+  for pid in $new_pids; do
+    pid_cwd="$(readlink "/proc/$pid/cwd" 2>/dev/null || true)"
+    if [ -z "$pid_cwd" ]; then
+      continue
+    fi
+    case "$pid_cwd" in
+      "$workspace_real"|"$workspace_real"/*)
+        kill "-$sig" "$pid" >/dev/null 2>&1 || true
+        ;;
+    esac
+  done
+done
+
 exit "$status"
