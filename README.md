@@ -166,9 +166,11 @@ Best fit:
 - runs where session/log visibility matters
 - cases where you want to see startup, stream, and loop progress
 
-Model note: prefer `zai-coding-plan/glm-5.2` over `opencode-go/glm-5.2` for
-GLM 5.2 tasks. The `opencode-go` route is token-heavy for the same work —
-use the `zai-coding-plan` variant instead.
+Model note: `opencode-go/glm-5.2` is token-heavy for the same work as
+`zai-coding-plan/glm-5.2`, so the wrapper auto-reroutes any request for
+`OPENCODE_MODEL=opencode-go/glm-5.2` to `zai-coding-plan/glm-5.2` and prints
+a one-line notice to stderr when it does. Ask for `zai-coding-plan/glm-5.2`
+directly to skip the redirect notice.
 
 ## opencode-subagent-fallback
 

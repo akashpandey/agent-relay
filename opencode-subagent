@@ -90,6 +90,15 @@ $user_prompt"
 timeout_seconds="${OPENCODE_TIMEOUT:-1800}"
 log_flag="${OPENCODE_LOGS:-1}"
 
+# ponytail: opencode-go/glm-5.2 is token-heavy for the same work as the
+# zai-coding-plan route — reroute automatically instead of trusting every
+# caller to know that. Widen this if other opencode-go models get the same
+# recommendation.
+if [ "${OPENCODE_MODEL:-}" = "opencode-go/glm-5.2" ]; then
+  echo "opencode-subagent: rerouting opencode-go/glm-5.2 -> zai-coding-plan/glm-5.2 (token-heavy route)" >&2
+  OPENCODE_MODEL="zai-coding-plan/glm-5.2"
+fi
+
 log_dir="${SUBAGENT_LOG_DIR:-$HOME/subagents/logs}"
 mkdir -p "$log_dir"
 log_file="$log_dir/$(date +%Y%m%dT%H%M%S)-opencode-$$.log"
