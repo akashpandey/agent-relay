@@ -166,6 +166,10 @@ Best fit:
 - runs where session/log visibility matters
 - cases where you want to see startup, stream, and loop progress
 
+Model note: prefer `zai-coding-plan/glm-5.2` over `opencode-go/glm-5.2` for
+GLM 5.2 tasks. The `opencode-go` route is token-heavy for the same work —
+use the `zai-coding-plan` variant instead.
+
 ## opencode-subagent-fallback
 
 Motivation: a model can hit its monthly quota or a rate limit mid-session with
