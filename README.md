@@ -22,6 +22,10 @@ The underlying CLIs already work, but their raw command lines are noisy, backend
 - inject a small non-interactive system prompt
 - pass through a few useful runtime knobs via environment variables
 - add enough observability to tell whether the run is alive or stuck
+- tee every run's combined output to a timestamped log file under
+  `~/subagents/logs/` (path override: `SUBAGENT_LOG_DIR`), printed in the
+  startup banner, so a backgrounded run can be tailed live instead of waiting
+  for the final result
 
 That makes them useful as lightweight building blocks inside terminal workflows, shell scripts, and agent harnesses where one model needs to hand off a task to another model through a plain command invocation.
 
@@ -143,12 +147,18 @@ Environment variables:
 - `OPENCODE_AGENT` - optional agent name
 - `OPENCODE_TIMEOUT` - timeout in seconds, default `1800`
 - `OPENCODE_LOGS` - set to `0` to suppress wrapper log banner
+- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/subagents/logs`
 
 Behavior:
 
 - runs `opencode run --dir "$PWD" --auto`
 - enables `--print-logs` by default
-- prints a startup banner so hung runs are easier to identify
+- prints a startup banner (including the run log path) so hung runs are easier to identify
+- tees combined stdout+stderr to a timestamped file under `SUBAGENT_LOG_DIR`
+  (default `~/subagents/logs/`), so `tail -f` on that path shows the run live
+  when it's backgrounded
+- preserves the underlying command's real exit code even though output goes
+  through `tee`
 
 Best fit:
 
@@ -199,14 +209,22 @@ Environment variables:
 
 - `AGY_MODEL` - model label exactly as shown by `agy models`
 - `AGY_PRINT_TIMEOUT` - print-mode timeout, default `20m`
-- `AGY_LOG_FILE` - optional `agy` log file path
+- `AGY_LOG_FILE` - optional path passed to `agy --log-file` (agy's own internal log, separate from the wrapper's run log)
 - `AGY_LOGS` - set to `0` to suppress wrapper log banner
+- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/subagents/logs`
 
 Behavior:
 
 - runs `agy --print`
 - passes the current directory via `--add-dir`
-- prints a startup banner for basic observability
+- prints a startup banner (including the run log path) for basic observability
+- `--print` is blocking/silent by design (no incremental stdout until the run
+  finishes), so the wrapper's own tee'd log is the only way to watch a
+  backgrounded antigravity run mid-flight — `agy`'s own `--log-file`, if set,
+  captures a separate internal debug log
+- tees combined stdout+stderr to a timestamped file under `SUBAGENT_LOG_DIR`
+- preserves the underlying command's real exit code even though output goes
+  through `tee`
 
 Best fit:
 
@@ -214,8 +232,35 @@ Best fit:
 - alternative-model passes on the same prompt
 - simple one-shot tasks where a final printed response is enough
 
+## Observability
+
+Both `opencode-subagent` and `antigravity-subagent` tee their combined
+stdout+stderr to a timestamped file under `~/subagents/logs/` (override with
+`SUBAGENT_LOG_DIR`). The path is printed in the startup banner, so a run
+launched in the background can be watched live:
+
+```bash
+OPENCODE_MODEL='openai/gpt-5.5' opencode-subagent "long task" &
+tail -f ~/subagents/logs/<the-run-log-printed-above>.log
+```
+
+This exists because, unmodified, `opencode` streams tool/loop progress to
+stderr but `agy --print` does not print anything incremental at all — a
+backgrounded antigravity run looked identical whether it was working or
+hung. Teeing to a discoverable log file fixes that for both, uniformly,
+without depending on upstream CLI verbosity flags. `opencode-subagent-fallback`
+inherits this for free since it shells out to `opencode-subagent` for both
+its probe and real task calls.
+
+The `logs/` directory is gitignored and not rotated — clean it out
+periodically if it grows (`rm -rf ~/subagents/logs/*`).
+
 ## Notes
 
 - These wrappers are intentionally thin. They only normalize prompt shape and runtime flags.
 - They may need local path changes if your `opencode` or `agy` binaries live elsewhere.
 - They assume the current working directory is the repo or workspace you want the subagent to operate on.
+- Both wrappers pipe their subprocess through `tee` to write the run log, which means a
+  plain `$?` after the pipeline would report `tee`'s exit status, not the subagent's. POSIX
+  `sh` has no `PIPESTATUS`, so the real exit code is captured to a temp file and re-exited
+  explicitly — if you're editing these scripts, keep that pattern intact.

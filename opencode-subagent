@@ -15,6 +15,12 @@ Environment:
   OPENCODE_AGENT    Optional opencode agent name.
   OPENCODE_TIMEOUT  Optional timeout in seconds. Default: 1800.
   OPENCODE_LOGS     Print opencode logs to stderr. Default: 1.
+  SUBAGENT_LOG_DIR  Where wrapper run logs are written. Default: ~/subagents/logs.
+
+Every run's combined stdout+stderr (including opencode's own --print-logs
+stream) is teed to a timestamped file under SUBAGENT_LOG_DIR (printed in the
+startup banner) so a backgrounded run can be tailed live instead of waiting
+for the final result.
 
 Examples:
   OPENCODE_MODEL='openai/gpt-5.4-mini' opencode-subagent "Fix the bug"
@@ -84,6 +90,10 @@ $user_prompt"
 timeout_seconds="${OPENCODE_TIMEOUT:-1800}"
 log_flag="${OPENCODE_LOGS:-1}"
 
+log_dir="${SUBAGENT_LOG_DIR:-$HOME/subagents/logs}"
+mkdir -p "$log_dir"
+log_file="$log_dir/$(date +%Y%m%dT%H%M%S)-opencode-$$.log"
+
 set -- run --dir "$workspace" --auto
 
 if [ "${OPENCODE_MODEL:-}" ]; then
@@ -102,10 +112,16 @@ if [ "$log_flag" = "1" ]; then
   set -- "$@" --print-logs
 fi
 
-echo "opencode-subagent: workspace=$workspace model=${OPENCODE_MODEL:-default} agent=${OPENCODE_AGENT:-default} timeout=${timeout_seconds}s logs=${log_flag}" >&2
+echo "opencode-subagent: workspace=$workspace model=${OPENCODE_MODEL:-default} agent=${OPENCODE_AGENT:-default} timeout=${timeout_seconds}s logs=${log_flag} run_log=$log_file" >&2
 
+exit_file="$(mktemp)"
+# ponytail: POSIX sh has no PIPESTATUS, so the real exit code is smuggled
+# through a temp file instead of trusting $? after the tee pipeline.
 if [ "$timeout_seconds" -gt 0 ] 2>/dev/null && command -v timeout >/dev/null 2>&1; then
-  exec timeout --foreground "$timeout_seconds"s "$HOME/.opencode/bin/opencode" "$@" "$prompt"
+  { timeout --foreground "$timeout_seconds"s "$HOME/.opencode/bin/opencode" "$@" "$prompt"; echo "$?" >"$exit_file"; } 2>&1 | tee -a "$log_file"
+else
+  { "$HOME/.opencode/bin/opencode" "$@" "$prompt"; echo "$?" >"$exit_file"; } 2>&1 | tee -a "$log_file"
 fi
-
-exec "$HOME/.opencode/bin/opencode" "$@" "$prompt"
+status="$(cat "$exit_file")"
+rm -f "$exit_file"
+exit "$status"

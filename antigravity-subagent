@@ -13,8 +13,13 @@ Usage:
 Environment:
   AGY_MODEL          Model label exactly as shown below.
   AGY_PRINT_TIMEOUT  Print-mode timeout, default: 20m.
-  AGY_LOG_FILE       Optional agy log file path.
+  AGY_LOG_FILE       Optional agy --log-file path (agy's own internal log).
   AGY_LOGS           Print wrapper banner to stderr. Default: 1.
+  SUBAGENT_LOG_DIR   Where wrapper run logs are written. Default: ~/subagents/logs.
+
+Every run's combined stdout+stderr is teed to a timestamped file under
+SUBAGENT_LOG_DIR (printed in the startup banner) so a backgrounded run can be
+tailed live instead of waiting for --print to return.
 
 Examples:
   AGY_MODEL='Gemini 3.5 Flash (Low)' antigravity-subagent "Fix the bug"
@@ -57,6 +62,10 @@ $user_prompt"
 
 log_flag="${AGY_LOGS:-1}"
 
+log_dir="${SUBAGENT_LOG_DIR:-$HOME/subagents/logs}"
+mkdir -p "$log_dir"
+log_file="$log_dir/$(date +%Y%m%dT%H%M%S)-antigravity-$$.log"
+
 set -- --print "$prompt" --add-dir "$workspace" --dangerously-skip-permissions --print-timeout "$timeout"
 
 if [ "${AGY_MODEL:-}" ]; then
@@ -68,7 +77,13 @@ if [ "${AGY_LOG_FILE:-}" ]; then
 fi
 
 if [ "$log_flag" = "1" ]; then
-  echo "antigravity-subagent: workspace=$workspace model=${AGY_MODEL:-default} timeout=$timeout log_file=${AGY_LOG_FILE:-default}" >&2
+  echo "antigravity-subagent: workspace=$workspace model=${AGY_MODEL:-default} timeout=$timeout log_file=${AGY_LOG_FILE:-default} run_log=$log_file" >&2
 fi
 
-exec "$HOME/.local/bin/agy" "$@"
+exit_file="$(mktemp)"
+# ponytail: POSIX sh has no PIPESTATUS, so the real exit code is smuggled
+# through a temp file instead of trusting $? after the tee pipeline.
+{ "$HOME/.local/bin/agy" "$@"; echo "$?" >"$exit_file"; } 2>&1 | tee -a "$log_file"
+status="$(cat "$exit_file")"
+rm -f "$exit_file"
+exit "$status"
