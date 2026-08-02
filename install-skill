@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+set -eu
+
+repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+source_dir="$repo_dir/skills/local-subagents"
+
+for target in "$HOME/.codex/skills/local-subagents" "$HOME/.claude/skills/local-subagents"; do
+  if [ -e "$target" ] && [ ! -L "$target" ]; then
+    echo "Refusing to replace non-symlink: $target" >&2
+    exit 1
+  fi
+  mkdir -p "$(dirname -- "$target")"
+  ln -sfnT "$source_dir" "$target"
+  echo "Installed: $target -> $source_dir"
+done

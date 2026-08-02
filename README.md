@@ -87,6 +87,21 @@ These wrappers assume the backing CLIs are already installed on the host:
 
 They are meant for a machine where those tools already exist. The wrappers do not install or manage them.
 
+## Harness skill
+
+Install the shared delegation skill for Codex and Claude Code with:
+
+```bash
+./install-skill
+```
+
+This creates symlinks from `~/.codex/skills/local-subagents` and
+`~/.claude/skills/local-subagents` to the tracked source at
+`skills/local-subagents/`. Update that source here; do not edit the installed
+links. OpenCode already permits Claude-style skills on this host. Antigravity's
+plugin system can import Claude skills when needed, but has no global skill
+directory configured yet.
+
 ## Usage
 
 ```bash
