@@ -35,6 +35,7 @@ Included wrappers:
 - `opencode-subagent-fallback`
 - `antigravity-subagent`
 - `claude-subagent`
+- `codex-subagent`
 
 ## What they are good for
 
@@ -82,6 +83,7 @@ These wrappers assume the backing CLIs are already installed on the host:
 - `opencode-subagent` calls `$HOME/.opencode/bin/opencode`
 - `antigravity-subagent` calls `$HOME/.local/bin/agy`
 - `claude-subagent` calls `$HOME/.local/bin/claude`
+- `codex-subagent` calls `codex`
 
 They are meant for a machine where those tools already exist. The wrappers do not install or manage them.
 
@@ -99,6 +101,10 @@ printf '%s\n' "Review this repo" | ./antigravity-subagent
 ./claude-subagent "Review this repo"
 printf '%s\n' "Review this repo" | ./claude-subagent
 ./claude-subagent --models
+
+./codex-subagent "Review this repo"
+printf '%s\n' "Review this repo" | ./codex-subagent
+./codex-subagent --models
 ```
 
 Both wrappers use the current working directory as the workspace root and inject a short non-interactive system prompt around the task.
@@ -188,6 +194,17 @@ opus
 sonnet
 ```
 
+### Codex
+
+Codex has no live model-catalogue command. `codex-subagent --models` prints
+the selectors documented by the installed CLI:
+
+```text
+gpt-5.6-sol
+gpt-5.6-terra
+gpt-5.6-luna
+```
+
 ## Typical scenarios
 
 ### 1. Delegate a narrow coding task
@@ -228,6 +245,7 @@ Useful when another script or agent needs a simple command-shaped interface.
 OPENCODE_MODEL='zai-coding-plan/glm-5.2' opencode-subagent "Review this diff"
 AGY_MODEL='Gemini 3.6 Flash (Low)' antigravity-subagent "Review this diff"
 CLAUDE_MODEL='sonnet' claude-subagent "Review this diff"
+CODEX_MODEL='gpt-5.6-terra' codex-subagent "Review this diff"
 ```
 
 Useful when you want to compare speed, quality, or failure modes across providers.
@@ -351,6 +369,27 @@ Behavior:
 
 Claude Code has no live model-list command; `claude-subagent --models` prints
 the selectors documented by the installed CLI instead.
+
+## codex-subagent
+
+Environment variables:
+
+- `CODEX_MODEL` - optional Codex model selector
+- `CODEX_EFFORT` - optional `low`, `medium`, `high`, `xhigh`, `max`, or `ultra` reasoning effort
+- `CODEX_SANDBOX` - sandbox mode, default `workspace-write`
+- `CODEX_TIMEOUT` - timeout in seconds, default `1800`
+- `CODEX_LOGS` - set to `0` to suppress the wrapper log banner
+- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/subagents/logs`
+
+Behavior:
+
+- runs `codex exec` in the current workspace with non-interactive approval handling
+- uses an ephemeral session and passes model and reasoning effort through
+- defaults to the `workspace-write` sandbox; set `CODEX_SANDBOX=read-only` for investigation-only tasks
+- tees combined stdout+stderr to a timestamped log file and preserves the real exit code
+
+Codex has no live model-list command; `codex-subagent --models` prints the
+selectors documented by the installed CLI instead.
 
 ## Observability
 

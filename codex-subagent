@@ -1,0 +1,116 @@
+#!/usr/bin/env sh
+set -eu
+
+workspace="$(pwd -P)"
+timeout_seconds="${CODEX_TIMEOUT:-1800}"
+
+if [ "${1:-}" = "--models" ]; then
+  if [ "$#" -ne 1 ]; then
+    echo "Usage: codex-subagent --models" >&2
+    exit 2
+  fi
+  echo "codex-subagent: Codex has no live model-list command; showing documented selectors." >&2
+  printf '%s\n' gpt-5.6-sol gpt-5.6-terra gpt-5.6-luna
+  exit 0
+fi
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat <<'EOF'
+Usage:
+  codex-subagent "task"
+  printf '%s\n' "task" | codex-subagent
+  codex-subagent --models
+
+Environment:
+  CODEX_MODEL      Optional model selector.
+  CODEX_EFFORT     Optional effort: low, medium, high, xhigh, max, or ultra.
+  CODEX_SANDBOX    Sandbox mode. Default: workspace-write.
+  CODEX_TIMEOUT    Timeout in seconds. Default: 1800.
+  CODEX_LOGS       Print wrapper banner to stderr. Default: 1.
+  SUBAGENT_LOG_DIR Where wrapper run logs are written. Default: ~/subagents/logs.
+
+Examples:
+  CODEX_MODEL='gpt-5.6-luna' codex-subagent "Fix the bug"
+  CODEX_MODEL='gpt-5.6-terra' CODEX_EFFORT='high' codex-subagent "Review this repo"
+  CODEX_MODEL='gpt-5.6-sol' CODEX_EFFORT='max' codex-subagent "Implement TASK.md"
+
+Codex has no live model-list command. `codex-subagent --models` prints the
+documented selectors: gpt-5.6-sol, gpt-5.6-terra, and gpt-5.6-luna.
+EOF
+  exit 0
+fi
+
+if [ "$#" -gt 0 ]; then
+  user_prompt="$*"
+else
+  user_prompt="$(cat)"
+fi
+
+prompt="You are running as a non-interactive coding subagent.
+Workspace: $workspace
+
+Rules:
+- Treat the workspace above as the project root.
+- Write requested files under that workspace unless the prompt gives a different absolute path.
+- After editing, summarize changed files and verification commands.
+
+Task:
+$user_prompt"
+
+log_flag="${CODEX_LOGS:-1}"
+sandbox="${CODEX_SANDBOX:-workspace-write}"
+log_dir="${SUBAGENT_LOG_DIR:-$HOME/subagents/logs}"
+mkdir -p "$log_dir"
+log_file="$log_dir/$(date +%Y%m%dT%H%M%S)-codex-$$.log"
+
+set -- --ask-for-approval never exec --cd "$workspace" --sandbox "$sandbox" --skip-git-repo-check --ephemeral
+[ -z "${CODEX_MODEL:-}" ] || set -- "$@" --model "$CODEX_MODEL"
+[ -z "${CODEX_EFFORT:-}" ] || set -- "$@" -c "model_reasoning_effort=\"$CODEX_EFFORT\""
+set -- "$@" "$prompt"
+
+if [ "$log_flag" = "1" ]; then
+  echo "codex-subagent: workspace=$workspace model=${CODEX_MODEL:-default} effort=${CODEX_EFFORT:-default} sandbox=$sandbox timeout=${timeout_seconds}s run_log=$log_file" >&2
+fi
+
+# ponytail: a separate process group makes timeout cleanup cover ordinary children.
+before_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
+if [ "$timeout_seconds" -gt 0 ] 2>/dev/null && command -v timeout >/dev/null 2>&1; then
+  setsid timeout --foreground "${timeout_seconds}s" codex "$@" >"$log_file" 2>&1 &
+else
+  setsid codex "$@" >"$log_file" 2>&1 &
+fi
+cmd_pid=$!
+tail -f "$log_file" &
+tail_pid=$!
+
+set +e
+wait "$cmd_pid"
+status=$?
+set -e
+
+kill "$tail_pid" >/dev/null 2>&1 || true
+wait "$tail_pid" 2>/dev/null || true
+if command -v pkill >/dev/null 2>&1; then
+  pkill -TERM -g "$cmd_pid" >/dev/null 2>&1 || true
+  sleep 1
+  pkill -KILL -g "$cmd_pid" >/dev/null 2>&1 || true
+fi
+
+# ponytail: detached children that chdir away can escape this workspace check.
+workspace_real="$(cd "$workspace" && pwd -P)"
+after_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
+new_pids=""
+for pid in $after_pids; do
+  case " $before_pids " in *" $pid "*) ;; *) new_pids="$new_pids $pid" ;; esac
+done
+for sig in TERM KILL; do
+  [ "$sig" != "KILL" ] || sleep 1
+  for pid in $new_pids; do
+    pid_cwd="$(readlink "/proc/$pid/cwd" 2>/dev/null || true)"
+    case "$pid_cwd" in
+      "$workspace_real"|"$workspace_real"/*) kill "-$sig" "$pid" >/dev/null 2>&1 || true ;;
+    esac
+  done
+done
+
+exit "$status"
