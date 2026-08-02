@@ -25,7 +25,7 @@ Environment:
   AGY_PRINT_TIMEOUT  Print-mode timeout, default: 20m.
   AGY_LOG_FILE       Optional agy --log-file path (agy's own internal log).
   AGY_LOGS           Print wrapper banner to stderr. Default: 1.
-  SUBAGENT_LOG_DIR   Where wrapper run logs are written. Default: ~/subagents/logs.
+  SUBAGENT_LOG_DIR   Where wrapper run logs are written. Default: ~/local-subagents/logs.
 
 Every run's combined stdout+stderr is teed to a timestamped file under
 SUBAGENT_LOG_DIR (printed in the startup banner) so a backgrounded run can be
@@ -75,7 +75,7 @@ $user_prompt"
 
 log_flag="${AGY_LOGS:-1}"
 
-log_dir="${SUBAGENT_LOG_DIR:-$HOME/subagents/logs}"
+log_dir="${SUBAGENT_LOG_DIR:-$HOME/local-subagents/logs}"
 mkdir -p "$log_dir"
 log_file="$log_dir/$(date +%Y%m%dT%H%M%S)-antigravity-$$.log"
 

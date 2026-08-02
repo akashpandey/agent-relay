@@ -23,7 +23,7 @@ The underlying CLIs already work, but their raw command lines are noisy, backend
 - pass through a few useful runtime knobs via environment variables
 - add enough observability to tell whether the run is alive or stuck
 - tee every run's combined output to a timestamped log file under
-  `~/subagents/logs/` (path override: `SUBAGENT_LOG_DIR`), printed in the
+  `~/local-subagents/logs/` (path override: `SUBAGENT_LOG_DIR`), printed in the
   startup banner, so a backgrounded run can be tailed live instead of waiting
   for the final result
 
@@ -259,7 +259,7 @@ Environment variables:
 - `OPENCODE_AGENT` - optional agent name
 - `OPENCODE_TIMEOUT` - timeout in seconds, default `1800`
 - `OPENCODE_LOGS` - set to `0` to suppress wrapper log banner
-- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/subagents/logs`
+- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/local-subagents/logs`
 
 Behavior:
 
@@ -267,7 +267,7 @@ Behavior:
 - enables `--print-logs` by default
 - prints a startup banner (including the run log path) so hung runs are easier to identify
 - tees combined stdout+stderr to a timestamped file under `SUBAGENT_LOG_DIR`
-  (default `~/subagents/logs/`), so `tail -f` on that path shows the run live
+  (default `~/local-subagents/logs/`), so `tail -f` on that path shows the run live
   when it's backgrounded
 - preserves the underlying command's real exit code even though output goes
   through `tee`
@@ -329,7 +329,7 @@ Environment variables:
 - `AGY_PRINT_TIMEOUT` - print-mode timeout, default `20m`
 - `AGY_LOG_FILE` - optional path passed to `agy --log-file` (agy's own internal log, separate from the wrapper's run log)
 - `AGY_LOGS` - set to `0` to suppress wrapper log banner
-- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/subagents/logs`
+- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/local-subagents/logs`
 
 Behavior:
 
@@ -359,7 +359,7 @@ Environment variables:
 - `CLAUDE_EFFORT` - optional `low`, `medium`, `high`, `xhigh`, or `max` reasoning effort
 - `CLAUDE_TIMEOUT` - timeout in seconds, default `1800`
 - `CLAUDE_LOGS` - set to `0` to suppress the wrapper log banner
-- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/subagents/logs`
+- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/local-subagents/logs`
 
 Behavior:
 
@@ -379,7 +379,7 @@ Environment variables:
 - `CODEX_SANDBOX` - sandbox mode, default `workspace-write`
 - `CODEX_TIMEOUT` - timeout in seconds, default `1800`
 - `CODEX_LOGS` - set to `0` to suppress the wrapper log banner
-- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/subagents/logs`
+- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/local-subagents/logs`
 
 Behavior:
 
@@ -394,13 +394,13 @@ selectors documented by the installed CLI instead.
 ## Observability
 
 All wrappers tee their combined
-stdout+stderr to a timestamped file under `~/subagents/logs/` (override with
+stdout+stderr to a timestamped file under `~/local-subagents/logs/` (override with
 `SUBAGENT_LOG_DIR`). The path is printed in the startup banner, so a run
 launched in the background can be watched live:
 
 ```bash
 OPENCODE_MODEL='openai/gpt-5.5' opencode-subagent "long task" &
-tail -f ~/subagents/logs/<the-run-log-printed-above>.log
+tail -f ~/local-subagents/logs/<the-run-log-printed-above>.log
 ```
 
 This exists because, unmodified, `opencode` streams tool/loop progress to
@@ -412,7 +412,7 @@ inherits this for free since it shells out to `opencode-subagent` for both
 its probe and real task calls.
 
 The `logs/` directory is gitignored and not rotated — clean it out
-periodically if it grows (`rm -rf ~/subagents/logs/*`).
+periodically if it grows (`rm -rf ~/local-subagents/logs/*`).
 
 ## Process Cleanup
 

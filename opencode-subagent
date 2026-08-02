@@ -32,7 +32,7 @@ Environment:
   OPENCODE_AGENT    Optional opencode agent name.
   OPENCODE_TIMEOUT  Optional timeout in seconds. Default: 1800.
   OPENCODE_LOGS     Print opencode logs to stderr. Default: 1.
-  SUBAGENT_LOG_DIR  Where wrapper run logs are written. Default: ~/subagents/logs.
+  SUBAGENT_LOG_DIR  Where wrapper run logs are written. Default: ~/local-subagents/logs.
 
 Every run's combined stdout+stderr (including opencode's own --print-logs
 stream) is teed to a timestamped file under SUBAGENT_LOG_DIR (printed in the
@@ -80,7 +80,7 @@ if [ "${OPENCODE_MODEL:-}" = "opencode-go/glm-5.2" ]; then
   OPENCODE_MODEL="zai-coding-plan/glm-5.2"
 fi
 
-log_dir="${SUBAGENT_LOG_DIR:-$HOME/subagents/logs}"
+log_dir="${SUBAGENT_LOG_DIR:-$HOME/local-subagents/logs}"
 mkdir -p "$log_dir"
 log_file="$log_dir/$(date +%Y%m%dT%H%M%S)-opencode-$$.log"
 

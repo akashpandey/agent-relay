@@ -27,7 +27,7 @@ Environment:
   CODEX_SANDBOX    Sandbox mode. Default: workspace-write.
   CODEX_TIMEOUT    Timeout in seconds. Default: 1800.
   CODEX_LOGS       Print wrapper banner to stderr. Default: 1.
-  SUBAGENT_LOG_DIR Where wrapper run logs are written. Default: ~/subagents/logs.
+  SUBAGENT_LOG_DIR Where wrapper run logs are written. Default: ~/local-subagents/logs.
 
 Examples:
   CODEX_MODEL='gpt-5.6-luna' codex-subagent "Fix the bug"
@@ -59,7 +59,7 @@ $user_prompt"
 
 log_flag="${CODEX_LOGS:-1}"
 sandbox="${CODEX_SANDBOX:-workspace-write}"
-log_dir="${SUBAGENT_LOG_DIR:-$HOME/subagents/logs}"
+log_dir="${SUBAGENT_LOG_DIR:-$HOME/local-subagents/logs}"
 mkdir -p "$log_dir"
 log_file="$log_dir/$(date +%Y%m%dT%H%M%S)-codex-$$.log"
 
