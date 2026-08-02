@@ -391,7 +391,8 @@ Environment variables:
 
 - `CODEX_MODEL` - optional Codex model selector
 - `CODEX_EFFORT` - optional `low`, `medium`, `high`, `xhigh`, `max`, or `ultra` reasoning effort
-- `CODEX_SANDBOX` - sandbox mode, default `workspace-write`
+- `CODEX_SANDBOX` - sandbox mode; defaults to `workspace-write`, with an automatic
+  `danger-full-access` fallback only when the host blocks Bubblewrap user namespaces
 - `CODEX_TIMEOUT` - timeout in seconds, default `1800`
 - `CODEX_LOGS` - set to `0` to suppress the wrapper log banner
 - `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/local-subagents/logs`
@@ -400,7 +401,8 @@ Behavior:
 
 - runs `codex exec` in the current workspace with non-interactive approval handling
 - uses an ephemeral session and passes model and reasoning effort through
-- defaults to the `workspace-write` sandbox; set `CODEX_SANDBOX=read-only` for investigation-only tasks
+- defaults to the `workspace-write` sandbox; on hosts that block Bubblewrap user namespaces,
+  automatically falls back to `danger-full-access`; set `CODEX_SANDBOX` explicitly to prevent fallback
 - tees combined stdout+stderr to a timestamped log file and preserves the real exit code
 
 Codex has no live model-list command; `codex-subagent --models` prints the
