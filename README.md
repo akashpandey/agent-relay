@@ -88,12 +88,89 @@ They are meant for a machine where those tools already exist. The wrappers do no
 ```bash
 ./opencode-subagent "Fix the bug"
 printf '%s\n' "Review this repo" | ./opencode-subagent
+./opencode-subagent --models
 
 ./antigravity-subagent "Implement TASK.md"
 printf '%s\n' "Review this repo" | ./antigravity-subagent
+./antigravity-subagent --models
 ```
 
 Both wrappers use the current working directory as the workspace root and inject a short non-interactive system prompt around the task.
+
+## Model catalogues
+
+These are the model IDs available on this host when checked on 2026-08-02.
+Refresh or re-list them before relying on the list for automation:
+
+```bash
+opencode-subagent --models --refresh
+antigravity-subagent --models
+```
+
+### OpenCode
+
+`opencode-subagent --models` intentionally exposes only these providers:
+
+```text
+opencode-go/deepseek-v4-flash
+opencode-go/deepseek-v4-pro
+opencode-go/glm-5.1
+opencode-go/glm-5.2
+opencode-go/gpt-5.6-luna
+opencode-go/grok-4.5
+opencode-go/hy3
+opencode-go/kimi-k2.6
+opencode-go/kimi-k2.7-code
+opencode-go/kimi-k3
+opencode-go/mimo-v2.5
+opencode-go/mimo-v2.5-pro
+opencode-go/minimax-m2.7
+opencode-go/minimax-m3
+opencode-go/qwen3.6-plus
+opencode-go/qwen3.7-max
+opencode-go/qwen3.7-plus
+openai/gpt-5.3-codex-spark
+openai/gpt-5.4
+openai/gpt-5.4-fast
+openai/gpt-5.4-mini
+openai/gpt-5.4-mini-fast
+openai/gpt-5.5
+openai/gpt-5.5-fast
+openai/gpt-5.6
+openai/gpt-5.6-fast
+openai/gpt-5.6-luna
+openai/gpt-5.6-luna-fast
+openai/gpt-5.6-luna-pro
+openai/gpt-5.6-pro
+openai/gpt-5.6-sol
+openai/gpt-5.6-sol-fast
+openai/gpt-5.6-sol-pro
+openai/gpt-5.6-terra
+openai/gpt-5.6-terra-fast
+openai/gpt-5.6-terra-pro
+zai-coding-plan/glm-4.7
+zai-coding-plan/glm-5-turbo
+zai-coding-plan/glm-5.2
+zai-coding-plan/glm-5.2-highspeed
+```
+
+### Antigravity
+
+`antigravity-subagent --models` lists the models used by the wrapper.
+
+```text
+gemini-3.6-flash-high
+gemini-3.6-flash-medium
+gemini-3.6-flash-low
+gemini-3.5-flash-high
+gemini-3.5-flash-medium
+gemini-3.5-flash-low
+gemini-3.1-pro-high
+gemini-3.1-pro-low
+claude-sonnet-4-6
+claude-opus-4-6-thinking
+gpt-oss-120b-medium
+```
 
 ## Typical scenarios
 
@@ -133,7 +210,7 @@ Useful when another script or agent needs a simple command-shaped interface.
 
 ```bash
 OPENCODE_MODEL='zai-coding-plan/glm-5.2' opencode-subagent "Review this diff"
-AGY_MODEL='Gemini 3.5 Flash (Low)' antigravity-subagent "Review this diff"
+AGY_MODEL='Gemini 3.6 Flash (Low)' antigravity-subagent "Review this diff"
 ```
 
 Useful when you want to compare speed, quality, or failure modes across providers.

@@ -3,11 +3,28 @@ set -eu
 
 workspace="$(pwd -P)"
 
+if [ "${1:-}" = "--models" ]; then
+  if [ "${2:-}" = "--refresh" ] && [ "$#" -eq 2 ]; then
+    "$HOME/.opencode/bin/opencode" models --refresh >/dev/null
+  elif [ "$#" -ne 1 ]; then
+    echo "Usage: opencode-subagent --models [--refresh]" >&2
+    exit 2
+  fi
+
+  # The wrapper deliberately supports only the providers documented below.
+  # Do not leak every locally configured OpenCode provider to calling harnesses.
+  for provider in opencode-go openai zai-coding-plan; do
+    "$HOME/.opencode/bin/opencode" models "$provider"
+  done
+  exit 0
+fi
+
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   cat <<'EOF'
 Usage:
   opencode-subagent "task"
   printf '%s\n' "task" | opencode-subagent
+  opencode-subagent --models [--refresh]
 
 Environment:
   OPENCODE_MODEL    Model in provider/model format.
@@ -27,45 +44,9 @@ Examples:
   OPENCODE_MODEL='opencode-go/qwen3.7-plus' opencode-subagent "Review this repo"
   OPENCODE_MODEL='zai-coding-plan/glm-5.2' opencode-subagent "Implement TASK.md"
 
-OpenAI models:
-  openai/gpt-5.4
-  openai/gpt-5.4-fast
-  openai/gpt-5.4-mini
-  openai/gpt-5.4-mini-fast
-  openai/gpt-5.5
-  openai/gpt-5.5-fast
-  openai/gpt-5.6-sol
-  openai/gpt-5.6-sol-fast
-  openai/gpt-5.6-sol-pro
-  openai/gpt-5.6-terra
-  openai/gpt-5.6-terra-fast
-  openai/gpt-5.6-terra-pro
-
-OpenCode Go models:
-  opencode-go/deepseek-v4-flash
-  opencode-go/deepseek-v4-pro
-  opencode-go/glm-5.1
-  opencode-go/glm-5.2
-  opencode-go/kimi-k2.6
-  opencode-go/kimi-k2.7-code
-  opencode-go/mimo-v2.5
-  opencode-go/mimo-v2.5-pro
-  opencode-go/minimax-m2.7
-  opencode-go/minimax-m3
-  opencode-go/qwen3.6-plus
-  opencode-go/qwen3.7-max
-  opencode-go/qwen3.7-plus
-
-Z.AI Coding Plan models:
-  zai-coding-plan/glm-4.7
-  zai-coding-plan/glm-5-turbo
-  zai-coding-plan/glm-5.1
-  zai-coding-plan/glm-5.2
-
-Refresh live lists:
-  opencode models openai
-  opencode models opencode-go
-  opencode models zai-coding-plan
+Supported model providers: opencode-go, openai, zai-coding-plan.
+Use `opencode-subagent --models` to list the currently available models, or
+`opencode-subagent --models --refresh` to refresh OpenCode's cache first.
 EOF
   exit 0
 fi

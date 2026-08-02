@@ -4,11 +4,21 @@ set -eu
 timeout="${AGY_PRINT_TIMEOUT:-20m}"
 workspace="$(pwd -P)"
 
+if [ "${1:-}" = "--models" ]; then
+  if [ "$#" -ne 1 ]; then
+    echo "Usage: antigravity-subagent --models" >&2
+    exit 2
+  fi
+  "$HOME/.local/bin/agy" models
+  exit 0
+fi
+
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   cat <<'EOF'
 Usage:
   antigravity-subagent "task"
   printf '%s\n' "task" | antigravity-subagent
+  antigravity-subagent --models
 
 Environment:
   AGY_MODEL          Model label exactly as shown below.
@@ -22,22 +32,25 @@ SUBAGENT_LOG_DIR (printed in the startup banner) so a backgrounded run can be
 tailed live instead of waiting for --print to return.
 
 Examples:
-  AGY_MODEL='Gemini 3.5 Flash (Low)' antigravity-subagent "Fix the bug"
+  AGY_MODEL='Gemini 3.6 Flash (Medium)' antigravity-subagent "Fix the bug"
   AGY_MODEL='Claude Sonnet 4.6 (Thinking)' antigravity-subagent "Review this repo"
   AGY_MODEL='GPT-OSS 120B (Medium)' antigravity-subagent "Implement TASK.md"
 
 Antigravity models:
-  Gemini 3.5 Flash (Medium)
+  Gemini 3.6 Flash (High)
+  Gemini 3.6 Flash (Medium)
+  Gemini 3.6 Flash (Low)
   Gemini 3.5 Flash (High)
+  Gemini 3.5 Flash (Medium)
   Gemini 3.5 Flash (Low)
-  Gemini 3.1 Pro (Low)
   Gemini 3.1 Pro (High)
+  Gemini 3.1 Pro (Low)
   Claude Sonnet 4.6 (Thinking)
   Claude Opus 4.6 (Thinking)
   GPT-OSS 120B (Medium)
 
 Refresh live list:
-  agy models
+  antigravity-subagent --models
 EOF
   exit 0
 fi
