@@ -34,6 +34,7 @@ Included wrappers:
 - `opencode-subagent`
 - `opencode-subagent-fallback`
 - `antigravity-subagent`
+- `claude-subagent`
 
 ## What they are good for
 
@@ -80,6 +81,7 @@ These wrappers assume the backing CLIs are already installed on the host:
 
 - `opencode-subagent` calls `$HOME/.opencode/bin/opencode`
 - `antigravity-subagent` calls `$HOME/.local/bin/agy`
+- `claude-subagent` calls `$HOME/.local/bin/claude`
 
 They are meant for a machine where those tools already exist. The wrappers do not install or manage them.
 
@@ -93,6 +95,10 @@ printf '%s\n' "Review this repo" | ./opencode-subagent
 ./antigravity-subagent "Implement TASK.md"
 printf '%s\n' "Review this repo" | ./antigravity-subagent
 ./antigravity-subagent --models
+
+./claude-subagent "Review this repo"
+printf '%s\n' "Review this repo" | ./claude-subagent
+./claude-subagent --models
 ```
 
 Both wrappers use the current working directory as the workspace root and inject a short non-interactive system prompt around the task.
@@ -172,6 +178,16 @@ claude-opus-4-6-thinking
 gpt-oss-120b-medium
 ```
 
+### Claude Code
+
+Claude Code has no live model-catalogue command. `claude-subagent --models`
+prints the selectors documented by the installed CLI:
+
+```text
+opus
+sonnet
+```
+
 ## Typical scenarios
 
 ### 1. Delegate a narrow coding task
@@ -211,6 +227,7 @@ Useful when another script or agent needs a simple command-shaped interface.
 ```bash
 OPENCODE_MODEL='zai-coding-plan/glm-5.2' opencode-subagent "Review this diff"
 AGY_MODEL='Gemini 3.6 Flash (Low)' antigravity-subagent "Review this diff"
+CLAUDE_MODEL='sonnet' claude-subagent "Review this diff"
 ```
 
 Useful when you want to compare speed, quality, or failure modes across providers.
@@ -315,9 +332,29 @@ Best fit:
 - alternative-model passes on the same prompt
 - simple one-shot tasks where a final printed response is enough
 
+## claude-subagent
+
+Environment variables:
+
+- `CLAUDE_MODEL` - Claude Code model alias or full model ID
+- `CLAUDE_FALLBACK_MODEL` - optional comma-separated fallback aliases or IDs
+- `CLAUDE_EFFORT` - optional `low`, `medium`, `high`, `xhigh`, or `max` reasoning effort
+- `CLAUDE_TIMEOUT` - timeout in seconds, default `1800`
+- `CLAUDE_LOGS` - set to `0` to suppress the wrapper log banner
+- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/subagents/logs`
+
+Behavior:
+
+- runs `claude --print` with the workspace supplied through `--add-dir`
+- uses non-persistent, non-interactive execution and passes model, fallback, and optional effort selection through
+- tees combined stdout+stderr to a timestamped log file and preserves the real exit code
+
+Claude Code has no live model-list command; `claude-subagent --models` prints
+the selectors documented by the installed CLI instead.
+
 ## Observability
 
-Both `opencode-subagent` and `antigravity-subagent` tee their combined
+All wrappers tee their combined
 stdout+stderr to a timestamped file under `~/subagents/logs/` (override with
 `SUBAGENT_LOG_DIR`). The path is printed in the startup banner, so a run
 launched in the background can be watched live:
@@ -328,9 +365,9 @@ tail -f ~/subagents/logs/<the-run-log-printed-above>.log
 ```
 
 This exists because, unmodified, `opencode` streams tool/loop progress to
-stderr but `agy --print` does not print anything incremental at all — a
+stderr while `agy --print` and `claude --print` may not print incrementally — a
 backgrounded antigravity run looked identical whether it was working or
-hung. Teeing to a discoverable log file fixes that for both, uniformly,
+hung. Teeing to a discoverable log file fixes that for all wrappers, uniformly,
 without depending on upstream CLI verbosity flags. `opencode-subagent-fallback`
 inherits this for free since it shells out to `opencode-subagent` for both
 its probe and real task calls.
@@ -341,8 +378,8 @@ periodically if it grows (`rm -rf ~/subagents/logs/*`).
 ## Process Cleanup
 
 A subagent can leave things running after it exits — a `npm run dev &`
-it forgot to stop, a background server started to "test" something. Both
-wrappers clean this up automatically:
+it forgot to stop, a background server started to "test" something. All
+wrapper types clean this up automatically:
 
 1. The underlying CLI runs under `setsid`, its own process group. On exit,
    the wrapper sends `SIGTERM` then `SIGKILL` to that whole group — this
@@ -363,5 +400,5 @@ escapes step 2 — no current subagent task does this, so it isn't handled.
 ## Notes
 
 - These wrappers are intentionally thin. They only normalize prompt shape and runtime flags.
-- They may need local path changes if your `opencode` or `agy` binaries live elsewhere.
+- They may need local path changes if your `opencode`, `agy`, or `claude` binaries live elsewhere.
 - They assume the current working directory is the repo or workspace you want the subagent to operate on.

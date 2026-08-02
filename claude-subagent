@@ -1,0 +1,116 @@
+#!/usr/bin/env sh
+set -eu
+
+workspace="$(pwd -P)"
+timeout_seconds="${CLAUDE_TIMEOUT:-1800}"
+
+if [ "${1:-}" = "--models" ]; then
+  if [ "$#" -ne 1 ]; then
+    echo "Usage: claude-subagent --models" >&2
+    exit 2
+  fi
+  echo "claude-subagent: Claude Code has no live model-list command; showing documented selectors." >&2
+  printf '%s\n' opus sonnet
+  exit 0
+fi
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat <<'EOF'
+Usage:
+  claude-subagent "task"
+  printf '%s\n' "task" | claude-subagent
+  claude-subagent --models
+
+Environment:
+  CLAUDE_MODEL           Model alias or full model ID.
+  CLAUDE_FALLBACK_MODEL  Comma-separated fallback aliases or IDs.
+  CLAUDE_EFFORT          Optional effort: low, medium, high, xhigh, or max.
+  CLAUDE_TIMEOUT         Timeout in seconds. Default: 1800.
+  CLAUDE_LOGS            Print wrapper banner to stderr. Default: 1.
+  SUBAGENT_LOG_DIR       Where wrapper run logs are written. Default: ~/subagents/logs.
+
+Examples:
+  CLAUDE_MODEL='sonnet' claude-subagent "Fix the bug"
+  CLAUDE_MODEL='opus' CLAUDE_EFFORT='high' claude-subagent "Review this repo"
+  CLAUDE_MODEL='sonnet' claude-subagent "Implement TASK.md"
+
+Claude Code has no live model-list command. `claude-subagent --models` prints
+the available documented selectors: opus and sonnet.
+EOF
+  exit 0
+fi
+
+if [ "$#" -gt 0 ]; then
+  user_prompt="$*"
+else
+  user_prompt="$(cat)"
+fi
+
+prompt="You are running as a non-interactive coding subagent.
+Workspace: $workspace
+
+Rules:
+- Treat the workspace above as the project root.
+- Write requested files under that workspace unless the prompt gives a different absolute path.
+- After editing, summarize changed files and verification commands.
+
+Task:
+$user_prompt"
+
+log_flag="${CLAUDE_LOGS:-1}"
+log_dir="${SUBAGENT_LOG_DIR:-$HOME/subagents/logs}"
+mkdir -p "$log_dir"
+log_file="$log_dir/$(date +%Y%m%dT%H%M%S)-claude-$$.log"
+
+set -- --print --add-dir "$workspace" --dangerously-skip-permissions --no-session-persistence
+[ -z "${CLAUDE_MODEL:-}" ] || set -- "$@" --model "$CLAUDE_MODEL"
+[ -z "${CLAUDE_FALLBACK_MODEL:-}" ] || set -- "$@" --fallback-model "$CLAUDE_FALLBACK_MODEL"
+[ -z "${CLAUDE_EFFORT:-}" ] || set -- "$@" --effort "$CLAUDE_EFFORT"
+set -- "$@" "$prompt"
+
+if [ "$log_flag" = "1" ]; then
+  echo "claude-subagent: workspace=$workspace model=${CLAUDE_MODEL:-default} effort=${CLAUDE_EFFORT:-default} fallback=${CLAUDE_FALLBACK_MODEL:-none} timeout=${timeout_seconds}s run_log=$log_file" >&2
+fi
+
+# ponytail: a separate process group makes timeout cleanup cover ordinary children.
+before_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
+if [ "$timeout_seconds" -gt 0 ] 2>/dev/null && command -v timeout >/dev/null 2>&1; then
+  setsid timeout --foreground "${timeout_seconds}s" "$HOME/.local/bin/claude" "$@" >"$log_file" 2>&1 &
+else
+  setsid "$HOME/.local/bin/claude" "$@" >"$log_file" 2>&1 &
+fi
+cmd_pid=$!
+tail -f "$log_file" &
+tail_pid=$!
+
+set +e
+wait "$cmd_pid"
+status=$?
+set -e
+
+kill "$tail_pid" >/dev/null 2>&1 || true
+wait "$tail_pid" 2>/dev/null || true
+if command -v pkill >/dev/null 2>&1; then
+  pkill -TERM -g "$cmd_pid" >/dev/null 2>&1 || true
+  sleep 1
+  pkill -KILL -g "$cmd_pid" >/dev/null 2>&1 || true
+fi
+
+# ponytail: detached children that chdir away can escape this workspace check.
+workspace_real="$(cd "$workspace" && pwd -P)"
+after_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
+new_pids=""
+for pid in $after_pids; do
+  case " $before_pids " in *" $pid "*) ;; *) new_pids="$new_pids $pid" ;; esac
+done
+for sig in TERM KILL; do
+  [ "$sig" != "KILL" ] || sleep 1
+  for pid in $new_pids; do
+    pid_cwd="$(readlink "/proc/$pid/cwd" 2>/dev/null || true)"
+    case "$pid_cwd" in
+      "$workspace_real"|"$workspace_real"/*) kill "-$sig" "$pid" >/dev/null 2>&1 || true ;;
+    esac
+  done
+done
+
+exit "$status"
