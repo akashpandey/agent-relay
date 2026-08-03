@@ -26,6 +26,7 @@ Environment:
   CODEX_EFFORT     Optional effort: low, medium, high, xhigh, max, or ultra.
   CODEX_SANDBOX    Sandbox mode. Default: workspace-write, or danger-full-access
                    when this host cannot create Bubblewrap user namespaces.
+  SUBAGENT_SESSION Resume this provider's existing session ID.
   CODEX_TIMEOUT    Timeout in seconds. Default: 1800.
   CODEX_LOGS       Print wrapper banner to stderr. Default: 1.
   SUBAGENT_LOG_DIR Where wrapper run logs are written. Default: ~/local-subagents/logs.
@@ -60,6 +61,7 @@ $user_prompt"
 
 log_flag="${CODEX_LOGS:-1}"
 sandbox="${CODEX_SANDBOX:-workspace-write}"
+codex_bin="$(command -v codex)"
 
 # ponytail: Bubblewrap cannot start here when AppArmor denies unprivileged user
 # namespaces. Keep the safe default where available; callers can still force a
@@ -71,19 +73,41 @@ fi
 log_dir="${SUBAGENT_LOG_DIR:-$HOME/local-subagents/logs}"
 mkdir -p "$log_dir"
 log_file="$log_dir/$(date +%Y%m%dT%H%M%S)-codex-$$.log"
+unit="local-subagent-codex-$$"
+use_systemd=0
+if command -v systemd-run >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+  use_systemd=1
+fi
+tail_pid=""
 
-set -- --ask-for-approval never exec --cd "$workspace" --sandbox "$sandbox" --skip-git-repo-check --ephemeral
+stop_subagent() {
+  [ -z "$tail_pid" ] || kill "$tail_pid" >/dev/null 2>&1 || true
+  if [ "$use_systemd" -eq 1 ]; then
+    systemctl --user stop "$unit" >/dev/null 2>&1 || true
+  elif [ -n "${cmd_pid:-}" ] && command -v pkill >/dev/null 2>&1; then
+    pkill -TERM -g "$cmd_pid" >/dev/null 2>&1 || true
+    sleep 1
+    pkill -KILL -g "$cmd_pid" >/dev/null 2>&1 || true
+  fi
+}
+trap 'stop_subagent' EXIT
+trap 'stop_subagent; exit 143' HUP INT TERM
+
+set -- --ask-for-approval never exec --cd "$workspace" --sandbox "$sandbox" --skip-git-repo-check
+[ -z "${SUBAGENT_SESSION:-}" ] || set -- "$@" resume "$SUBAGENT_SESSION"
 [ -z "${CODEX_MODEL:-}" ] || set -- "$@" --model "$CODEX_MODEL"
 [ -z "${CODEX_EFFORT:-}" ] || set -- "$@" -c "model_reasoning_effort=\"$CODEX_EFFORT\""
 set -- "$@" "$prompt"
 
 if [ "$log_flag" = "1" ]; then
-  echo "codex-subagent: workspace=$workspace model=${CODEX_MODEL:-default} effort=${CODEX_EFFORT:-default} sandbox=$sandbox timeout=${timeout_seconds}s run_log=$log_file" >&2
+  echo "codex-subagent: workspace=$workspace model=${CODEX_MODEL:-default} effort=${CODEX_EFFORT:-default} sandbox=$sandbox session=${SUBAGENT_SESSION:-new} timeout=${timeout_seconds}s run_log=$log_file" >&2
 fi
 
 # ponytail: a separate process group makes timeout cleanup cover ordinary children.
 before_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
-if [ "$timeout_seconds" -gt 0 ] 2>/dev/null && command -v timeout >/dev/null 2>&1; then
+if [ "$use_systemd" -eq 1 ]; then
+  systemd-run --user --pipe --same-dir --setenv=PATH="$PATH" --wait --collect --quiet --unit="$unit" --property=KillMode=control-group --property=RuntimeMaxSec="${timeout_seconds}s" "$codex_bin" "$@" >"$log_file" 2>&1 &
+elif [ "$timeout_seconds" -gt 0 ] 2>/dev/null && command -v timeout >/dev/null 2>&1; then
   setsid timeout --foreground "${timeout_seconds}s" codex "$@" >"$log_file" 2>&1 &
 else
   setsid codex "$@" >"$log_file" 2>&1 &
@@ -99,7 +123,9 @@ set -e
 
 kill "$tail_pid" >/dev/null 2>&1 || true
 wait "$tail_pid" 2>/dev/null || true
-if command -v pkill >/dev/null 2>&1; then
+if [ "$use_systemd" -eq 1 ]; then
+  systemctl --user stop "$unit" >/dev/null 2>&1 || true
+elif command -v pkill >/dev/null 2>&1; then
   pkill -TERM -g "$cmd_pid" >/dev/null 2>&1 || true
   sleep 1
   pkill -KILL -g "$cmd_pid" >/dev/null 2>&1 || true

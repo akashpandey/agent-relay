@@ -25,6 +25,7 @@ Environment:
   OPENCODE_VARIANT       Passed through to opencode-subagent for the real task.
   OPENCODE_AGENT         Passed through to opencode-subagent for the real task.
   OPENCODE_LOGS          Passed through to opencode-subagent for the real task. Default: 1.
+  SUBAGENT_SESSION       Passed only to the selected model's real task; probes stay fresh.
 
 Quota/rate-limit signatures it detects (case-insensitive):
   usage limit, quota, rate limit, 429, insufficient_quota, AI_APICallError
@@ -63,7 +64,7 @@ for candidate in "$@"; do
 
   probe_log="$(mktemp)"
   probe_ok=1
-  if OPENCODE_MODEL="$candidate" OPENCODE_TIMEOUT="$probe_timeout" OPENCODE_LOGS=1 \
+  if SUBAGENT_SESSION= OPENCODE_MODEL="$candidate" OPENCODE_TIMEOUT="$probe_timeout" OPENCODE_LOGS=1 \
       "$HOME/.local/bin/opencode-subagent" "Reply with exactly one word: OK" \
       >"$probe_log" 2>&1; then
     probe_ok=0

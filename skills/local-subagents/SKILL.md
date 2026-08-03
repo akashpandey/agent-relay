@@ -35,6 +35,16 @@ Use the matching environment variable for a named model: `CODEX_MODEL`,
 `CLAUDE_MODEL`, `OPENCODE_MODEL`, or `AGY_MODEL`. Use each wrapper's `--help`
 for timeout and reasoning settings.
 
+Each fresh invocation persists a provider session. For a sequential follow-up,
+set `SUBAGENT_SESSION` to the ID from its prior run:
+
+```sh
+SUBAGENT_SESSION='<provider-session-id>' \
+  /home/akey/local-subagents/codex-subagent "Implement the fix you proposed."
+```
+
+Never reuse a session across parallel workers or unrelated tasks.
+
 Delegate one clear deliverable with boundaries and an expected check. Do not run
 multiple write-capable subagents in the same worktree. Review the actual diff
 and rerun relevant checks after a subagent reports completion.

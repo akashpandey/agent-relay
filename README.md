@@ -124,6 +124,21 @@ printf '%s\n' "Review this repo" | ./codex-subagent
 
 Both wrappers use the current working directory as the workspace root and inject a short non-interactive system prompt around the task.
 
+## Session reuse
+
+Fresh runs persist their provider session. For a sequential follow-up, pass the
+prior provider session/conversation ID through `SUBAGENT_SESSION`:
+
+```bash
+SUBAGENT_SESSION='<provider-session-id>' \
+  ./codex-subagent "Implement the fix you proposed."
+```
+
+The wrappers map this to each CLI's native resume option. Do not reuse one
+session across parallel workers or unrelated tasks; context and file intent
+will mix. Copy the provider ID from its run output or session list; every
+wrapper also keeps the full run log under `SUBAGENT_LOG_DIR`.
+
 ## Model catalogues
 
 These are the model IDs available on this host when checked on 2026-08-02.
@@ -274,6 +289,7 @@ Environment variables:
 - `OPENCODE_AGENT` - optional agent name
 - `OPENCODE_TIMEOUT` - timeout in seconds, default `1800`
 - `OPENCODE_LOGS` - set to `0` to suppress wrapper log banner
+- `SUBAGENT_SESSION` - optional OpenCode session ID to resume
 - `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/local-subagents/logs`
 
 Behavior:
@@ -344,6 +360,7 @@ Environment variables:
 - `AGY_PRINT_TIMEOUT` - print-mode timeout, default `20m`
 - `AGY_LOG_FILE` - optional path passed to `agy --log-file` (agy's own internal log, separate from the wrapper's run log)
 - `AGY_LOGS` - set to `0` to suppress wrapper log banner
+- `SUBAGENT_SESSION` - optional Antigravity conversation ID to resume
 - `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/local-subagents/logs`
 
 Behavior:
@@ -374,6 +391,7 @@ Environment variables:
 - `CLAUDE_EFFORT` - optional `low`, `medium`, `high`, `xhigh`, or `max` reasoning effort
 - `CLAUDE_TIMEOUT` - timeout in seconds, default `1800`
 - `CLAUDE_LOGS` - set to `0` to suppress the wrapper log banner
+- `SUBAGENT_SESSION` - optional Claude Code session ID to resume
 - `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/local-subagents/logs`
 
 Behavior:
@@ -393,6 +411,7 @@ Environment variables:
 - `CODEX_EFFORT` - optional `low`, `medium`, `high`, `xhigh`, `max`, or `ultra` reasoning effort
 - `CODEX_SANDBOX` - sandbox mode; defaults to `workspace-write`, with an automatic
   `danger-full-access` fallback only when the host blocks Bubblewrap user namespaces
+- `SUBAGENT_SESSION` - optional Codex session ID to resume
 - `CODEX_TIMEOUT` - timeout in seconds, default `1800`
 - `CODEX_LOGS` - set to `0` to suppress the wrapper log banner
 - `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/local-subagents/logs`
@@ -400,7 +419,7 @@ Environment variables:
 Behavior:
 
 - runs `codex exec` in the current workspace with non-interactive approval handling
-- uses an ephemeral session and passes model and reasoning effort through
+- persists new sessions and resumes `SUBAGENT_SESSION` when provided; passes model and reasoning effort through
 - defaults to the `workspace-write` sandbox; on hosts that block Bubblewrap user namespaces,
   automatically falls back to `danger-full-access`; set `CODEX_SANDBOX` explicitly to prevent fallback
 - tees combined stdout+stderr to a timestamped log file and preserves the real exit code
@@ -437,21 +456,16 @@ A subagent can leave things running after it exits — a `npm run dev &`
 it forgot to stop, a background server started to "test" something. All
 wrapper types clean this up automatically:
 
-1. The underlying CLI runs under `setsid`, its own process group. On exit,
-   the wrapper sends `SIGTERM` then `SIGKILL` to that whole group — this
-   catches an ordinary backgrounded child.
-2. That alone isn't enough: `nohup cmd & disown` (or any other detach-from-
-   the-shell trick) escapes the process group entirely into its own
-   session. To catch that too, each wrapper snapshots every pid on the
-   machine before the run starts, and on exit finds every pid that's new
-   *and* whose `/proc/<pid>/cwd` still resolves under the workspace
-   directory, and kills those as well.
+1. When a user systemd manager is available, the CLI runs in a transient
+   service with `KillMode=control-group` and `RuntimeMaxSec`. Stopping that
+   unit kills every descendant, including a daemonized process that changes
+   directory. The wrapper also stops it on `EXIT`, `INT`, `TERM`, or `HUP`.
+2. Without a user systemd manager, the wrapper falls back to `setsid`,
+   process-group termination, and its workspace-based `/proc` scan. That
+   fallback can miss a process that both daemonizes and changes directory.
 
-This runs every time, regardless of whether the underlying CLI exited
-cleanly, hit its timeout, or errored — the wrapper's own `set -e` cannot be
-allowed to skip cleanup just because the subagent itself failed. Ceiling: a
-process that changes directory away from the workspace after spawning still
-escapes step 2 — no current subagent task does this, so it isn't handled.
+The systemd path bounds even an orphaned wrapper by its runtime limit. The
+fallback remains useful on hosts without systemd user services.
 
 ## Notes
 

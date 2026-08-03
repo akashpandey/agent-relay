@@ -25,6 +25,7 @@ Environment:
   AGY_PRINT_TIMEOUT  Print-mode timeout, default: 20m.
   AGY_LOG_FILE       Optional agy --log-file path (agy's own internal log).
   AGY_LOGS           Print wrapper banner to stderr. Default: 1.
+  SUBAGENT_SESSION   Resume this provider's existing conversation ID.
   SUBAGENT_LOG_DIR   Where wrapper run logs are written. Default: ~/local-subagents/logs.
 
 Every run's combined stdout+stderr is teed to a timestamped file under
@@ -78,6 +79,25 @@ log_flag="${AGY_LOGS:-1}"
 log_dir="${SUBAGENT_LOG_DIR:-$HOME/local-subagents/logs}"
 mkdir -p "$log_dir"
 log_file="$log_dir/$(date +%Y%m%dT%H%M%S)-antigravity-$$.log"
+unit="local-subagent-antigravity-$$"
+use_systemd=0
+if command -v systemd-run >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+  use_systemd=1
+fi
+tail_pid=""
+
+stop_subagent() {
+  [ -z "$tail_pid" ] || kill "$tail_pid" >/dev/null 2>&1 || true
+  if [ "$use_systemd" -eq 1 ]; then
+    systemctl --user stop "$unit" >/dev/null 2>&1 || true
+  elif [ -n "${cmd_pid:-}" ] && command -v pkill >/dev/null 2>&1; then
+    pkill -TERM -g "$cmd_pid" >/dev/null 2>&1 || true
+    sleep 1
+    pkill -KILL -g "$cmd_pid" >/dev/null 2>&1 || true
+  fi
+}
+trap 'stop_subagent' EXIT
+trap 'stop_subagent; exit 143' HUP INT TERM
 
 set -- --print "$prompt" --add-dir "$workspace" --dangerously-skip-permissions --print-timeout "$timeout"
 
@@ -89,8 +109,10 @@ if [ "${AGY_LOG_FILE:-}" ]; then
   set -- --log-file "$AGY_LOG_FILE" "$@"
 fi
 
+[ -z "${SUBAGENT_SESSION:-}" ] || set -- --conversation "$SUBAGENT_SESSION" "$@"
+
 if [ "$log_flag" = "1" ]; then
-  echo "antigravity-subagent: workspace=$workspace model=${AGY_MODEL:-default} timeout=$timeout log_file=${AGY_LOG_FILE:-default} run_log=$log_file" >&2
+  echo "antigravity-subagent: workspace=$workspace model=${AGY_MODEL:-default} session=${SUBAGENT_SESSION:-new} timeout=$timeout log_file=${AGY_LOG_FILE:-default} run_log=$log_file" >&2
 fi
 
 # ponytail: snapshot every pid that exists before this run starts (space-
@@ -102,7 +124,13 @@ fi
 # how a forgotten dev server survives the wrapper exiting.
 before_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
 
-setsid "$HOME/.local/bin/agy" "$@" >"$log_file" 2>&1 &
+if [ "$use_systemd" -eq 1 ]; then
+  systemd-run --user --pipe --same-dir --setenv=PATH="$PATH" --wait --collect --quiet --unit="$unit" --property=KillMode=control-group --property=RuntimeMaxSec="$timeout" "$HOME/.local/bin/agy" "$@" >"$log_file" 2>&1 &
+elif command -v timeout >/dev/null 2>&1; then
+  setsid timeout --foreground "$timeout" "$HOME/.local/bin/agy" "$@" >"$log_file" 2>&1 &
+else
+  setsid "$HOME/.local/bin/agy" "$@" >"$log_file" 2>&1 &
+fi
 cmd_pid=$!
 tail -f "$log_file" &
 tail_pid=$!
@@ -120,7 +148,9 @@ set -e
 kill "$tail_pid" >/dev/null 2>&1 || true
 wait "$tail_pid" 2>/dev/null || true
 
-if command -v pkill >/dev/null 2>&1; then
+if [ "$use_systemd" -eq 1 ]; then
+  systemctl --user stop "$unit" >/dev/null 2>&1 || true
+elif command -v pkill >/dev/null 2>&1; then
   pkill -TERM -g "$cmd_pid" >/dev/null 2>&1 || true
   sleep 1
   pkill -KILL -g "$cmd_pid" >/dev/null 2>&1 || true
