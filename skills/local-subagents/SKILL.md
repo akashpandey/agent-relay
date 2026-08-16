@@ -1,50 +1,68 @@
 ---
 name: local-subagents
-description: Delegate a bounded coding, investigation, or review task to the locally installed Codex, Claude Code, OpenCode, or Antigravity CLI through the local-subagents wrappers. Use when the user asks to use a subagent, a specific local model/CLI, a second opinion, or parallel delegated work. Do not use for a trivial edit, interactive back-and-forth, production changes, or an unbounded task.
+description: Delegate a bounded coding, investigation, review, or parallel implementation task to local CLI subagents (OpenCode, Antigravity, Claude Code, Codex). Use when the user requests a subagent, a specific local harness/model, a second opinion, parallel task delegation, or background work execution.
 ---
 
-# Local subagents
+# Local Subagents
 
-Run a wrapper from `/home/akey/local-subagents` in the target workspace. Pass a
-short task as an argument or a multi-line task on stdin. The wrapper writes in
-the current workspace, returns the underlying exit status, and logs the run.
+Execute delegated tasks across 4 local coding harnesses (`opencode-subagent`, `antigravity-subagent`, `claude-subagent`, `codex-subagent`). Each wrapper runs non-interactively in the target workspace, logs output, captures diffs and telemetry, and integrates with the local Visualizer Dashboard at `http://localhost:4242`.
+
+## Available Harnesses & Invocation
+
+Run from the target repository/workspace directory:
 
 ```sh
 cd /path/to/workspace
-printf '%s\n' "$TASK" | /home/akey/local-subagents/codex-subagent
+
+# OpenCode (GLM / multi-provider)
+opencode-subagent "Task prompt..."
+
+# Antigravity (Gemini / Claude Sonnet via AGY)
+antigravity-subagent "Task prompt..."
+
+# Claude Code (Sonnet / Opus / Haiku)
+claude-subagent "Task prompt..."
+
+# OpenAI Codex (GPT-5.5 / GPT-4o)
+codex-subagent "Task prompt..."
 ```
 
-Choose the wrapper the user named. Otherwise use a default model from a local
-CLI, or use a different provider for a second opinion:
-
-- `codex-subagent` — Codex.
-- `claude-subagent` — Claude Code.
-- `opencode-subagent` — an OpenCode provider/model.
-- `antigravity-subagent` — Antigravity / Gemini / alternate review.
-
-List current selectors before choosing a named model:
-
+Multi-line prompts can be piped via stdin:
 ```sh
-/home/akey/local-subagents/codex-subagent --models
-/home/akey/local-subagents/claude-subagent --models
-/home/akey/local-subagents/opencode-subagent --models --refresh
-/home/akey/local-subagents/antigravity-subagent --models
+printf '%s\n' "$DETAILED_TASK" | opencode-subagent
 ```
 
-Use the matching environment variable for a named model: `CODEX_MODEL`,
-`CLAUDE_MODEL`, `OPENCODE_MODEL`, or `AGY_MODEL`. Use each wrapper's `--help`
-for timeout and reasoning settings.
+## Model Selection
 
-Each fresh invocation persists a provider session. For a sequential follow-up,
-set `SUBAGENT_SESSION` to the ID from its prior run:
-
+Inspect available models for each harness:
 ```sh
-SUBAGENT_SESSION='<provider-session-id>' \
-  /home/akey/local-subagents/codex-subagent "Implement the fix you proposed."
+opencode-subagent --models --refresh
+antigravity-subagent --models
+claude-subagent --models
+codex-subagent --models
 ```
 
-Never reuse a session across parallel workers or unrelated tasks.
+Specify a non-default model via environment variables:
+- `OPENCODE_MODEL='openai/gpt-5.4-mini' opencode-subagent "..."`
+- `AGY_MODEL='Claude Sonnet 4.6 (Thinking)' antigravity-subagent "..."`
+- `CLAUDE_MODEL='opus' claude-subagent "..."`
+- `CODEX_MODEL='gpt-5.5' codex-subagent "..."`
 
-Delegate one clear deliverable with boundaries and an expected check. Do not run
-multiple write-capable subagents in the same worktree. Review the actual diff
-and rerun relevant checks after a subagent reports completion.
+## Session Resumption (Sequential Follow-ups)
+
+Every subagent run prints its persisted session ID. To continue a previous turn:
+```sh
+SUBAGENT_SESSION='<session-id>' opencode-subagent "Implement the second step."
+```
+
+## Observability & Live Visualizer
+
+- **Live Dashboard**: Open `http://localhost:4242` to inspect active runs, stream live terminal outputs, view token/cost breakdowns, explore executed tool/command timelines, and inspect visual git diffs.
+- **Log Files**: Stored in `~/local-subagents/logs/<timestamp>-<provider>-<pid>.log`.
+- **Dangling Process Cleanup**: The dashboard sentinel automatically tracks and allows 1-click termination of orphaned processes.
+
+## Rules & Best Practices
+
+1. **Keep tasks bounded**: One bug trace, one refactor, one test implementation, or one code review.
+2. **Parallel execution**: When running multiple write-capable subagents simultaneously, execute them in separate `git worktree` directories to prevent file write collisions.
+3. **Verify deliverables**: Inspect the generated git diff or test results locally after a subagent reports completion before accepting changes.
