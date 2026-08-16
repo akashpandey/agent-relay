@@ -32,6 +32,30 @@ Multi-line prompts can be piped via stdin:
 printf '%s\n' "$DETAILED_TASK" | opencode-subagent
 ```
 
+## Recommended Orchestration: Background Execution & API Monitoring
+
+To avoid flooding your prompt context window with thousands of lines of raw terminal logs, follow this **API-First Background Protocol**:
+
+### Step 1: Launch in Background
+Launch the subagent in the background with `&`:
+```sh
+opencode-subagent "Refactor token auth middleware..." &
+```
+
+### Step 2: Check Liveness & Progress via API (Heartbeat)
+Query the structured sentinel endpoint rather than running raw `tail` on logs:
+```sh
+curl -s http://localhost:4242/api/stats | jq '.activeRuns[] | {pid, provider, model, durationHuman, currentAction, isAlive}'
+```
+*Returns clean JSON with explicit process state, active tool in flight, and duration (consuming only ~60 tokens).*
+
+### Step 3: Retrieve Clean Structured Result Upon Completion
+Once `isAlive` is `false`, fetch the parsed telemetry and summary directly:
+```sh
+curl -s "http://localhost:4242/api/runs/<log-filename>" | jq '{status, filesModified, cost, markdownSummary, toolCalls}'
+```
+*Returns the exact modified files, diff summary, token spend, and verification status with zero ANSI garbage or log noise.*
+
 ## Model Selection
 
 Inspect available models for each harness:
@@ -55,32 +79,20 @@ Every subagent run prints its persisted session ID. To continue a previous turn:
 SUBAGENT_SESSION='<session-id>' opencode-subagent "Implement the second step."
 ```
 
-## Observability & Live Visualizer
+## Emergency Process Control
 
-- **Live Dashboard**: Open `http://localhost:4242` to inspect active runs, stream live terminal outputs, view token/cost breakdowns, explore executed tool/command timelines, and inspect visual git diffs.
-- **Log Files**: Stored in `~/local-subagents/logs/<timestamp>-<provider>-<pid>.log`.
-- **Dangling Process Cleanup**: The dashboard sentinel automatically tracks and allows 1-click termination of orphaned processes.
-
-## Programmatic Observability & Monitoring APIs
-
-Orchestrator agents can monitor background runs via `http://localhost:4242` without loading multi-megabyte log files into context:
-
+If a subagent is runaway, stuck, or orphaned:
 ```sh
-# 1. Check live active runs and process sentinel status
-curl -s http://localhost:4242/api/stats | jq '.activeRuns[] | {pid, provider, model, durationHuman, currentAction}'
-
-# 2. Query runs with filters (tokens, costs, summaries, diffs)
-curl -s "http://localhost:4242/api/runs?provider=opencode&limit=5" | jq
-
-# 3. Get detailed telemetry & tool execution timeline for a run
-curl -s "http://localhost:4242/api/runs/<log-filename>" | jq '{status, tokens, cost, filesModified, markdownSummary, toolCalls}'
-
-# 4. Terminate a runaway subagent process tree
+# Kill a specific subagent process tree:
 curl -X POST "http://localhost:4242/api/runs/<log-filename>/kill"
+
+# Kill all orphaned/dangling subagents:
+curl -X POST "http://localhost:4242/api/dangling/kill-all"
 ```
 
 ## Rules & Best Practices
 
-1. **Keep tasks bounded**: One bug trace, one refactor, one test implementation, or one code review.
-2. **Parallel execution**: When running multiple write-capable subagents simultaneously, execute them in separate `git worktree` directories to prevent file write collisions.
-3. **Verify deliverables**: Inspect the generated git diff or test results locally after a subagent reports completion before accepting changes.
+1. **Prefer API monitoring for background tasks**: Always query `http://localhost:4242/api/stats` and `http://localhost:4242/api/runs/:id` instead of raw `tail` to protect context windows.
+2. **Keep tasks bounded**: One bug trace, one refactor, one test implementation, or one code review.
+3. **Parallel execution**: When running multiple write-capable subagents simultaneously, execute them in separate `git worktree` directories to prevent file write collisions.
+4. **Verify deliverables**: Inspect the generated git diff or test results locally after a subagent reports completion before accepting changes.
