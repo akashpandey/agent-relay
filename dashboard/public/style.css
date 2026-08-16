@@ -1619,10 +1619,91 @@ kbd {
   margin-top: 6px;
 }
 
-.diff-line-context {
-  color: var(--text-diff-context);
-  display: block;
-  padding: 1px 6px;
+.diff-files-summary {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  margin-bottom: 1.25rem;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.diff-files-header {
+  padding: 0.75rem 1rem;
+  background-color: var(--bg-card);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-main);
+}
+
+.diff-files-list {
+  display: flex;
+  flex-direction: column;
+  divide-y: 1px solid var(--border-subtle);
+}
+
+.diff-file-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-main);
+  transition: background-color 0.15s ease;
+}
+
+.diff-file-row:last-child {
+  border-bottom: none;
+}
+
+.diff-file-row:hover {
+  background-color: var(--bg-card);
+}
+
+.diff-file-path {
+  flex: 1;
+  word-break: break-all;
+}
+
+.diff-content-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.diff-content-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-main);
+  margin-bottom: 0.25rem;
+}
+
+.diff-live-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.85rem 1.1rem;
+  background-color: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 8px;
+  font-size: 0.825rem;
+  color: var(--text-main);
+  line-height: 1.4;
+  margin-top: 0.5rem;
+}
+
+.diff-code {
+  font-family: var(--font-mono);
+  font-size: 0.775rem;
+  line-height: 1.5;
+  white-space: pre;
 }
 
 /* Expansive Tools & Commands */

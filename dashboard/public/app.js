@@ -631,12 +631,8 @@ async function openWorkspaceModal(filename) {
       el.modalMarkdownContainer.innerHTML = '<div class="markdown-empty">No structured markdown summary recorded for this run. Check the Live Terminal tab for full raw output.</div>';
     }
 
-    // Right Viewport: Diffs
-    if (meta.diffs) {
-      el.modalDiffContainer.innerHTML = renderDiffToHtml(meta.diffs);
-    } else {
-      el.modalDiffContainer.innerHTML = '<div class="diff-empty">No git diff captured for this run.</div>';
-    }
+    // Right Viewport: Changed Files & Diffs
+    renderDiffsTab(meta);
 
     // Start Log Streaming
     startLogStream(meta.filename);
@@ -979,6 +975,75 @@ function renderDiffToHtml(diffText) {
     }
     return `<span class="diff-line-context">${escaped}</span>`;
   }).join('\n');
+}
+
+function renderDiffsTab(meta) {
+  const files = meta.filesModified || [];
+  const diffText = meta.diffs || null;
+
+  if (files.length === 0 && !diffText) {
+    el.modalDiffContainer.innerHTML = '<div class="diff-empty">No changed files or git diff captured for this run.</div>';
+    return;
+  }
+
+  let html = '';
+
+  // Render Modified Files Section
+  if (files.length > 0) {
+    html += `
+      <div class="diff-files-summary">
+        <div class="diff-files-header">
+          <span>📁</span>
+          <strong>Modified Files (${files.length})</strong>
+          <span style="font-size: 0.75rem; color: var(--text-dim); margin-left: auto;">${meta.isAlive ? '⚡ Active Execution' : 'Completed Session'}</span>
+        </div>
+        <div class="diff-files-list">
+          ${files.map(f => `
+            <div class="diff-file-row">
+              <span class="diff-file-icon">✏️</span>
+              <span class="diff-file-path">${escapeHtml(f)}</span>
+              <button class="tool-btn-copy" data-copy-path="${escapeHtml(f)}" title="Copy file path">📋</button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  // Render Diff Output Section if available
+  if (diffText) {
+    html += `
+      <div class="diff-content-block">
+        <div class="diff-content-header">
+          <span>📝</span>
+          <strong>Unified Git Diff</strong>
+        </div>
+        <pre class="diff-code">${renderDiffToHtml(diffText)}</pre>
+      </div>
+    `;
+  } else if (meta.isAlive) {
+    html += `
+      <div class="diff-live-notice">
+        <span>ℹ️</span>
+        <span>Unified git diff is generated when the session finalizes. You can inspect the live modified files above or watch the real-time terminal output.</span>
+      </div>
+    `;
+  }
+
+  el.modalDiffContainer.innerHTML = html;
+
+  // Attach copy listeners for file paths
+  el.modalDiffContainer.querySelectorAll('.tool-btn-copy').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const p = btn.dataset.copyPath;
+      if (p) {
+        copyToClipboard(p, `Copied: ${p}`);
+        btn.textContent = '✓';
+        setTimeout(() => { btn.textContent = '📋'; }, 1500);
+      }
+    });
+  });
 }
 
 function renderMarkdownToHtml(md) {
