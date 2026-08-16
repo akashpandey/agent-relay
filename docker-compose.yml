@@ -1,0 +1,26 @@
+x-default-logging: &default-logging
+  driver: local
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  subagent-dashboard:
+    container_name: local-subagents-dashboard
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    image: local-subagents-dashboard:latest
+    logging: *default-logging
+    pid: "host"
+    environment:
+      - PORT=4242
+      - HOST=0.0.0.0
+      - LOGS_DIR=/app/logs
+      - PROC_DIR=/host_proc
+    volumes:
+      - /home/akey/local-subagents/logs:/app/logs:ro
+      - /proc:/host_proc:ro
+    ports:
+      - "4242:4242"
+    restart: unless-stopped

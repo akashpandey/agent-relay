@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Subagent Visualizer · Local LLM Monitor</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Header -->
+    <header class="top-nav">
+      <div class="nav-left">
+        <div class="logo-wrap">
+          <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10" stroke="#38bdf8" stroke-dasharray="4 2"/>
+            <circle cx="12" cy="12" r="4" fill="#38bdf8"/>
+            <circle cx="12" cy="5" r="2" fill="#818cf8"/>
+            <circle cx="18" cy="16" r="1.5" fill="#34d399"/>
+            <circle cx="6" cy="16" r="1.5" fill="#f43f5e"/>
+          </svg>
+          <div>
+            <h1 class="nav-title">Subagents Monitor</h1>
+            <span class="nav-subtitle">Local LLM Subagent Observability · IST (UTC+5:30)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="nav-metrics">
+        <div class="metric-chip active-chip" id="metric-active-chip">
+          <span class="pulse-dot"></span>
+          <span class="metric-label">Active:</span>
+          <span class="metric-val" id="metric-active-count">0</span>
+        </div>
+        <div class="metric-chip" id="metric-dangling-chip" style="display: none;">
+          <span class="metric-label" style="color: #fb7185;">Dangling:</span>
+          <span class="metric-val" style="color: #fb7185;" id="metric-dangling-count">0</span>
+          <button class="btn btn-sm btn-danger" style="margin-left: 0.25rem; padding: 1px 6px; font-size: 0.7rem;" id="btn-kill-all-dangling">Kill All</button>
+        </div>
+        <div class="metric-chip">
+          <span class="metric-label">Today:</span>
+          <span class="metric-val" id="metric-today-count">0</span>
+        </div>
+        <div class="metric-chip">
+          <span class="metric-label">Total Logs:</span>
+          <span class="metric-val" id="metric-total-count">0</span>
+        </div>
+      </div>
+
+      <div class="nav-right">
+        <div class="live-status" id="live-indicator">
+          <span class="indicator-dot"></span>
+          <span class="indicator-text">Live Sync</span>
+        </div>
+        <button class="btn btn-secondary" id="btn-refresh" title="Force Refresh">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="main-content">
+      <!-- Active Invocations Section -->
+      <section class="section-block">
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <h2 class="section-title">Active Subagent Calls</h2>
+            <span class="badge badge-pulse" id="active-badge">0 Running</span>
+          </div>
+          <span class="section-desc">Processes currently executing across workspaces</span>
+        </div>
+
+        <div class="active-grid" id="active-container">
+          <!-- Populated by JS -->
+          <div class="empty-active-state">
+            <div class="radar-scan"></div>
+            <div class="empty-active-text">
+              <h3>No Active Subagent Calls</h3>
+              <p>Whenever you run <code>opencode-subagent</code>, <code>antigravity-subagent</code>, <code>claude-subagent</code>, or <code>codex-subagent</code>, live progress will appear here automatically.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- History & Logs Explorer Section -->
+      <section class="section-block">
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <h2 class="section-title">Run History & Logs</h2>
+            <span class="badge" id="history-total-badge">0 Total</span>
+          </div>
+          <div class="filter-controls">
+            <!-- Search -->
+            <div class="search-input-wrap">
+              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input type="text" id="filter-search" placeholder="Search prompt, model, PID, workspace..." class="search-input">
+            </div>
+
+            <!-- Provider Filter -->
+            <div class="segmented-control" id="provider-filters">
+              <button class="seg-btn active" data-provider="all">All</button>
+              <button class="seg-btn" data-provider="opencode">OpenCode</button>
+              <button class="seg-btn" data-provider="antigravity">Antigravity</button>
+              <button class="seg-btn" data-provider="claude">Claude</button>
+              <button class="seg-btn" data-provider="codex">Codex</button>
+            </div>
+
+            <!-- Status Filter -->
+            <div class="segmented-control" id="status-filters">
+              <button class="seg-btn active" data-status="all">All</button>
+              <button class="seg-btn" data-status="running">Running</button>
+              <button class="seg-btn" data-status="completed">Done</button>
+              <button class="seg-btn" data-status="failed">Failed</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- History Table -->
+        <div class="table-container">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th style="width: 175px;">Start Time (IST) / Status</th>
+                <th style="width: 150px;">Provider & Model</th>
+                <th style="width: 160px;">Workspace</th>
+                <th>Task / Prompt Preview</th>
+                <th style="width: 95px;">Duration</th>
+                <th style="width: 80px;">Size</th>
+                <th style="width: 140px; text-align: right;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="history-tbody">
+              <!-- Rendered by JS -->
+              <tr>
+                <td colspan="7" class="table-loading">Loading runs history...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pagination-bar" id="pagination-bar">
+          <div class="pagination-info" id="pagination-info">Showing 0 of 0 runs</div>
+          <div class="pagination-btns">
+            <button class="btn btn-sm btn-secondary" id="btn-prev-page" disabled>Previous</button>
+            <button class="btn btn-sm btn-secondary" id="btn-next-page" disabled>Next</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Slide-over / Modal Log Drawer -->
+    <div class="drawer-overlay" id="drawer-overlay"></div>
+    <aside class="log-drawer" id="log-drawer">
+      <div class="drawer-header">
+        <div class="drawer-header-left">
+          <div class="drawer-title-row">
+            <span class="provider-tag" id="drawer-provider">opencode</span>
+            <h3 class="drawer-title" id="drawer-filename">20260816T190941-opencode-1123377.log</h3>
+            <span class="status-pill" id="drawer-status-pill">Running</span>
+          </div>
+          <div class="drawer-meta-row">
+            <span class="meta-item" id="drawer-workspace">📁 ~/Code/fitschool</span>
+            <span class="meta-sep">•</span>
+            <span class="meta-item" id="drawer-model">🤖 glm-5.2</span>
+            <span class="meta-sep">•</span>
+            <span class="meta-item" id="drawer-pid">PID: 1123377</span>
+            <span class="meta-sep">•</span>
+            <span class="meta-item" id="drawer-start-time">🕒 07:09:41 PM IST</span>
+            <span class="meta-sep">•</span>
+            <span class="meta-item" id="drawer-duration">⏱️ 1m 20s</span>
+          </div>
+        </div>
+        <div class="drawer-header-actions">
+          <button class="btn btn-sm btn-danger" id="drawer-btn-kill" style="display: none;">Stop Process</button>
+          <button class="btn btn-sm btn-secondary" id="btn-copy-prompt" title="Copy initial prompt">Copy Prompt</button>
+          <button class="btn btn-sm btn-secondary" id="btn-copy-log" title="Copy log content">Copy Log</button>
+          <a class="btn btn-sm btn-secondary" id="btn-download-log" download target="_blank">Raw Log</a>
+          <button class="btn-close" id="btn-close-drawer" title="Close">✕</button>
+        </div>
+      </div>
+
+      <!-- Task Prompt Box in Drawer -->
+      <div class="drawer-task-box" id="drawer-task-box">
+        <div class="task-box-label">Initial Subagent Task:</div>
+        <div class="task-box-content" id="drawer-task-content"></div>
+      </div>
+
+      <!-- Stream Controls -->
+      <div class="log-toolbar">
+        <div class="log-toolbar-left">
+          <span class="stream-badge" id="stream-status-badge">
+            <span class="stream-dot"></span> Live Streaming
+          </span>
+          <label class="checkbox-label">
+            <input type="checkbox" id="chk-autoscroll" checked>
+            <span>Auto-scroll</span>
+          </label>
+        </div>
+        <div class="log-toolbar-right">
+          <input type="text" id="log-search-input" placeholder="Filter log text..." class="log-filter-input">
+          <span class="log-lines-count" id="log-lines-count">0 lines</span>
+        </div>
+      </div>
+
+      <!-- Terminal Output Container -->
+      <div class="log-terminal" id="log-terminal">
+        <pre class="terminal-content" id="terminal-content">Connecting to stream...</pre>
+      </div>
+    </aside>
+
+    <!-- Dangling Processes Modal -->
+    <div class="modal-overlay" id="dangling-modal-overlay"></div>
+    <div class="modal-card" id="dangling-modal">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <span class="status-dot failed"></span>
+          <h3>Dangling Subagent Processes</h3>
+        </div>
+        <button class="btn-close" id="btn-close-dangling-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">These processes match background subagent runners or child CLI instances that are still alive in the process tree.</p>
+        <div class="dangling-list" id="dangling-list-container">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btn-dismiss-dangling">Close</button>
+        <button class="btn btn-danger" id="btn-modal-kill-all">Kill All Dangling</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

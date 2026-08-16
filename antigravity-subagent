@@ -124,12 +124,14 @@ fi
 # how a forgotten dev server survives the wrapper exiting.
 before_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
 
+printf 'Task:\n%s\n\n---\n\n' "$user_prompt" > "$log_file"
+
 if [ "$use_systemd" -eq 1 ]; then
-  systemd-run --user --pipe --same-dir --setenv=PATH="$PATH" --wait --collect --quiet --unit="$unit" --property=KillMode=control-group --property=RuntimeMaxSec="$timeout" "$HOME/.local/bin/agy" "$@" >"$log_file" 2>&1 &
+  systemd-run --user --pipe --same-dir --setenv=PATH="$PATH" --wait --collect --quiet --unit="$unit" --property=KillMode=control-group --property=RuntimeMaxSec="$timeout" "$HOME/.local/bin/agy" "$@" >>"$log_file" 2>&1 &
 elif command -v timeout >/dev/null 2>&1; then
-  setsid timeout --foreground "$timeout" "$HOME/.local/bin/agy" "$@" >"$log_file" 2>&1 &
+  setsid timeout --foreground "$timeout" "$HOME/.local/bin/agy" "$@" >>"$log_file" 2>&1 &
 else
-  setsid "$HOME/.local/bin/agy" "$@" >"$log_file" 2>&1 &
+  setsid "$HOME/.local/bin/agy" "$@" >>"$log_file" 2>&1 &
 fi
 cmd_pid=$!
 tail -f "$log_file" &

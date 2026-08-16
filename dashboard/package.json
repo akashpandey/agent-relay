@@ -1,0 +1,14 @@
+{
+  "name": "local-subagents-dashboard",
+  "version": "1.0.0",
+  "description": "Real-time visualizer and log streaming dashboard for local LLM subagents",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": ["subagents", "dashboard", "visualizer", "logs", "llm"],
+  "author": "",
+  "license": "MIT"
+}

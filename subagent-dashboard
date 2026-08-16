@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+set -eu
+
+DIR="$(cd "$(dirname "$0")" && pwd -P)"
+export LOGS_DIR="${SUBAGENT_LOG_DIR:-$DIR/logs}"
+export PROC_DIR="/proc"
+export PORT="${PORT:-4242}"
+export HOST="${HOST:-0.0.0.0}"
+
+echo "Starting Subagent Visualizer Dashboard on http://${HOST}:${PORT} ..."
+exec node "$DIR/dashboard/server.js"
