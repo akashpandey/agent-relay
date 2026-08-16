@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/style.css?v=2.0.3">
+  <link rel="stylesheet" href="/style.css?v=2.0.4">
 </head>
 <body>
   <div class="app-layout">
@@ -344,6 +344,10 @@
             <button class="fs-tab active" data-tab="terminal">
               <span class="tab-icon">🖥️</span> Live Terminal
             </button>
+            <button class="fs-tab" data-tab="tools">
+              <span class="tab-icon">🛠️</span> Tools & Commands
+              <span class="tab-badge" id="tab-modal-tools-count" style="display: none;">0</span>
+            </button>
             <button class="fs-tab" data-tab="markdown">
               <span class="tab-icon">📝</span> Output & Markdown Summary
             </button>
@@ -380,14 +384,33 @@
             </div>
           </div>
 
-          <!-- Tab 2: Rendered Markdown Summary -->
+          <!-- Tab 2: Tools & Commands Execution Timeline -->
+          <div class="fs-tab-pane" id="modal-pane-tools">
+            <div class="tools-toolbar">
+              <div class="tools-filter-pills" id="tools-filter-pills">
+                <button class="tool-pill active" data-tool-type="all">All (<span id="count-tools-all">0</span>)</button>
+                <button class="tool-pill" data-tool-type="command">💻 Shell Commands (<span id="count-tools-cmd">0</span>)</button>
+                <button class="tool-pill" data-tool-type="edit">✏️ File Edits (<span id="count-tools-edit">0</span>)</button>
+                <button class="tool-pill" data-tool-type="read">📄 File Reads (<span id="count-tools-read">0</span>)</button>
+                <button class="tool-pill" data-tool-type="grep">🔍 Searches (<span id="count-tools-grep">0</span>)</button>
+              </div>
+              <div class="tools-toolbar-right">
+                <input type="text" id="tool-search-input" placeholder="Filter commands or files..." class="log-filter-input">
+              </div>
+            </div>
+            <div class="fs-tools-box" id="modal-tools-container">
+              <div class="tools-empty">No tools or shell commands recorded for this run.</div>
+            </div>
+          </div>
+
+          <!-- Tab 3: Rendered Markdown Summary -->
           <div class="fs-tab-pane" id="modal-pane-markdown">
             <div class="fs-markdown-box" id="modal-markdown-container">
               <div class="markdown-empty">No structured markdown summary recorded for this run. Check the Live Terminal tab for full raw output.</div>
             </div>
           </div>
 
-          <!-- Tab 3: Changed Files & Diffs Viewer -->
+          <!-- Tab 4: Changed Files & Diffs Viewer -->
           <div class="fs-tab-pane" id="modal-pane-diffs">
             <div class="fs-diff-box" id="modal-diff-container">
               <div class="diff-empty">No git diff captured for this run.</div>
@@ -471,6 +494,6 @@
     </div>
   </div>
 
-  <script src="/app.js?v=2.0.3"></script>
+  <script src="/app.js?v=2.0.4"></script>
 </body>
 </html>

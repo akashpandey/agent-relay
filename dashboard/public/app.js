@@ -117,6 +117,7 @@ const el = {
   // Right Viewport Tabs
   fsTabs: document.querySelectorAll('.fs-tab'),
   fsTabPanes: document.querySelectorAll('.fs-tab-pane'),
+  tabModalToolsCount: document.getElementById('tab-modal-tools-count'),
   tabModalDiffsCount: document.getElementById('tab-modal-diffs-count'),
   streamStatusBadge: document.getElementById('stream-status-badge'),
   chkAutoscroll: document.getElementById('chk-autoscroll'),
@@ -125,6 +126,14 @@ const el = {
   logLinesCount: document.getElementById('log-lines-count'),
   modalTerminalBox: document.getElementById('modal-terminal-box'),
   modalTerminalContent: document.getElementById('modal-terminal-content'),
+  modalToolsContainer: document.getElementById('modal-tools-container'),
+  toolsFilterPills: document.getElementById('tools-filter-pills'),
+  toolSearchInput: document.getElementById('tool-search-input'),
+  countToolsAll: document.getElementById('count-tools-all'),
+  countToolsCmd: document.getElementById('count-tools-cmd'),
+  countToolsEdit: document.getElementById('count-tools-edit'),
+  countToolsRead: document.getElementById('count-tools-read'),
+  countToolsGrep: document.getElementById('count-tools-grep'),
   modalMarkdownContainer: document.getElementById('modal-markdown-container'),
   modalDiffContainer: document.getElementById('modal-diff-container'),
 
@@ -567,6 +576,16 @@ async function openWorkspaceModal(filename) {
       el.modalFilesChips.innerHTML = '<span style="color: var(--text-dim); font-size: 0.75rem;">No files modified</span>';
     }
 
+    // Right Viewport: Tools & Commands
+    state.activeRunData = meta;
+    state.toolFilterType = 'all';
+    state.toolFilterQuery = '';
+    if (el.toolSearchInput) el.toolSearchInput.value = '';
+    if (el.toolsFilterPills) {
+      el.toolsFilterPills.querySelectorAll('.tool-pill').forEach(p => p.classList.toggle('active', p.dataset.toolType === 'all'));
+    }
+    renderToolsTab();
+
     // Right Viewport: Markdown Output
     if (meta.markdownSummary) {
       el.modalMarkdownContainer.innerHTML = renderMarkdownToHtml(meta.markdownSummary);
@@ -586,6 +605,104 @@ async function openWorkspaceModal(filename) {
   } catch (err) {
     console.error('Error opening workspace modal:', err);
   }
+}
+
+function renderToolsTab() {
+  const tools = state.activeRunData?.toolCalls || [];
+  const query = (state.toolFilterQuery || '').toLowerCase();
+  const selectedType = state.toolFilterType || 'all';
+
+  const counts = {
+    all: tools.length,
+    command: tools.filter(t => t.type === 'command').length,
+    edit: tools.filter(t => t.type === 'edit').length,
+    read: tools.filter(t => t.type === 'read').length,
+    grep: tools.filter(t => t.type === 'grep').length,
+  };
+
+  if (el.countToolsAll) el.countToolsAll.textContent = counts.all;
+  if (el.countToolsCmd) el.countToolsCmd.textContent = counts.command;
+  if (el.countToolsEdit) el.countToolsEdit.textContent = counts.edit;
+  if (el.countToolsRead) el.countToolsRead.textContent = counts.read;
+  if (el.countToolsGrep) el.countToolsGrep.textContent = counts.grep;
+
+  if (tools.length > 0) {
+    el.tabModalToolsCount.style.display = 'inline-block';
+    el.tabModalToolsCount.textContent = tools.length;
+  } else {
+    el.tabModalToolsCount.style.display = 'none';
+  }
+
+  let filtered = tools;
+  if (selectedType !== 'all') {
+    filtered = filtered.filter(t => t.type === selectedType);
+  }
+  if (query) {
+    filtered = filtered.filter(t => 
+      (t.summary && t.summary.toLowerCase().includes(query)) ||
+      (t.detail && t.detail.toLowerCase().includes(query)) ||
+      (t.tool && t.tool.toLowerCase().includes(query))
+    );
+  }
+
+  if (filtered.length === 0) {
+    el.modalToolsContainer.innerHTML = `<div class="tools-empty">${tools.length === 0 ? 'No tools or shell commands recorded for this run.' : 'No tools match your filter.'}</div>`;
+    return;
+  }
+
+  const iconMap = {
+    command: '💻',
+    edit: '✏️',
+    read: '📄',
+    grep: '🔍',
+    tool: '⚙️',
+    other: '🔧',
+  };
+
+  const badgeClassMap = {
+    command: 'tool-badge-cmd',
+    edit: 'tool-badge-edit',
+    read: 'tool-badge-read',
+    grep: 'tool-badge-grep',
+    tool: 'tool-badge-cmd',
+    other: 'tool-badge-cmd',
+  };
+
+  el.modalToolsContainer.innerHTML = filtered.map((t, idx) => {
+    const icon = iconMap[t.type] || '⚙️';
+    const badgeClass = badgeClassMap[t.type] || 'tool-badge-cmd';
+    const escapedSummary = escapeHtml(t.summary || t.tool);
+    const escapedDetail = escapeHtml(t.detail || t.summary || '');
+    const durationText = t.durationMs ? `<span style="font-size: 0.7rem; color: var(--text-dim); margin-left: auto;">${t.durationMs}ms</span>` : '';
+
+    return `
+      <div class="tool-card">
+        <div class="tool-card-header">
+          <div class="tool-card-title">
+            <span>${icon}</span>
+            <span class="${badgeClass}">${escapeHtml(t.tool)}</span>
+            <span>${escapedSummary}</span>
+          </div>
+          ${durationText}
+          <button class="tool-btn-copy" data-copy-idx="${idx}" title="Copy command/file detail">📋</button>
+        </div>
+        <div class="tool-card-body">${escapedDetail}</div>
+      </div>
+    `;
+  }).join('');
+
+  // Attach copy listeners
+  el.modalToolsContainer.querySelectorAll('.tool-btn-copy').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.copyIdx, 10);
+      const item = filtered[idx];
+      if (item && item.detail) {
+        copyToClipboard(item.detail, 'Copied tool command!');
+        btn.textContent = '✓';
+        setTimeout(() => { btn.textContent = '📋'; }, 1500);
+      }
+    });
+  });
 }
 
 function closeWorkspaceModal() {
@@ -1001,6 +1118,25 @@ function initEventListeners() {
     state.filterLogQuery = e.target.value.trim();
     renderTerminalLines();
   });
+
+  // Tools & Commands Tab Controls
+  if (el.toolsFilterPills) {
+    el.toolsFilterPills.querySelectorAll('.tool-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        el.toolsFilterPills.querySelectorAll('.tool-pill').forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        state.toolFilterType = pill.dataset.toolType;
+        renderToolsTab();
+      });
+    });
+  }
+
+  if (el.toolSearchInput) {
+    el.toolSearchInput.addEventListener('input', (e) => {
+      state.toolFilterQuery = e.target.value.trim();
+      renderToolsTab();
+    });
+  }
 
   // Dangling Modal
   el.danglingChip.addEventListener('click', openDanglingModal);

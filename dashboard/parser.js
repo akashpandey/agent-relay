@@ -11,7 +11,48 @@ const opencodeDbPaths = [
 ].filter(Boolean);
 
 /**
- * Recovers full session details (tokens, cost, files, prompt, summary) from OpenCode SQLite database
+ * Normalizes tool invocations into a unified format
+ */
+export function normalizeToolCall({ tool, input, output, durationMs, status }) {
+  const toolLower = (tool || '').toLowerCase();
+  let type = 'other';
+  let detail = '';
+  let summary = '';
+
+  if (toolLower.includes('bash') || toolLower.includes('run_command') || toolLower === 'exec' || toolLower === 'exec_command' || toolLower === 'shell') {
+    type = 'command';
+    detail = input?.command || input?.CommandLine || input?.cmd || (typeof input === 'string' ? input : '');
+    summary = detail ? detail.split('\n')[0].slice(0, 120) : 'Shell Command';
+  } else if (toolLower.includes('read') || toolLower.includes('view_file')) {
+    type = 'read';
+    detail = input?.file_path || input?.filePath || input?.AbsolutePath || input?.path || (typeof input === 'string' ? input : '');
+    summary = detail ? path.basename(detail) : 'Read File';
+  } else if (toolLower.includes('edit') || toolLower.includes('write') || toolLower.includes('replace_file_content') || toolLower.includes('write_to_file')) {
+    type = 'edit';
+    detail = input?.file_path || input?.filePath || input?.TargetFile || input?.path || (typeof input === 'string' ? input : '');
+    summary = detail ? path.basename(detail) : 'Edit File';
+  } else if (toolLower.includes('grep') || toolLower.includes('glob') || toolLower.includes('search')) {
+    type = 'grep';
+    detail = input?.pattern || input?.query || input?.Query || input?.glob || '';
+    summary = `Search: ${detail || 'Pattern'}`;
+  } else {
+    type = 'tool';
+    summary = tool || 'Custom Tool';
+    detail = typeof input === 'object' ? JSON.stringify(input, null, 2) : String(input || '');
+  }
+
+  return {
+    type,
+    tool: tool || 'Unknown',
+    summary,
+    detail: String(detail || summary).trim(),
+    status: status || 'completed',
+    durationMs: durationMs || null,
+  };
+}
+
+/**
+ * Recovers full session details (tokens, cost, files, prompt, summary, tools) from OpenCode SQLite database
  */
 export function getOpenCodeSessionDetails(sessionId) {
   if (!sessionId) return null;
@@ -72,6 +113,30 @@ export function getOpenCodeSessionDetails(sessionId) {
       }
     }
 
+    // Query tool invocations
+    const toolCalls = [];
+    const toolsCmd = `sqlite3 -json "file:${dbPath}?immutable=1" "SELECT data FROM part WHERE session_id = '${safeSession}' AND data LIKE '%\\"type\\":\\"tool\\"%' ORDER BY time_created ASC;" 2>/dev/null`;
+    try {
+      const toolsOut = execSync(toolsCmd, { encoding: 'utf8', timeout: 2000 }).trim();
+      if (toolsOut) {
+        const toolRows = JSON.parse(toolsOut);
+        for (const tr of toolRows) {
+          try {
+            const partObj = JSON.parse(tr.data);
+            if (partObj && partObj.tool) {
+              toolCalls.push(normalizeToolCall({
+                tool: partObj.tool,
+                input: partObj.state?.input,
+                output: partObj.state?.output,
+                status: partObj.state?.status,
+                durationMs: (partObj.state?.time?.end && partObj.state?.time?.start) ? (partObj.state.time.end - partObj.state.time.start) : null,
+              }));
+            }
+          } catch {}
+        }
+      }
+    } catch {}
+
     let tokens = null;
     let cost = 0;
     let diffs = null;
@@ -96,6 +161,7 @@ export function getOpenCodeSessionDetails(sessionId) {
       tokens,
       cost,
       diffs,
+      toolCalls,
     };
   } catch (err) {}
   return null;
@@ -157,8 +223,9 @@ export function findAntigravityTranscript(startTimeIso, workspace) {
               task = task.replace(/\\n/g, '\n').replace(/^[\r\n]+/, '').trim();
             }
 
-            // Extract touched files and last planner markdown response
+            // Extract touched files, tool calls, and last planner markdown response
             const touchedFiles = new Set();
+            const toolCalls = [];
             let markdownSummary = null;
 
             const lines = text.split('\n').filter(Boolean);
@@ -170,6 +237,11 @@ export function findAntigravityTranscript(startTimeIso, workspace) {
                     if (tc.arguments && tc.arguments.TargetFile) {
                       touchedFiles.add(tc.arguments.TargetFile);
                     }
+                    toolCalls.push(normalizeToolCall({
+                      tool: tc.name,
+                      input: tc.arguments,
+                      status: 'completed',
+                    }));
                   }
                 }
                 if (step.type === 'PLANNER_RESPONSE' && step.content) {
@@ -185,6 +257,7 @@ export function findAntigravityTranscript(startTimeIso, workspace) {
               task: task || null,
               markdownSummary: markdownSummary || null,
               filesModified: Array.from(touchedFiles),
+              toolCalls,
             };
           }
         }
@@ -202,36 +275,147 @@ const claudeDataDirs = [
 ].filter(Boolean);
 
 /**
- * Matches historical Claude Code runs by timestamp from history.jsonl
+ * Extracts Claude Code run metadata, tokens, cost, summary, and tool calls from history.jsonl and project session files
  */
-export function findClaudeHistory(startTimeIso) {
-  if (!startTimeIso) return null;
-  const dataDir = claudeDataDirs.find(d => fs.existsSync(d));
-  if (!dataDir) return null;
+export function getClaudeSessionDetails(sessionId, startTimeIso, workspace) {
+  const claudeDir = claudeDataDirs.find(d => fs.existsSync(d));
+  if (!claudeDir) return null;
 
-  const historyPath = path.join(dataDir, 'history.jsonl');
-  if (!fs.existsSync(historyPath)) return null;
+  let matchedSessionId = sessionId;
+  let matchedWorkspace = workspace;
+  let task = null;
 
-  try {
-    const targetTime = new Date(startTimeIso).getTime();
-    if (isNaN(targetTime)) return null;
+  // Correlate with history.jsonl if needed
+  const historyPath = path.join(claudeDir, 'history.jsonl');
+  if (fs.existsSync(historyPath)) {
+    try {
+      const targetTime = startTimeIso ? new Date(startTimeIso).getTime() : null;
+      const content = fs.readFileSync(historyPath, 'utf8');
+      const lines = content.split('\n').filter(Boolean);
+      for (let i = lines.length - 1; i >= 0; i--) {
+        try {
+          const entry = JSON.parse(lines[i]);
+          if (sessionId && entry.sessionId === sessionId) {
+            matchedWorkspace = entry.project || matchedWorkspace;
+            task = entry.display || task;
+            break;
+          }
+          if (!matchedSessionId && targetTime && entry.timestamp && Math.abs(entry.timestamp - targetTime) <= 180000) {
+            matchedSessionId = entry.sessionId;
+            matchedWorkspace = entry.project || matchedWorkspace;
+            task = entry.display || task;
+            break;
+          }
+        } catch {}
+      }
+    } catch {}
+  }
 
-    const content = fs.readFileSync(historyPath, 'utf8');
-    const lines = content.split('\n').filter(Boolean);
-    for (let i = lines.length - 1; i >= 0; i--) {
+  const projectsDir = path.join(claudeDir, 'projects');
+  let targetFile = null;
+
+  if (matchedSessionId && fs.existsSync(projectsDir)) {
+    if (matchedWorkspace) {
+      const slug = matchedWorkspace.replace(/\//g, '-');
+      const p = path.join(projectsDir, slug, matchedSessionId + '.jsonl');
+      if (fs.existsSync(p)) targetFile = p;
+    }
+    if (!targetFile) {
       try {
-        const entry = JSON.parse(lines[i]);
-        if (entry.timestamp && Math.abs(entry.timestamp - targetTime) <= 180000) {
-          return {
-            sessionId: entry.sessionId || null,
-            workspace: entry.project || null,
-            task: entry.display || null,
-          };
+        for (const pDir of fs.readdirSync(projectsDir)) {
+          const p = path.join(projectsDir, pDir, matchedSessionId + '.jsonl');
+          if (fs.existsSync(p)) {
+            targetFile = p;
+            break;
+          }
         }
       } catch {}
     }
+  }
+
+  if (!targetFile) {
+    return {
+      sessionId: matchedSessionId,
+      workspace: matchedWorkspace,
+      task,
+    };
+  }
+
+  try {
+    const lines = fs.readFileSync(targetFile, 'utf8').split('\n').filter(Boolean);
+    let totalIn = 0, totalOut = 0, totalCacheRead = 0, totalCacheWrite = 0, totalThinking = 0;
+    const toolCalls = [];
+    let lastAssistantText = null;
+    let model = null;
+
+    for (const line of lines) {
+      try {
+        const item = JSON.parse(line);
+        if (item.type === 'assistant' && item.message) {
+          if (!model && item.message.model && item.message.model !== '<synthetic>') {
+            model = item.message.model;
+          }
+          if (item.message.usage) {
+            totalIn += item.message.usage.input_tokens || 0;
+            totalOut += item.message.usage.output_tokens || 0;
+            totalCacheRead += item.message.usage.cache_read_input_tokens || 0;
+            totalCacheWrite += item.message.usage.cache_creation_input_tokens || 0;
+            if (item.message.usage.output_tokens_details) {
+              totalThinking += item.message.usage.output_tokens_details.thinking_tokens || 0;
+            }
+          }
+          if (Array.isArray(item.message.content)) {
+            for (const c of item.message.content) {
+              if (c.type === 'tool_use') {
+                toolCalls.push(normalizeToolCall({
+                  tool: c.name,
+                  input: c.input,
+                  status: 'completed',
+                }));
+              } else if (c.type === 'text' && c.text) {
+                lastAssistantText = c.text;
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+
+    const totalTokens = totalIn + totalOut;
+    const tokens = totalTokens > 0 ? {
+      total: totalTokens,
+      input: totalIn,
+      output: totalOut,
+      cacheRead: totalCacheRead,
+      cacheWrite: totalCacheWrite,
+      reasoning: totalThinking,
+    } : null;
+
+    let cost = 0;
+    if (tokens) {
+      const isOpus = model && model.includes('opus');
+      const inRate = isOpus ? 0.000015 : 0.000003;
+      const outRate = isOpus ? 0.000075 : 0.000015;
+      cost = Number(((tokens.input * inRate) + (tokens.output * outRate)).toFixed(4));
+    }
+
+    return {
+      sessionId: matchedSessionId,
+      workspace: matchedWorkspace,
+      task,
+      model,
+      tokens,
+      cost,
+      markdownSummary: lastAssistantText ? lastAssistantText.trim() : null,
+      toolCalls,
+    };
   } catch {}
-  return null;
+
+  return {
+    sessionId: matchedSessionId,
+    workspace: matchedWorkspace,
+    task,
+  };
 }
 
 const codexDataDirs = [
@@ -242,7 +426,7 @@ const codexDataDirs = [
 ].filter(Boolean);
 
 /**
- * Queries Codex state_5.sqlite for tokens, cost, prompt, and rollout summary
+ * Queries Codex state_5.sqlite for tokens, cost, prompt, tool calls, and rollout summary
  */
 export function getCodexSessionDetails(sessionId, startTimeIso, workspace) {
   const codexDir = codexDataDirs.find(d => fs.existsSync(d));
@@ -299,6 +483,7 @@ export function getCodexSessionDetails(sessionId, startTimeIso, workspace) {
     const cost = Number(((tokens.input * 0.000005) + (tokens.output * 0.000015)).toFixed(4));
 
     let markdownSummary = null;
+    const toolCalls = [];
     let rolloutPath = row.rollout_path;
     if (rolloutPath) {
       if (!fs.existsSync(rolloutPath) && rolloutPath.includes('.codex')) {
@@ -309,16 +494,26 @@ export function getCodexSessionDetails(sessionId, startTimeIso, workspace) {
 
       if (fs.existsSync(rolloutPath)) {
         try {
-          const tailBuf = execSync(`tail -n 40 "${rolloutPath}"`, { encoding: 'utf8', timeout: 2000 });
+          const tailBuf = execSync(`tail -n 60 "${rolloutPath}"`, { encoding: 'utf8', timeout: 2000 });
           const lines = tailBuf.trim().split('\n');
-          for (let i = lines.length - 1; i >= 0; i--) {
+          for (let i = 0; i < lines.length; i++) {
             try {
               const item = JSON.parse(lines[i]);
+              if (item?.payload?.type === 'function_call') {
+                let args = item.payload.arguments;
+                if (typeof args === 'string') {
+                  try { args = JSON.parse(args); } catch {}
+                }
+                toolCalls.push(normalizeToolCall({
+                  tool: item.payload.name,
+                  input: args,
+                  status: 'completed',
+                }));
+              }
               if (item?.payload?.role === 'assistant' && Array.isArray(item.payload.content)) {
                 const textObj = item.payload.content.find(c => c.type === 'output_text');
                 if (textObj && textObj.text) {
                   markdownSummary = textObj.text.trim();
-                  break;
                 }
               }
             } catch {}
@@ -334,6 +529,7 @@ export function getCodexSessionDetails(sessionId, startTimeIso, workspace) {
       tokens,
       cost,
       markdownSummary,
+      toolCalls,
     };
   } catch (err) {}
   return null;
@@ -561,6 +757,7 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
   let markdownSummary = null;
   let diffs = null;
   let filesModified = [];
+  let toolCalls = [];
 
   // Check explicit standardized wrapper subagent: header
   const headerMatch = headContent.match(/subagent:\s*provider=([^\s]+)\s+workspace=([^\s]+)\s+model=([^\s]+)\s+session=([^\s]+)/i);
@@ -570,7 +767,7 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
     if (!session && headerMatch[4] !== 'new') session = headerMatch[4].trim();
   }
 
-  // If Antigravity provider, resolve transcript for workspace, model, prompt, and summary
+  // If Antigravity provider, resolve transcript for workspace, model, prompt, summary, and tool calls
   if (parsedName.provider === 'antigravity') {
     const agyMatch = findAntigravityTranscript(parsedName.startTime, workspace);
     if (agyMatch) {
@@ -580,20 +777,26 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
       if (!session && agyMatch.conversationId) session = agyMatch.conversationId;
       if (agyMatch.markdownSummary) markdownSummary = agyMatch.markdownSummary;
       if (agyMatch.filesModified && agyMatch.filesModified.length > 0) filesModified = agyMatch.filesModified;
+      if (agyMatch.toolCalls && agyMatch.toolCalls.length > 0) toolCalls = agyMatch.toolCalls;
     }
   }
 
-  // If Claude provider, check historical Claude history
+  // If Claude provider, check Claude history, tokens, cost, summary, and tool calls
   if (parsedName.provider === 'claude') {
-    const claudeMatch = findClaudeHistory(parsedName.startTime);
+    const claudeMatch = getClaudeSessionDetails(session, parsedName.startTime, workspace);
     if (claudeMatch) {
       if (!workspace || workspace === 'Unknown') workspace = claudeMatch.workspace;
-      if (!task) task = claudeMatch.task;
-      if (!session) session = claudeMatch.sessionId;
+      if (!model && claudeMatch.model) model = claudeMatch.model;
+      if (!task && claudeMatch.task) task = claudeMatch.task;
+      if (!session && claudeMatch.sessionId) session = claudeMatch.sessionId;
+      if (claudeMatch.tokens) tokens = claudeMatch.tokens;
+      if (claudeMatch.cost) cost = claudeMatch.cost;
+      if (claudeMatch.markdownSummary) markdownSummary = claudeMatch.markdownSummary;
+      if (claudeMatch.toolCalls && claudeMatch.toolCalls.length > 0) toolCalls = claudeMatch.toolCalls;
     }
   }
 
-  // If OpenCode provider, query SQLite for tokens, cost, diffs, prompt, and summary
+  // If OpenCode provider, query SQLite for tokens, cost, diffs, prompt, summary, and tool calls
   if (parsedName.provider === 'opencode' && session) {
     const opencodeDetails = getOpenCodeSessionDetails(session);
     if (opencodeDetails) {
@@ -602,10 +805,11 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
       if (opencodeDetails.cost) cost = opencodeDetails.cost;
       if (opencodeDetails.markdownSummary) markdownSummary = opencodeDetails.markdownSummary;
       if (opencodeDetails.diffs) diffs = opencodeDetails.diffs;
+      if (opencodeDetails.toolCalls && opencodeDetails.toolCalls.length > 0) toolCalls = opencodeDetails.toolCalls;
     }
   }
 
-  // If Codex provider, query state_5.sqlite for tokens, cost, prompt, and summary
+  // If Codex provider, query state_5.sqlite for tokens, cost, prompt, tool calls, and summary
   if (parsedName.provider === 'codex') {
     const codexDetails = getCodexSessionDetails(session, parsedName.startTime, workspace);
     if (codexDetails) {
@@ -615,6 +819,27 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
       if (codexDetails.tokens) tokens = codexDetails.tokens;
       if (codexDetails.cost) cost = codexDetails.cost;
       if (codexDetails.markdownSummary) markdownSummary = codexDetails.markdownSummary;
+      if (codexDetails.toolCalls && codexDetails.toolCalls.length > 0) toolCalls = codexDetails.toolCalls;
+    }
+  }
+
+  // Fallback tool calls extraction from raw log text if none captured from harness db
+  if (toolCalls.length === 0) {
+    const rawLines = combinedSample.split('\n');
+    for (const rawLine of rawLines) {
+      const clean = rawLine.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').trim();
+      if (clean.startsWith('$ ') && clean.length > 2) {
+        toolCalls.push(normalizeToolCall({ tool: 'Bash', input: clean.slice(2), status: 'completed' }));
+      } else if (clean.startsWith('→ Read ') || clean.startsWith('Reading ')) {
+        const p = clean.replace(/^(?:→ Read|Reading)\s+/, '').trim();
+        toolCalls.push(normalizeToolCall({ tool: 'Read', input: p, status: 'completed' }));
+      } else if (clean.startsWith('Editing ') || clean.startsWith('Writing ') || clean.startsWith('Updated ')) {
+        const p = clean.replace(/^(?:Editing|Writing|Updated)\s+/, '').trim();
+        toolCalls.push(normalizeToolCall({ tool: 'Edit', input: p, status: 'completed' }));
+      } else if (clean.startsWith('✱ Grep ') || clean.startsWith('Searching ')) {
+        const q = clean.replace(/^(?:✱ Grep|Searching)\s+/, '').trim();
+        toolCalls.push(normalizeToolCall({ tool: 'Grep', input: q, status: 'completed' }));
+      }
     }
   }
 
@@ -763,6 +988,8 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
     markdownSummary: markdownSummary || null,
     filesModified: filesModified || [],
     diffs: diffs || null,
+    toolCalls: toolCalls || [],
+    toolsCount: (toolCalls || []).length,
     tokens: tokens || null,
     cost: cost || 0,
     cliCommand,
