@@ -1,13 +1,14 @@
 FROM node:22-alpine
 
-# Install tzdata for proper IST timezone handling and procps for process management
-RUN apk add --no-cache tzdata procps
+# Install tzdata, procps, and sqlite for historical opencode prompt lookups
+RUN apk add --no-cache tzdata procps sqlite
 
 ENV TZ=Asia/Kolkata
 ENV PORT=4242
 ENV HOST=0.0.0.0
 ENV LOGS_DIR=/app/logs
 ENV PROC_DIR=/proc
+ENV OPENCODE_DB=/opencode_data/opencode.db
 
 WORKDIR /app
 

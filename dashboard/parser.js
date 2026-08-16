@@ -1,5 +1,48 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { execSync } from 'node:child_process';
+
+const opencodeDbPaths = [
+  process.env.OPENCODE_DB,
+  '/opencode_data/opencode.db',
+  path.join(process.env.HOME || '/home/akey', '.local/share/opencode/opencode.db'),
+  '/home/akey/.local/share/opencode/opencode.db',
+].filter(Boolean);
+
+/**
+ * Recovers exact prompt from OpenCode SQLite database for historical sessions
+ */
+export function getOpenCodePromptFromDb(sessionId) {
+  if (!sessionId) return null;
+  const dbPath = opencodeDbPaths.find(p => fs.existsSync(p));
+  if (!dbPath) return null;
+
+  try {
+    const safeSession = sessionId.replace(/[^a-zA-Z0-9_-]/g, '');
+    const cmd = `sqlite3 -json "file:${dbPath}?immutable=1" "SELECT data FROM part WHERE session_id = '${safeSession}' AND data LIKE '%\\"type\\":\\"text\\"%' ORDER BY time_created ASC LIMIT 1;" 2>/dev/null`;
+    const output = execSync(cmd, { encoding: 'utf8', timeout: 1500 }).trim();
+    if (output) {
+      const rows = JSON.parse(output);
+      if (Array.isArray(rows) && rows.length > 0 && rows[0].data) {
+        const partObj = JSON.parse(rows[0].data);
+        if (partObj && partObj.text) {
+          let rawText = partObj.text;
+          if (typeof rawText === 'string') {
+            if (rawText.startsWith('"') && rawText.endsWith('"')) {
+              try { rawText = JSON.parse(rawText); } catch {}
+            }
+            const taskMatch = rawText.match(/Task:\s*([\s\S]*)/i);
+            if (taskMatch) {
+              return taskMatch[1].trim();
+            }
+            return rawText.trim();
+          }
+        }
+      }
+    }
+  } catch (err) {}
+  return null;
+}
 
 /**
  * Parses the filename format: YYYYMMDDTHHMMSS-provider-pid.log
@@ -178,6 +221,12 @@ export function parseLogMetadata(filename, filepath, procDir = '/proc') {
 
   // Fallback for historical logs without explicit Task: header
   if (!task) {
+    if (parsedName.provider === 'opencode' && session) {
+      task = getOpenCodePromptFromDb(session);
+    }
+  }
+
+  if (!task) {
     const cleanSample = combinedSample.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').trim();
     if (parsedName.provider === 'antigravity') {
       const firstLines = cleanSample.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('antigravity-subagent:'));
@@ -185,15 +234,9 @@ export function parseLogMetadata(filename, filepath, procDir = '/proc') {
         task = firstLines.slice(0, 2).join(' ');
       }
     } else if (parsedName.provider === 'opencode') {
-      const toolMatch = cleanSample.match(/(?:→\s*Read|✱\s*Grep|\$\s*|message="touching file" file=)([^\r\n]+)/i) ||
-                        cleanSample.match(/commit\s+[a-f0-9]+\s*\nAuthor:[^\n]+\nDate:[^\n]+\n\s+([^\r\n]+)/i);
-      if (toolMatch) {
-        task = toolMatch[0].trim();
-      } else {
-        const titleMatch = cleanSample.match(/title="([^"]+)"/i);
-        if (titleMatch && !titleMatch[1].startsWith('New session')) {
-          task = titleMatch[1];
-        }
+      const commitMatch = cleanSample.match(/commit\s+[a-f0-9]+\s*\nAuthor:[^\n]+\nDate:[^\n]+\n\s+([^\r\n]+)/i);
+      if (commitMatch) {
+        task = commitMatch[1].trim();
       }
     } else if (parsedName.provider === 'claude') {
       const firstLine = cleanSample.split('\n').find(l => l && !l.startsWith('claude-subagent:'));
