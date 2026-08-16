@@ -114,6 +114,46 @@ export function findAntigravityTranscript(startTimeIso, workspace) {
   return null;
 }
 
+const claudeDataDirs = [
+  process.env.CLAUDE_DATA,
+  '/claude_data',
+  path.join(process.env.HOME || '/home/akey', '.claude'),
+  '/home/akey/.claude',
+].filter(Boolean);
+
+/**
+ * Matches historical Claude Code runs by timestamp from history.jsonl
+ */
+export function findClaudeHistory(startTimeIso) {
+  if (!startTimeIso) return null;
+  const dataDir = claudeDataDirs.find(d => fs.existsSync(d));
+  if (!dataDir) return null;
+
+  const historyPath = path.join(dataDir, 'history.jsonl');
+  if (!fs.existsSync(historyPath)) return null;
+
+  try {
+    const targetTime = new Date(startTimeIso).getTime();
+    if (isNaN(targetTime)) return null;
+
+    const content = fs.readFileSync(historyPath, 'utf8');
+    const lines = content.split('\n').filter(Boolean);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const entry = JSON.parse(lines[i]);
+        if (entry.timestamp && Math.abs(entry.timestamp - targetTime) <= 180000) {
+          return {
+            sessionId: entry.sessionId || null,
+            workspace: entry.project || null,
+            task: entry.display || null,
+          };
+        }
+      } catch {}
+    }
+  } catch {}
+  return null;
+}
+
 /**
  * Parses the filename format: YYYYMMDDTHHMMSS-provider-pid.log
  * All subagent wrappers generate timestamp using local system time (IST, +05:30).
@@ -289,6 +329,14 @@ export function parseLogMetadata(filename, filepath, procDir = '/proc') {
     if (altTask) task = altTask[1].trim();
   }
 
+  // Check explicit standardized wrapper subagent: header
+  const headerMatch = headContent.match(/subagent:\s*provider=([^\s]+)\s+workspace=([^\s]+)\s+model=([^\s]+)\s+session=([^\s]+)/i);
+  if (headerMatch) {
+    if (!workspace || workspace === 'Unknown') workspace = headerMatch[2].trim();
+    if (!model && headerMatch[3] !== 'default') model = headerMatch[3].trim();
+    if (!session && headerMatch[4] !== 'new') session = headerMatch[4].trim();
+  }
+
   // If Antigravity provider, resolve transcript for workspace, model, and prompt
   if (parsedName.provider === 'antigravity') {
     const agyMatch = findAntigravityTranscript(parsedName.startTime, workspace);
@@ -300,7 +348,17 @@ export function parseLogMetadata(filename, filepath, procDir = '/proc') {
     }
   }
 
-  // Fallback for historical logs without explicit Task: header
+  // If Claude provider, check historical Claude history
+  if (parsedName.provider === 'claude') {
+    const claudeMatch = findClaudeHistory(parsedName.startTime);
+    if (claudeMatch) {
+      if (!workspace || workspace === 'Unknown') workspace = claudeMatch.workspace;
+      if (!task) task = claudeMatch.task;
+      if (!session) session = claudeMatch.sessionId;
+    }
+  }
+
+  // Fallback for historical OpenCode logs without explicit Task: header
   if (!task) {
     if (parsedName.provider === 'opencode' && session) {
       task = getOpenCodePromptFromDb(session);

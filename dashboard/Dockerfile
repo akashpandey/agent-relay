@@ -10,6 +10,7 @@ ENV LOGS_DIR=/app/logs
 ENV PROC_DIR=/proc
 ENV OPENCODE_DB=/opencode_data/opencode.db
 ENV GEMINI_BRAIN=/gemini_brain
+ENV CLAUDE_DATA=/claude_data
 
 WORKDIR /app
 

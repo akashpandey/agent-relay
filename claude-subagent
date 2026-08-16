@@ -95,7 +95,8 @@ fi
 
 # ponytail: a separate process group makes timeout cleanup cover ordinary children.
 before_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
-printf 'Task:\n%s\n\n---\n\n' "$user_prompt" > "$log_file"
+printf 'subagent: provider=claude workspace=%s model=%s session=%s\nTask:\n%s\n\n---\n\n' \
+  "$workspace" "${CLAUDE_MODEL:-default}" "${SUBAGENT_SESSION:-new}" "$user_prompt" > "$log_file"
 
 if [ "$use_systemd" -eq 1 ]; then
   systemd-run --user --pipe --same-dir --setenv=PATH="$PATH" --wait --collect --quiet --unit="$unit" --property=KillMode=control-group --property=RuntimeMaxSec="${timeout_seconds}s" "$HOME/.local/bin/claude" "$@" >>"$log_file" 2>&1 &

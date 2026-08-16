@@ -20,11 +20,13 @@ services:
       - PROC_DIR=/host_proc
       - OPENCODE_DB=/opencode_data/opencode.db
       - GEMINI_BRAIN=/gemini_brain
+      - CLAUDE_DATA=/claude_data
     volumes:
       - /home/akey/local-subagents/logs:/app/logs:ro
       - /proc:/host_proc:ro
       - /home/akey/.local/share/opencode:/opencode_data:ro
       - /home/akey/.gemini/antigravity-cli/brain:/gemini_brain:ro
+      - /home/akey/.claude:/claude_data:ro
     ports:
       - "4242:4242"
     restart: unless-stopped
