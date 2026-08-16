@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { execSync } from 'node:child_process';
 
 const opencodeDbPaths = [
@@ -230,6 +231,111 @@ export function findClaudeHistory(startTimeIso) {
       } catch {}
     }
   } catch {}
+  return null;
+}
+
+const codexDataDirs = [
+  process.env.CODEX_DATA,
+  '/codex_data',
+  path.join(os.homedir(), '.codex'),
+  '/home/akey/.codex',
+].filter(Boolean);
+
+/**
+ * Queries Codex state_5.sqlite for tokens, cost, prompt, and rollout summary
+ */
+export function getCodexSessionDetails(sessionId, startTimeIso, workspace) {
+  const codexDir = codexDataDirs.find(d => fs.existsSync(d));
+  if (!codexDir) return null;
+
+  const dbPath = path.join(codexDir, 'state_5.sqlite');
+  if (!fs.existsSync(dbPath)) return null;
+
+  try {
+    let row = null;
+    if (sessionId) {
+      const safeId = sessionId.replace(/'/g, "''");
+      const cmd = `sqlite3 -json "file:${dbPath}?immutable=1" "SELECT id, model, tokens_used, cwd, first_user_message, rollout_path, created_at FROM threads WHERE id = '${safeId}' LIMIT 1;" 2>/dev/null`;
+      const out = execSync(cmd, { encoding: 'utf8', timeout: 2000 }).trim();
+      if (out) {
+        const rows = JSON.parse(out);
+        if (Array.isArray(rows) && rows.length > 0) row = rows[0];
+      }
+    }
+
+    if (!row && startTimeIso) {
+      const startSec = Math.floor(new Date(startTimeIso).getTime() / 1000);
+      if (!isNaN(startSec)) {
+        const minSec = startSec - 180;
+        const maxSec = startSec + 180;
+        const cmd = `sqlite3 -json "file:${dbPath}?immutable=1" "SELECT id, model, tokens_used, cwd, first_user_message, rollout_path, created_at FROM threads WHERE created_at BETWEEN ${minSec} AND ${maxSec} ORDER BY ABS(created_at - ${startSec}) ASC LIMIT 1;" 2>/dev/null`;
+        const out = execSync(cmd, { encoding: 'utf8', timeout: 2000 }).trim();
+        if (out) {
+          const rows = JSON.parse(out);
+          if (Array.isArray(rows) && rows.length > 0) row = rows[0];
+        }
+      }
+    }
+
+    if (!row) return null;
+
+    let task = null;
+    if (row.first_user_message) {
+      const taskMatch = row.first_user_message.match(/Task:\s*([\s\S]*)/i);
+      task = taskMatch ? taskMatch[1].trim() : row.first_user_message.trim();
+    }
+
+    const totalTokens = row.tokens_used || 0;
+    const tokens = {
+      total: totalTokens,
+      input: Math.round(totalTokens * 0.8),
+      output: Math.round(totalTokens * 0.2),
+      reasoning: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    };
+
+    // Calculate estimated cost for OpenAI models ($5/M in, $15/M out)
+    const cost = Number(((tokens.input * 0.000005) + (tokens.output * 0.000015)).toFixed(4));
+
+    let markdownSummary = null;
+    let rolloutPath = row.rollout_path;
+    if (rolloutPath) {
+      if (!fs.existsSync(rolloutPath) && rolloutPath.includes('.codex')) {
+        const relativePart = rolloutPath.split('.codex')[1];
+        const containerPath = path.join(codexDir, relativePart);
+        if (fs.existsSync(containerPath)) rolloutPath = containerPath;
+      }
+
+      if (fs.existsSync(rolloutPath)) {
+        try {
+          const tailBuf = execSync(`tail -n 40 "${rolloutPath}"`, { encoding: 'utf8', timeout: 2000 });
+          const lines = tailBuf.trim().split('\n');
+          for (let i = lines.length - 1; i >= 0; i--) {
+            try {
+              const item = JSON.parse(lines[i]);
+              if (item?.payload?.role === 'assistant' && Array.isArray(item.payload.content)) {
+                const textObj = item.payload.content.find(c => c.type === 'output_text');
+                if (textObj && textObj.text) {
+                  markdownSummary = textObj.text.trim();
+                  break;
+                }
+              }
+            } catch {}
+          }
+        } catch {}
+      }
+    }
+
+    return {
+      model: row.model,
+      workspace: row.cwd,
+      task,
+      tokens,
+      cost,
+      markdownSummary,
+    };
+  } catch (err) {}
   return null;
 }
 
@@ -496,6 +602,19 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
       if (opencodeDetails.cost) cost = opencodeDetails.cost;
       if (opencodeDetails.markdownSummary) markdownSummary = opencodeDetails.markdownSummary;
       if (opencodeDetails.diffs) diffs = opencodeDetails.diffs;
+    }
+  }
+
+  // If Codex provider, query state_5.sqlite for tokens, cost, prompt, and summary
+  if (parsedName.provider === 'codex') {
+    const codexDetails = getCodexSessionDetails(session, parsedName.startTime, workspace);
+    if (codexDetails) {
+      if (!workspace || workspace === 'Unknown') workspace = codexDetails.workspace;
+      if (!model && codexDetails.model) model = codexDetails.model;
+      if (!task && codexDetails.task) task = codexDetails.task;
+      if (codexDetails.tokens) tokens = codexDetails.tokens;
+      if (codexDetails.cost) cost = codexDetails.cost;
+      if (codexDetails.markdownSummary) markdownSummary = codexDetails.markdownSummary;
     }
   }
 
