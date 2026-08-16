@@ -82,6 +82,10 @@ export function findAntigravityTranscript(startTimeIso, workspace) {
         if (parsed && parsed.created_at) {
           const tTime = new Date(parsed.created_at).getTime();
           if (Math.abs(tTime - targetTime) <= 180000) {
+            const wsMatch = text.match(/Workspace:\s*([^\r\n<\\"]+)/i) ||
+                            text.match(/Repo:\s*([^\r\n<\s\)]+)/i);
+            let agyWorkspace = wsMatch ? wsMatch[1].trim() : null;
+
             let model = null;
             const modelMatch = text.match(/setting \`Model Selection\` from [^\n]+ to (.*?)\.\s*No need to/i) ||
                                text.match(/setting \`Model Selection\` from [^\n]+ to ([^\n<]+)/i) ||
@@ -98,6 +102,7 @@ export function findAntigravityTranscript(startTimeIso, workspace) {
 
             return {
               conversationId: entry,
+              workspace: agyWorkspace || null,
               model: model || null,
               task: task || null,
             };
@@ -284,10 +289,11 @@ export function parseLogMetadata(filename, filepath, procDir = '/proc') {
     if (altTask) task = altTask[1].trim();
   }
 
-  // If Antigravity provider, resolve transcript for model and prompt
+  // If Antigravity provider, resolve transcript for workspace, model, and prompt
   if (parsedName.provider === 'antigravity') {
     const agyMatch = findAntigravityTranscript(parsedName.startTime, workspace);
     if (agyMatch) {
+      if (!workspace && agyMatch.workspace) workspace = agyMatch.workspace;
       if (!model && agyMatch.model) model = agyMatch.model;
       if (!task && agyMatch.task) task = agyMatch.task;
       if (!session && agyMatch.conversationId) session = agyMatch.conversationId;
