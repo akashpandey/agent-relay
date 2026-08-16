@@ -58,12 +58,23 @@ else
   user_prompt="$(cat)"
 fi
 
+export CI="${CI:-1}"
+export npm_config_yes="${npm_config_yes:-true}"
+export npm_config_fund="${npm_config_fund:-false}"
+export npm_config_audit="${npm_config_audit:-false}"
+export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
+export GIT_TERMINAL_PROMPT="${GIT_TERMINAL_PROMPT:-0}"
+export PAGER="${PAGER:-cat}"
+export GIT_PAGER="${GIT_PAGER:-cat}"
+export SYSTEMD_PAGER="${SYSTEMD_PAGER:-cat}"
+
 prompt="You are running as a non-interactive coding subagent.
 Workspace: $workspace
 
 Rules:
 - Treat the workspace above as the project root.
 - Write requested files under that workspace unless the prompt gives a different absolute path.
+- Run all commands in non-interactive batch mode (e.g. use 'npx -y', avoid interactive stdin/prompts).
 - After editing, summarize changed files and verification commands.
 
 Task:
