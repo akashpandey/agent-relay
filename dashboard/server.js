@@ -246,11 +246,75 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // GET /api/workspaces
+  if (pathname === '/api/workspaces' && req.method === 'GET') {
+    const runs = getAllRuns();
+    const map = {};
+    for (const r of runs) {
+      const ws = r.workspace || 'Unknown';
+      if (!map[ws]) {
+        map[ws] = {
+          path: ws,
+          name: r.workspaceName || path.basename(ws),
+          totalRuns: 0,
+          activeRuns: 0,
+          lastRun: r.startTime,
+        };
+      }
+      map[ws].totalRuns++;
+      if (r.isAlive) map[ws].activeRuns++;
+    }
+    const workspaces = Object.values(map).sort((a, b) => b.totalRuns - a.totalRuns);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ workspaces }));
+    return;
+  }
+
+  // GET /api/analytics
+  if (pathname === '/api/analytics' && req.method === 'GET') {
+    const runs = getAllRuns();
+    let totalTokens = 0;
+    let totalCost = 0;
+    let totalDurationSec = 0;
+    let completedCount = 0;
+    let failedCount = 0;
+    const modelDistribution = {};
+    const providerDistribution = {};
+
+    for (const r of runs) {
+      if (r.tokens && r.tokens.total) totalTokens += r.tokens.total;
+      if (r.cost) totalCost += r.cost;
+      if (r.durationSec) totalDurationSec += r.durationSec;
+      if (r.status === 'completed') completedCount++;
+      if (r.status === 'failed') failedCount++;
+      if (r.model) modelDistribution[r.model] = (modelDistribution[r.model] || 0) + 1;
+      if (r.provider) providerDistribution[r.provider] = (providerDistribution[r.provider] || 0) + 1;
+    }
+
+    const avgDurationSec = runs.length > 0 ? Math.round(totalDurationSec / runs.length) : 0;
+    const successRate = (completedCount + failedCount) > 0 ? Math.round((completedCount / (completedCount + failedCount)) * 100) : 100;
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      totalRuns: runs.length,
+      totalTokens,
+      totalCost,
+      avgDurationSec,
+      successRate,
+      completedCount,
+      failedCount,
+      modelDistribution,
+      providerDistribution,
+    }));
+    return;
+  }
+
   // GET /api/runs
   if (pathname === '/api/runs' && req.method === 'GET') {
     let runs = getAllRuns();
     const provider = parsedUrl.searchParams.get('provider');
     const status = parsedUrl.searchParams.get('status');
+    const workspace = parsedUrl.searchParams.get('workspace');
     const q = (parsedUrl.searchParams.get('q') || '').toLowerCase();
     const limit = parseInt(parsedUrl.searchParams.get('limit') || '50', 10);
     const offset = parseInt(parsedUrl.searchParams.get('offset') || '0', 10);
@@ -260,6 +324,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (status && status !== 'all') {
       runs = runs.filter(r => r.status.toLowerCase() === status.toLowerCase());
+    }
+    if (workspace && workspace !== 'all') {
+      runs = runs.filter(r => (r.workspace || '').includes(workspace) || (r.workspaceName || '').toLowerCase() === workspace.toLowerCase());
     }
     if (q) {
       runs = runs.filter(r => 

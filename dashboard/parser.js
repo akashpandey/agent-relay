@@ -10,36 +10,92 @@ const opencodeDbPaths = [
 ].filter(Boolean);
 
 /**
- * Recovers exact prompt from OpenCode SQLite database for historical sessions
+ * Recovers full session details (tokens, cost, files, prompt, summary) from OpenCode SQLite database
  */
-export function getOpenCodePromptFromDb(sessionId) {
+export function getOpenCodeSessionDetails(sessionId) {
   if (!sessionId) return null;
   const dbPath = opencodeDbPaths.find(p => fs.existsSync(p));
   if (!dbPath) return null;
 
   try {
     const safeSession = sessionId.replace(/[^a-zA-Z0-9_-]/g, '');
-    const cmd = `sqlite3 -json "file:${dbPath}?immutable=1" "SELECT data FROM part WHERE session_id = '${safeSession}' AND data LIKE '%\\"type\\":\\"text\\"%' ORDER BY time_created ASC LIMIT 1;" 2>/dev/null`;
-    const output = execSync(cmd, { encoding: 'utf8', timeout: 1500 }).trim();
-    if (output) {
-      const rows = JSON.parse(output);
-      if (Array.isArray(rows) && rows.length > 0 && rows[0].data) {
-        const partObj = JSON.parse(rows[0].data);
-        if (partObj && partObj.text) {
-          let rawText = partObj.text;
-          if (typeof rawText === 'string') {
-            if (rawText.startsWith('"') && rawText.endsWith('"')) {
-              try { rawText = JSON.parse(rawText); } catch {}
+    const sessionCmd = `sqlite3 -json "file:${dbPath}?immutable=1" "SELECT id, title, summary_files, summary_additions, summary_deletions, summary_diffs, cost, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write FROM session WHERE id = '${safeSession}';\" 2>/dev/null`;
+    const sessionOut = execSync(sessionCmd, { encoding: 'utf8', timeout: 1500 }).trim();
+    
+    let sessionRow = null;
+    if (sessionOut) {
+      const rows = JSON.parse(sessionOut);
+      if (Array.isArray(rows) && rows.length > 0) sessionRow = rows[0];
+    }
+
+    // Query parts for prompt and final assistant response
+    const partsCmd = `sqlite3 -json "file:${dbPath}?immutable=1" "SELECT data FROM part WHERE session_id = '${safeSession}' AND data LIKE '%\\"type\\":\\"text\\"%' ORDER BY time_created ASC;" 2>/dev/null`;
+    const partsOut = execSync(partsCmd, { encoding: 'utf8', timeout: 2000 }).trim();
+
+    let task = null;
+    let markdownSummary = null;
+
+    if (partsOut) {
+      const partRows = JSON.parse(partsOut);
+      if (Array.isArray(partRows) && partRows.length > 0) {
+        // First part is user prompt
+        try {
+          const firstPart = JSON.parse(partRows[0].data);
+          if (firstPart && firstPart.text) {
+            let rawText = firstPart.text;
+            if (typeof rawText === 'string') {
+              if (rawText.startsWith('"') && rawText.endsWith('"')) {
+                try { rawText = JSON.parse(rawText); } catch {}
+              }
+              const taskMatch = rawText.match(/Task:\s*([\s\S]*)/i);
+              task = taskMatch ? taskMatch[1].trim() : rawText.trim();
             }
-            const taskMatch = rawText.match(/Task:\s*([\s\S]*)/i);
-            if (taskMatch) {
-              return taskMatch[1].trim();
-            }
-            return rawText.trim();
           }
+        } catch {}
+
+        // Last part is assistant final summary if more than 1 part
+        if (partRows.length > 1) {
+          try {
+            const lastPart = JSON.parse(partRows[partRows.length - 1].data);
+            if (lastPart && lastPart.text) {
+              let summaryText = lastPart.text;
+              if (typeof summaryText === 'string') {
+                if (summaryText.startsWith('"') && summaryText.endsWith('"')) {
+                  try { summaryText = JSON.parse(summaryText); } catch {}
+                }
+                markdownSummary = summaryText.trim();
+              }
+            }
+          } catch {}
         }
       }
     }
+
+    let tokens = null;
+    let cost = 0;
+    let diffs = null;
+
+    if (sessionRow) {
+      const totalTokens = (sessionRow.tokens_input || 0) + (sessionRow.tokens_output || 0) + (sessionRow.tokens_reasoning || 0);
+      tokens = {
+        total: totalTokens,
+        input: sessionRow.tokens_input || 0,
+        output: sessionRow.tokens_output || 0,
+        reasoning: sessionRow.tokens_reasoning || 0,
+        cacheRead: sessionRow.tokens_cache_read || 0,
+        cacheWrite: sessionRow.tokens_cache_write || 0,
+      };
+      cost = sessionRow.cost || 0;
+      diffs = sessionRow.summary_diffs || null;
+    }
+
+    return {
+      task,
+      markdownSummary,
+      tokens,
+      cost,
+      diffs,
+    };
   } catch (err) {}
   return null;
 }
@@ -70,7 +126,7 @@ export function findAntigravityTranscript(startTimeIso, workspace) {
 
       try {
         const fd = fs.openSync(transcriptPath, 'r');
-        const buf = Buffer.alloc(16384);
+        const buf = Buffer.alloc(32768);
         const bytesRead = fs.readSync(fd, buf, 0, buf.length, 0);
         fs.closeSync(fd);
 
@@ -100,11 +156,34 @@ export function findAntigravityTranscript(startTimeIso, workspace) {
               task = task.replace(/\\n/g, '\n').replace(/^[\r\n]+/, '').trim();
             }
 
+            // Extract touched files and last planner markdown response
+            const touchedFiles = new Set();
+            let markdownSummary = null;
+
+            const lines = text.split('\n').filter(Boolean);
+            for (const line of lines) {
+              try {
+                const step = JSON.parse(line);
+                if (step.tool_calls) {
+                  for (const tc of step.tool_calls) {
+                    if (tc.arguments && tc.arguments.TargetFile) {
+                      touchedFiles.add(tc.arguments.TargetFile);
+                    }
+                  }
+                }
+                if (step.type === 'PLANNER_RESPONSE' && step.content) {
+                  markdownSummary = step.content;
+                }
+              } catch {}
+            }
+
             return {
               conversationId: entry,
               workspace: agyWorkspace || null,
               model: model || null,
               task: task || null,
+              markdownSummary: markdownSummary || null,
+              filesModified: Array.from(touchedFiles),
             };
           }
         }
@@ -174,7 +253,6 @@ export function parseLogFilename(filename) {
   }
 
   const [_, year, month, day, hour, minute, second, provider, pid] = match;
-  // Local IST ISO string (+05:30)
   const istIsoStr = `${year}-${month}-${day}T${hour}:${minute}:${second}+05:30`;
   const dateObj = new Date(istIsoStr);
 
@@ -191,81 +269,117 @@ export function parseLogFilename(filename) {
  * Checks if the process is alive on the host or in mounted /proc
  */
 export function isProcessRunning(pid, procDir = '/proc') {
-  if (!pid || isNaN(pid)) return false;
-  try {
-    const pidPath = path.join(procDir, String(pid));
-    if (!fs.existsSync(pidPath)) return false;
-    
-    // Check if we can read stat or status
-    const statPath = path.join(pidPath, 'stat');
-    if (fs.existsSync(statPath)) {
-      const statContent = fs.readFileSync(statPath, 'utf8');
-      // A zombie process (Z) is essentially dead
-      if (statContent.includes(') Z ') || statContent.includes(') X ')) return false;
-      return true;
-    }
-    return true;
-  } catch {
-    // If proc is not mounted or permission denied, fallback to kill -0 if on host
-    try {
-      if (procDir === '/proc') {
-        process.kill(pid, 0);
-        return true;
-      }
-    } catch {
-      return false;
-    }
-    return false;
-  }
-}
+  if (!pid || isNaN(pid)) return { isAlive: false, cmd: null };
 
-/**
- * Get process command line or status if alive
- */
-export function getProcessInfo(pid, procDir = '/proc') {
-  if (!isProcessRunning(pid, procDir)) return null;
+  const pidStr = String(pid);
+  const pidDir = path.join(procDir, pidStr);
+
   try {
-    const cmdlinePath = path.join(procDir, String(pid), 'cmdline');
-    if (fs.existsSync(cmdlinePath)) {
-      const raw = fs.readFileSync(cmdlinePath, 'utf8');
-      return raw.replace(/\0/g, ' ').trim();
+    if (fs.existsSync(pidDir)) {
+      const statFile = path.join(pidDir, 'stat');
+      if (fs.existsSync(statFile)) {
+        const stat = fs.readFileSync(statFile, 'utf8');
+        const parts = stat.split(' ');
+        const state = parts[2];
+        if (state !== 'Z') {
+          let cmd = null;
+          try {
+            const cmdline = fs.readFileSync(path.join(pidDir, 'cmdline'), 'utf8');
+            cmd = cmdline.replace(/\0/g, ' ').trim();
+          } catch {}
+          return { isAlive: true, cmd };
+        }
+      }
     }
   } catch {}
-  return 'running';
+
+  try {
+    process.kill(pid, 0);
+    return { isAlive: true, cmd: null };
+  } catch (e) {
+    if (e.code === 'EPERM') return { isAlive: true, cmd: null };
+  }
+
+  return { isAlive: false, cmd: null };
 }
 
 /**
- * Parses full or partial log file content for rich metadata
+ * Extract touched files and git diffs from raw log content
  */
-export function parseLogMetadata(filename, filepath, procDir = '/proc') {
+function extractFilesAndDiffs(rawContent) {
+  const files = new Set();
+  const diffHunks = [];
+
+  // Match file touched/edited lines
+  const fileRegexes = [
+    /(?:file=|touching file\s+file=|Writing\s+|Editing\s+|diff --git a\/|=== File \d+:\s*)([^\s\r\n",]+)/gi,
+    /(?:Replacing content in |Created file |Updated |Modified )([^\s\r\n",]+\.[a-zA-Z0-9]+)/gi
+  ];
+
+  for (const regex of fileRegexes) {
+    const matches = rawContent.matchAll(regex);
+    for (const m of matches) {
+      let p = m[1].trim();
+      if (p.startsWith('b/')) p = p.slice(2);
+      if (p.includes('/') || /\.(ts|tsx|js|jsx|json|md|py|sh|css|html|sql|yaml|yml)$/.test(p)) {
+        if (!p.startsWith('/host_proc') && !p.startsWith('/proc') && !p.startsWith('node_modules') && !p.startsWith('.git/')) {
+          files.add(p);
+        }
+      }
+    }
+  }
+
+  // Look for diff blocks
+  const diffStart = rawContent.indexOf('diff --git');
+  if (diffStart !== -1) {
+    diffHunks.push(rawContent.slice(diffStart, diffStart + 20000));
+  } else {
+    const diffBlockStart = rawContent.indexOf('[diff_block_start]');
+    if (diffBlockStart !== -1) {
+      const diffBlockEnd = rawContent.indexOf('[diff_block_end]', diffBlockStart);
+      if (diffBlockEnd !== -1) {
+        diffHunks.push(rawContent.slice(diffBlockStart, diffBlockEnd + 16));
+      }
+    }
+  }
+
+  return {
+    filesModified: Array.from(files),
+    diffs: diffHunks.join('\n\n') || null
+  };
+}
+
+/**
+ * Parse metadata from a single log file
+ */
+export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
   const parsedName = parseLogFilename(filename);
   if (!parsedName) return null;
 
   let stats;
   try {
-    stats = fs.statSync(filepath);
-  } catch {
+    stats = fs.statSync(logFilePath);
+  } catch (err) {
     return null;
   }
 
-  const isAlive = isProcessRunning(parsedName.pid, procDir);
-  const processCmd = isAlive ? getProcessInfo(parsedName.pid, procDir) : null;
-  
-  // Read first 24KB for headers/prompt and last 24KB for status/last action
+  const { isAlive, cmd: processCmd } = isProcessRunning(parsedName.pid, procDir);
   const fileSize = stats.size;
+
   let headContent = '';
   let tailContent = '';
 
   try {
-    const fd = fs.openSync(filepath, 'r');
-    const headBuf = Buffer.alloc(Math.min(fileSize, 24576));
-    fs.readSync(fd, headBuf, 0, headBuf.length, 0);
+    const fd = fs.openSync(logFilePath, 'r');
+    const readSize = Math.min(fileSize, 24576);
+
+    const headBuf = Buffer.alloc(readSize);
+    fs.readSync(fd, headBuf, 0, readSize, 0);
     headContent = headBuf.toString('utf8');
 
     if (fileSize > 24576) {
-      const tailLength = Math.min(fileSize, 24576);
-      const tailBuf = Buffer.alloc(tailLength);
-      fs.readSync(fd, tailBuf, 0, tailLength, fileSize - tailLength);
+      const tailBuf = Buffer.alloc(readSize);
+      fs.readSync(fd, tailBuf, 0, readSize, fileSize - readSize);
       tailContent = tailBuf.toString('utf8');
     } else {
       tailContent = headContent;
@@ -286,7 +400,14 @@ export function parseLogMetadata(filename, filepath, procDir = '/proc') {
                   combinedSample.match(/directory=([^\s]+)/i) ||
                   combinedSample.match(/cwd=([^\s]+)/i);
   if (wsMatch) {
-    workspace = wsMatch[1].trim();
+    let clean = wsMatch[1].trim();
+    if (clean.includes(' ')) {
+      const token = clean.split(/\s+/)[0];
+      if (token.startsWith('/') || token.startsWith('~')) {
+        clean = token;
+      }
+    }
+    workspace = clean;
   }
 
   // Extract Model
@@ -329,6 +450,12 @@ export function parseLogMetadata(filename, filepath, procDir = '/proc') {
     if (altTask) task = altTask[1].trim();
   }
 
+  let tokens = null;
+  let cost = 0;
+  let markdownSummary = null;
+  let diffs = null;
+  let filesModified = [];
+
   // Check explicit standardized wrapper subagent: header
   const headerMatch = headContent.match(/subagent:\s*provider=([^\s]+)\s+workspace=([^\s]+)\s+model=([^\s]+)\s+session=([^\s]+)/i);
   if (headerMatch) {
@@ -337,14 +464,16 @@ export function parseLogMetadata(filename, filepath, procDir = '/proc') {
     if (!session && headerMatch[4] !== 'new') session = headerMatch[4].trim();
   }
 
-  // If Antigravity provider, resolve transcript for workspace, model, and prompt
+  // If Antigravity provider, resolve transcript for workspace, model, prompt, and summary
   if (parsedName.provider === 'antigravity') {
     const agyMatch = findAntigravityTranscript(parsedName.startTime, workspace);
     if (agyMatch) {
-      if (!workspace && agyMatch.workspace) workspace = agyMatch.workspace;
+      if (!workspace || workspace === 'Unknown') workspace = agyMatch.workspace;
       if (!model && agyMatch.model) model = agyMatch.model;
       if (!task && agyMatch.task) task = agyMatch.task;
       if (!session && agyMatch.conversationId) session = agyMatch.conversationId;
+      if (agyMatch.markdownSummary) markdownSummary = agyMatch.markdownSummary;
+      if (agyMatch.filesModified && agyMatch.filesModified.length > 0) filesModified = agyMatch.filesModified;
     }
   }
 
@@ -358,13 +487,28 @@ export function parseLogMetadata(filename, filepath, procDir = '/proc') {
     }
   }
 
-  // Fallback for historical OpenCode logs without explicit Task: header
-  if (!task) {
-    if (parsedName.provider === 'opencode' && session) {
-      task = getOpenCodePromptFromDb(session);
+  // If OpenCode provider, query SQLite for tokens, cost, diffs, prompt, and summary
+  if (parsedName.provider === 'opencode' && session) {
+    const opencodeDetails = getOpenCodeSessionDetails(session);
+    if (opencodeDetails) {
+      if (!task && opencodeDetails.task) task = opencodeDetails.task;
+      if (opencodeDetails.tokens) tokens = opencodeDetails.tokens;
+      if (opencodeDetails.cost) cost = opencodeDetails.cost;
+      if (opencodeDetails.markdownSummary) markdownSummary = opencodeDetails.markdownSummary;
+      if (opencodeDetails.diffs) diffs = opencodeDetails.diffs;
     }
   }
 
+  // Fallback file & diff extraction from log text
+  const extracted = extractFilesAndDiffs(combinedSample);
+  if (filesModified.length === 0 && extracted.filesModified.length > 0) {
+    filesModified = extracted.filesModified;
+  }
+  if (!diffs && extracted.diffs) {
+    diffs = extracted.diffs;
+  }
+
+  // Fallback for historical logs without explicit Task: header
   if (!task) {
     const cleanSample = combinedSample.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').trim();
     if (parsedName.provider === 'antigravity') {
@@ -380,6 +524,20 @@ export function parseLogMetadata(filename, filepath, procDir = '/proc') {
     } else if (parsedName.provider === 'claude') {
       const firstLine = cleanSample.split('\n').find(l => l && !l.startsWith('claude-subagent:'));
       if (firstLine) task = firstLine;
+    }
+  }
+
+  // Fallback markdown summary from assistant response in log if available
+  if (!markdownSummary) {
+    const cleanSample = tailContent.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').trim();
+    const dividerIdx = cleanSample.lastIndexOf('\n---\n');
+    if (dividerIdx !== -1 && dividerIdx < cleanSample.length - 10) {
+      markdownSummary = cleanSample.slice(dividerIdx + 5).trim();
+    } else if (cleanSample.includes('## Diff Summary') || cleanSample.includes('Files touched:') || cleanSample.includes('### Summary')) {
+      const summaryStart = cleanSample.search(/(?:## Diff Summary|### Summary|Both files look correct|Files touched:)/i);
+      if (summaryStart !== -1) {
+        markdownSummary = cleanSample.slice(summaryStart).trim();
+      }
     }
   }
 
@@ -451,10 +609,22 @@ export function parseLogMetadata(filename, filepath, procDir = '/proc') {
     if (diff >= 0 && diff < 86400 * 7) {
       durationSec = diff;
     } else if (fileSize > 0) {
-      // Fallback: estimate from birthtime vs mtime if available
       const altDiff = Math.round((stats.mtimeMs - stats.birthtimeMs) / 1000);
       if (altDiff > 0 && altDiff < 86400) durationSec = altDiff;
     }
+  }
+
+  // Reproducible CLI command
+  const cleanPrompt = (task || '').replace(/"/g, '\\"').replace(/\n/g, ' ').slice(0, 250);
+  let cliCommand = '';
+  if (parsedName.provider === 'opencode') {
+    cliCommand = `OPENCODE_MODEL='${model || 'glm-5.2'}' opencode-subagent "${cleanPrompt}"`;
+  } else if (parsedName.provider === 'antigravity') {
+    cliCommand = `AGY_MODEL='${model || 'default'}' antigravity-subagent "${cleanPrompt}"`;
+  } else if (parsedName.provider === 'claude') {
+    cliCommand = `CLAUDE_MODEL='${model || 'sonnet'}' claude-subagent "${cleanPrompt}"`;
+  } else if (parsedName.provider === 'codex') {
+    cliCommand = `CODEX_MODEL='${model || 'gpt-5.5'}' codex-subagent "${cleanPrompt}"`;
   }
 
   return {
@@ -471,6 +641,12 @@ export function parseLogMetadata(filename, filepath, procDir = '/proc') {
     session,
     task: task ? (task.length > 300 ? task.slice(0, 300) + '...' : task) : 'No task prompt specified',
     fullTask: task || '',
+    markdownSummary: markdownSummary || null,
+    filesModified: filesModified || [],
+    diffs: diffs || null,
+    tokens: tokens || null,
+    cost: cost || 0,
+    cliCommand,
     currentAction,
     fileSize,
     fileSizeHuman: formatBytes(fileSize),

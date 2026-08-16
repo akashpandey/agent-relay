@@ -1,200 +1,333 @@
-// Client application logic
-let activeRuns = [];
-let allRuns = [];
-let danglingProcesses = [];
-let totalRunsCount = 0;
-let currentFilterProvider = 'all';
-let currentFilterStatus = 'all';
-let currentSearchQuery = '';
-let currentPage = 0;
-const pageSize = 50;
-
-let currentStreamingFile = null;
-let currentEventSource = null;
-let fullLogBuffer = '';
-
-// DOM Elements
-const metricActiveCount = document.getElementById('metric-active-count');
-const metricTodayCount = document.getElementById('metric-today-count');
-const metricTotalCount = document.getElementById('metric-total-count');
-const metricDanglingChip = document.getElementById('metric-dangling-chip');
-const metricDanglingCount = document.getElementById('metric-dangling-count');
-const btnKillAllDangling = document.getElementById('btn-kill-all-dangling');
-
-const activeBadge = document.getElementById('active-badge');
-const activeContainer = document.getElementById('active-container');
-const historyTbody = document.getElementById('history-tbody');
-const historyTotalBadge = document.getElementById('history-total-badge');
-const paginationInfo = document.getElementById('pagination-info');
-const btnPrevPage = document.getElementById('btn-prev-page');
-const btnNextPage = document.getElementById('btn-next-page');
-const filterSearch = document.getElementById('filter-search');
-const btnRefresh = document.getElementById('btn-refresh');
-
-// Drawer elements
-const drawerOverlay = document.getElementById('drawer-overlay');
-const logDrawer = document.getElementById('log-drawer');
-const btnCloseDrawer = document.getElementById('btn-close-drawer');
-const drawerFilename = document.getElementById('drawer-filename');
-const drawerProvider = document.getElementById('drawer-provider');
-const drawerStatusPill = document.getElementById('drawer-status-pill');
-const drawerWorkspace = document.getElementById('drawer-workspace');
-const drawerModel = document.getElementById('drawer-model');
-const drawerPid = document.getElementById('drawer-pid');
-const drawerStartTime = document.getElementById('drawer-start-time');
-const drawerDuration = document.getElementById('drawer-duration');
-const drawerBtnKill = document.getElementById('drawer-btn-kill');
-const drawerTaskContent = document.getElementById('drawer-task-content');
-const terminalContent = document.getElementById('terminal-content');
-const logTerminal = document.getElementById('log-terminal');
-const chkAutoscroll = document.getElementById('chk-autoscroll');
-const logSearchInput = document.getElementById('log-search-input');
-const logLinesCount = document.getElementById('log-lines-count');
-const btnCopyPrompt = document.getElementById('btn-copy-prompt');
-const btnCopyLog = document.getElementById('btn-copy-log');
-const btnDownloadLog = document.getElementById('btn-download-log');
-
-// Dangling Modal elements
-const danglingModalOverlay = document.getElementById('dangling-modal-overlay');
-const danglingModal = document.getElementById('dangling-modal');
-const btnCloseDanglingModal = document.getElementById('btn-close-dangling-modal');
-const btnDismissDangling = document.getElementById('btn-dismiss-dangling');
-const danglingListContainer = document.getElementById('dangling-list-container');
-const btnModalKillAll = document.getElementById('btn-modal-kill-all');
-
 /**
- * ANSI Color / Control Sequence to HTML Converter
+ * Subagents Monitor - Client Application
+ * Features: Real-time SSE streaming, Multi-theme support, Markdown & Diff viewer,
+ * Sound & Desktop notifications, Keyboard shortcuts, Workspace filtering, Analytics.
  */
-function ansiToHtml(text) {
-  if (!text) return '';
+
+// --- Application State ---
+const state = {
+  activeRuns: [],
+  historyRuns: [],
+  workspaces: [],
+  analytics: null,
+  danglingProcesses: [],
+  selectedRun: null,
+  selectedRowIndex: -1,
   
-  let html = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  // Filters & Pagination
+  filterProvider: 'all',
+  filterStatus: 'all',
+  filterWorkspace: 'all',
+  filterSearch: '',
+  pageLimit: 30,
+  pageOffset: 0,
+  totalRuns: 0,
 
-  const ansiMap = {
-    '0': '</span>',
-    '1': '<span style="font-weight:bold;">',
-    '30': '<span style="color:#64748b;">',
-    '31': '<span style="color:#f43f5e;">',
-    '32': '<span style="color:#10b981;">',
-    '33': '<span style="color:#f59e0b;">',
-    '34': '<span style="color:#38bdf8;">',
-    '35': '<span style="color:#c084fc;">',
-    '36': '<span style="color:#2dd4bf;">',
-    '37': '<span style="color:#f8fafc;">',
-    '90': '<span style="color:#475569;">',
-    '91': '<span style="color:#fb7185;">',
-    '92': '<span style="color:#34d399;">',
-    '93': '<span style="color:#fbbf24;">',
-    '94': '<span style="color:#60a5fa;">',
-    '95': '<span style="color:#e879f9;">',
-    '96': '<span style="color:#5eead4;">',
-    '97': '<span style="color:#ffffff;">',
-  };
+  // Settings
+  theme: localStorage.getItem('subagent_theme') || 'midnight',
+  density: localStorage.getItem('subagent_density') || 'comfortable',
+  notificationsEnabled: localStorage.getItem('subagent_notif') === 'true',
+  activeDrawerTab: 'terminal',
+  
+  // Terminal
+  activeLogStream: null,
+  rawLogLines: [],
+  filterLogQuery: '',
+  autoscroll: true,
+  wordWrap: true,
+};
 
-  html = html.replace(/\x1B\[([0-9;]+)m/g, (match, codeStr) => {
-    const codes = codeStr.split(';');
-    let tag = '';
-    for (const code of codes) {
-      if (ansiMap[code]) {
-        tag += ansiMap[code];
-      }
+// --- DOM Elements ---
+const el = {
+  // Navigation & Metrics
+  activeCount: document.getElementById('metric-active-count'),
+  danglingChip: document.getElementById('metric-dangling-chip'),
+  danglingCount: document.getElementById('metric-dangling-count'),
+  btnKillAllDangling: document.getElementById('btn-kill-all-dangling'),
+  todayCount: document.getElementById('metric-today-count'),
+  totalCount: document.getElementById('metric-total-count'),
+  themeSelector: document.getElementById('theme-selector'),
+  btnToggleNotif: document.getElementById('btn-toggle-notif'),
+  iconNotifOff: document.getElementById('icon-notif-off'),
+  iconNotifOn: document.getElementById('icon-notif-on'),
+  btnShortcuts: document.getElementById('btn-shortcuts'),
+  btnRefresh: document.getElementById('btn-refresh'),
+  liveIndicator: document.getElementById('live-indicator'),
+
+  // KPI Analytics
+  kpiActiveVal: document.getElementById('kpi-active-val'),
+  kpiActiveSub: document.getElementById('kpi-active-sub'),
+  kpiTokensVal: document.getElementById('kpi-tokens-val'),
+  kpiTokensSub: document.getElementById('kpi-tokens-sub'),
+  kpiDurationVal: document.getElementById('kpi-duration-val'),
+  kpiDurationSub: document.getElementById('kpi-duration-sub'),
+  kpiSuccessVal: document.getElementById('kpi-success-val'),
+  kpiSuccessSub: document.getElementById('kpi-success-sub'),
+
+  // Sections
+  activeBadge: document.getElementById('active-badge'),
+  activeContainer: document.getElementById('active-container'),
+  historyTotalBadge: document.getElementById('history-total-badge'),
+  filterSearch: document.getElementById('filter-search'),
+  providerFilters: document.getElementById('provider-filters'),
+  statusFilters: document.getElementById('status-filters'),
+  workspaceChipsContainer: document.getElementById('workspace-chips-container'),
+  btnDensityComfortable: document.getElementById('btn-density-comfortable'),
+  btnDensityCompact: document.getElementById('btn-density-compact'),
+  historyTable: document.getElementById('history-table'),
+  historyTbody: document.getElementById('history-tbody'),
+  paginationInfo: document.getElementById('pagination-info'),
+  btnPrevPage: document.getElementById('btn-prev-page'),
+  btnNextPage: document.getElementById('btn-next-page'),
+
+  // Drawer & Tabs
+  drawerOverlay: document.getElementById('drawer-overlay'),
+  logDrawer: document.getElementById('log-drawer'),
+  drawerProvider: document.getElementById('drawer-provider'),
+  drawerFilename: document.getElementById('drawer-filename'),
+  drawerStatusPill: document.getElementById('drawer-status-pill'),
+  drawerWorkspace: document.getElementById('drawer-workspace'),
+  drawerModel: document.getElementById('drawer-model'),
+  drawerPid: document.getElementById('drawer-pid'),
+  drawerStartTime: document.getElementById('drawer-start-time'),
+  drawerDuration: document.getElementById('drawer-duration'),
+  drawerBtnKill: document.getElementById('drawer-btn-kill'),
+  btnCopyCli: document.getElementById('btn-copy-cli'),
+  btnCopyPrompt: document.getElementById('btn-copy-prompt'),
+  btnCopyLog: document.getElementById('btn-copy-log'),
+  btnDownloadLog: document.getElementById('btn-download-log'),
+  btnCloseDrawer: document.getElementById('btn-close-drawer'),
+  drawerTaskContent: document.getElementById('drawer-task-content'),
+  drawerTabs: document.querySelectorAll('.drawer-tab'),
+  tabPanes: document.querySelectorAll('.tab-pane'),
+  tabDiffsCount: document.getElementById('tab-diffs-count'),
+
+  // Tab Panes
+  streamStatusBadge: document.getElementById('stream-status-badge'),
+  chkAutoscroll: document.getElementById('chk-autoscroll'),
+  chkWrap: document.getElementById('chk-wrap'),
+  logSearchInput: document.getElementById('log-search-input'),
+  logLinesCount: document.getElementById('log-lines-count'),
+  terminalContainer: document.getElementById('log-terminal'),
+  terminalContent: document.getElementById('terminal-content'),
+  markdownContainer: document.getElementById('markdown-container'),
+  touchedFilesList: document.getElementById('touched-files-list'),
+  diffViewerContent: document.getElementById('diff-viewer-content'),
+  statTokensInput: document.getElementById('stat-tokens-input'),
+  statTokensOutput: document.getElementById('stat-tokens-output'),
+  statTokensReasoning: document.getElementById('stat-tokens-reasoning'),
+  statTokensCache: document.getElementById('stat-tokens-cache'),
+  statTokensTotal: document.getElementById('stat-tokens-total'),
+  statCost: document.getElementById('stat-cost'),
+  statCliCommand: document.getElementById('stat-cli-command'),
+  btnCopyStatCli: document.getElementById('btn-copy-stat-cli'),
+
+  // Modals
+  shortcutsModalOverlay: document.getElementById('shortcuts-modal-overlay'),
+  shortcutsModal: document.getElementById('shortcuts-modal'),
+  btnCloseShortcutsModal: document.getElementById('btn-close-shortcuts-modal'),
+  btnDismissShortcuts: document.getElementById('btn-dismiss-shortcuts'),
+
+  danglingModalOverlay: document.getElementById('dangling-modal-overlay'),
+  danglingModal: document.getElementById('dangling-modal'),
+  btnCloseDanglingModal: document.getElementById('btn-close-dangling-modal'),
+  btnDismissDangling: document.getElementById('btn-dismiss-dangling'),
+  btnModalKillAll: document.getElementById('btn-modal-kill-all'),
+  danglingListContainer: document.getElementById('dangling-list-container'),
+};
+
+// --- Web Audio API Synth Chimes ---
+let audioCtx = null;
+function playChime(type = 'success') {
+  if (!state.notificationsEnabled) return;
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    const now = audioCtx.currentTime;
+    if (type === 'success') {
+      osc.frequency.setValueAtTime(587.33, now); // D5
+      osc.frequency.setValueAtTime(880, now + 0.1); // A5
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+      osc.start(now);
+      osc.stop(now + 0.35);
+    } else {
+      osc.frequency.setValueAtTime(329.63, now); // E4
+      osc.frequency.setValueAtTime(220, now + 0.15); // A3
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+      osc.start(now);
+      osc.stop(now + 0.4);
     }
-    return tag;
-  });
-
-  html = html.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
-
-  return html;
+  } catch {}
 }
 
-/**
- * Format timestamp strictly in IST (Asia/Kolkata)
- */
-function formatTimeIST(isoStr) {
-  if (!isoStr) return 'N/A';
-  try {
-    const d = new Date(isoStr);
-    return d.toLocaleString('en-IN', {
-      timeZone: 'Asia/Kolkata',
-      hour12: true,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      day: '2-digit',
-      month: 'short',
-    }) + ' IST';
-  } catch {
-    return isoStr;
+function sendDesktopNotification(title, body) {
+  if (!state.notificationsEnabled) return;
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification(title, { body, icon: '/favicon.svg' });
   }
 }
 
-/**
- * Fetch Stats & Initial Data
- */
+// --- Theme & Density Management ---
+function applyTheme(theme) {
+  state.theme = theme;
+  document.documentElement.setAttribute('data-theme', theme);
+  if (el.themeSelector) el.themeSelector.value = theme;
+  localStorage.setItem('subagent_theme', theme);
+}
+
+function applyDensity(density) {
+  state.density = density;
+  localStorage.setItem('subagent_density', density);
+  if (density === 'compact') {
+    el.historyTable.classList.add('compact-mode');
+    el.btnDensityCompact.classList.add('active');
+    el.btnDensityComfortable.classList.remove('active');
+  } else {
+    el.historyTable.classList.remove('compact-mode');
+    el.btnDensityComfortable.classList.add('active');
+    el.btnDensityCompact.classList.remove('active');
+  }
+}
+
+// --- API Calls ---
 async function fetchStats() {
   try {
     const res = await fetch('/api/stats');
     if (!res.ok) return;
     const data = await res.json();
-    
-    metricActiveCount.textContent = data.activeCount;
-    metricTodayCount.textContent = data.todayCount;
-    metricTotalCount.textContent = data.totalCount;
-    activeBadge.textContent = `${data.activeCount} Running`;
-    historyTotalBadge.textContent = `${data.totalCount} Total`;
 
-    danglingProcesses = data.danglingProcesses || [];
+    el.activeCount.textContent = data.activeCount || 0;
+    el.todayCount.textContent = data.todayCount || 0;
+    el.totalCount.textContent = data.totalCount || 0;
+    el.activeBadge.textContent = `${data.activeCount || 0} Running`;
+
     if (data.danglingCount > 0) {
-      metricDanglingChip.style.display = 'inline-flex';
-      metricDanglingChip.className = 'metric-chip dangling-chip';
-      metricDanglingCount.textContent = data.danglingCount;
+      el.danglingChip.style.display = 'flex';
+      el.danglingCount.textContent = data.danglingCount;
+      state.danglingProcesses = data.danglingProcesses || [];
     } else {
-      metricDanglingChip.style.display = 'none';
-      closeDanglingModal();
+      el.danglingChip.style.display = 'none';
+      state.danglingProcesses = [];
     }
 
-    renderActiveSubagents(data.activeRuns || []);
-    if (danglingModal.classList.contains('open')) {
-      renderDanglingModal();
-    }
+    renderActiveCards(data.activeRuns || []);
   } catch (err) {
     console.error('Failed to fetch stats:', err);
   }
 }
 
-/**
- * Fetch Paginated Runs History
- */
+async function fetchAnalytics() {
+  try {
+    const res = await fetch('/api/analytics');
+    if (!res.ok) return;
+    const data = await res.json();
+    state.analytics = data;
+
+    el.kpiActiveVal.textContent = state.activeRuns.length;
+    el.kpiActiveSub = `${state.activeRuns.length} tasks executing`;
+    el.kpiTokensVal.textContent = formatNumber(data.totalTokens || 0);
+    el.kpiDurationVal.textContent = `${data.avgDurationSec || 0}s`;
+    el.kpiSuccessVal.textContent = `${data.successRate || 100}%`;
+  } catch (err) {
+    console.error('Failed to fetch analytics:', err);
+  }
+}
+
+async function fetchWorkspaces() {
+  try {
+    const res = await fetch('/api/workspaces');
+    if (!res.ok) return;
+    const data = await res.json();
+    state.workspaces = data.workspaces || [];
+    renderWorkspaceChips();
+  } catch (err) {
+    console.error('Failed to fetch workspaces:', err);
+  }
+}
+
 async function fetchRuns() {
   try {
-    const offset = currentPage * pageSize;
-    let url = `/api/runs?limit=${pageSize}&offset=${offset}`;
-    if (currentFilterProvider !== 'all') url += `&provider=${encodeURIComponent(currentFilterProvider)}`;
-    if (currentFilterStatus !== 'all') url += `&status=${encodeURIComponent(currentFilterStatus)}`;
-    if (currentSearchQuery) url += `&q=${encodeURIComponent(currentSearchQuery)}`;
+    const params = new URLSearchParams({
+      provider: state.filterProvider,
+      status: state.filterStatus,
+      workspace: state.filterWorkspace,
+      q: state.filterSearch,
+      limit: state.pageLimit,
+      offset: state.pageOffset,
+    });
 
-    const res = await fetch(url);
+    const res = await fetch(`/api/runs?${params.toString()}`);
     if (!res.ok) return;
     const data = await res.json();
 
-    totalRunsCount = data.total;
-    renderHistoryTable(data.runs);
+    state.historyRuns = data.runs || [];
+    state.totalRuns = data.total || 0;
+
+    renderHistoryTable();
     updatePagination();
   } catch (err) {
     console.error('Failed to fetch runs:', err);
   }
 }
 
-/**
- * Render Active Subagents Grid
- */
-function renderActiveSubagents(runs) {
-  activeRuns = runs;
-  if (!runs || runs.length === 0) {
-    activeContainer.innerHTML = `
+// --- Rendering Functions ---
+
+function renderWorkspaceChips() {
+  el.workspaceChipsContainer.innerHTML = '';
+  
+  const allBtn = document.createElement('button');
+  allBtn.className = `workspace-chip ${state.filterWorkspace === 'all' ? 'active' : ''}`;
+  allBtn.textContent = 'All Workspaces';
+  allBtn.addEventListener('click', () => {
+    state.filterWorkspace = 'all';
+    state.pageOffset = 0;
+    renderWorkspaceChips();
+    fetchRuns();
+  });
+  el.workspaceChipsContainer.appendChild(allBtn);
+
+  for (const ws of state.workspaces) {
+    if (ws.path === 'Unknown') continue;
+    const chip = document.createElement('button');
+    chip.className = `workspace-chip ${state.filterWorkspace === ws.path ? 'active' : ''}`;
+    
+    let activePulse = ws.activeRuns > 0 ? '<span class="pulse-dot" style="margin-right: 4px;"></span>' : '';
+    chip.innerHTML = `${activePulse}📁 ${escapeHtml(ws.name)} <span class="chip-count">${ws.totalRuns}</span>`;
+    
+    chip.addEventListener('click', () => {
+      state.filterWorkspace = ws.path;
+      state.pageOffset = 0;
+      renderWorkspaceChips();
+      fetchRuns();
+    });
+    el.workspaceChipsContainer.appendChild(chip);
+  }
+}
+
+function renderActiveCards(activeRuns) {
+  const prevActiveCount = state.activeRuns.length;
+  state.activeRuns = activeRuns;
+
+  if (activeRuns.length > prevActiveCount && prevActiveCount === 0) {
+    // New run started
+  } else if (activeRuns.length < prevActiveCount) {
+    // A run completed
+    playChime('success');
+    sendDesktopNotification('Subagent Completed', 'A local LLM subagent run finished execution.');
+  }
+
+  el.activeContainer.innerHTML = '';
+
+  if (activeRuns.length === 0) {
+    el.activeContainer.innerHTML = `
       <div class="empty-active-state">
         <div class="radar-scan"></div>
         <div class="empty-active-text">
@@ -206,350 +339,419 @@ function renderActiveSubagents(runs) {
     return;
   }
 
-  activeContainer.innerHTML = runs.map(run => `
-    <div class="active-card" data-filename="${run.filename}">
+  for (const run of activeRuns) {
+    const card = document.createElement('div');
+    card.className = 'active-card';
+
+    const providerClass = `provider-${run.provider.toLowerCase()}`;
+    const workspaceName = run.workspaceName || run.workspace || 'workspace';
+
+    card.innerHTML = `
       <div class="active-card-top">
-        <span class="provider-tag provider-${run.provider}">${run.provider}</span>
-        <div class="time-ticker">
-          <span class="pulse-dot"></span>
-          <span class="elapsed-counter" data-start="${run.startTime}">${run.durationHuman}</span>
+        <div class="card-provider-group">
+          <span class="provider-pill ${providerClass}">${escapeHtml(run.provider)}</span>
+          <span class="model-badge">${escapeHtml(run.model)}</span>
         </div>
+        <span class="active-clock" data-start="${run.startTime}">⏱️ ${run.durationHuman}</span>
       </div>
 
-      <div class="active-card-title">
-        <span class="ws-name" title="${run.workspace}">📁 ${run.workspaceName}</span>
-        <span class="meta-sep">•</span>
-        <span class="model-name">🤖 ${run.model}</span>
+      <div class="active-workspace">
+        <span>📁</span>
+        <strong>${escapeHtml(workspaceName)}</strong>
+        <span style="color: var(--text-dim); font-size: 0.75rem;">(PID: ${run.pid})</span>
       </div>
 
-      <div class="active-task-preview" title="${escapeHtml(run.fullTask || run.task)}">
-        ${escapeHtml(run.task)}
+      <div class="active-prompt-preview">
+        ${escapeHtml(run.task || 'Executing subagent instructions...')}
       </div>
 
-      <div class="active-action-bar">
-        <div class="spinner"></div>
-        <span class="action-text">${escapeHtml(run.currentAction || 'Running...')}</span>
+      <div class="active-action-row">
+        <span>⚡</span>
+        <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(run.currentAction || 'Running...')}</span>
       </div>
 
-      <div class="active-card-footer">
-        <span class="pid-pill">PID: ${run.pid}</span>
-        <div style="display: flex; gap: 0.5rem;">
-          <button class="btn btn-sm btn-danger" onclick="terminateSubagent(${run.pid}, event)">Stop</button>
-          <button class="btn btn-sm btn-primary" onclick="openLogDrawer('${run.filename}')">Live Stream</button>
-        </div>
+      <div class="active-card-actions">
+        <button class="btn btn-sm btn-secondary btn-card-cli" title="Copy CLI Command">Copy CLI</button>
+        <button class="btn btn-sm btn-danger btn-card-kill">Stop</button>
+        <button class="btn btn-sm btn-secondary btn-card-view">Live Log</button>
       </div>
-    </div>
-  `).join('');
+    `;
+
+    card.querySelector('.btn-card-view').addEventListener('click', () => openLogDrawer(run.filename));
+    card.querySelector('.btn-card-cli').addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyToClipboard(run.cliCommand || `opencode-subagent "${run.task || ''}"`, 'CLI command copied!');
+    });
+    card.querySelector('.btn-card-kill').addEventListener('click', (e) => {
+      e.stopPropagation();
+      killProcess(run.pid, run.filename);
+    });
+
+    el.activeContainer.appendChild(card);
+  }
 }
 
-/**
- * Render Runs History Table
- */
-function renderHistoryTable(runs) {
-  if (!runs || runs.length === 0) {
-    historyTbody.innerHTML = `
+function renderHistoryTable() {
+  el.historyTbody.innerHTML = '';
+  el.historyTotalBadge.textContent = `${state.totalRuns} Total`;
+
+  if (state.historyRuns.length === 0) {
+    el.historyTbody.innerHTML = `
       <tr>
-        <td colspan="7" class="table-loading">No matching subagent logs found.</td>
+        <td colspan="7" class="table-empty" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
+          No matching subagent runs found.
+        </td>
       </tr>
     `;
     return;
   }
 
-  historyTbody.innerHTML = runs.map(run => {
-    let statusClass = 'completed';
-    if (run.isAlive) statusClass = 'running';
-    else if (run.status === 'failed') statusClass = 'failed';
+  state.historyRuns.forEach((run, idx) => {
+    const tr = document.createElement('tr');
+    if (idx === state.selectedRowIndex) tr.classList.add('selected-row');
 
-    const displayTask = run.task && run.task !== 'No task prompt specified' ? run.task : (run.workspaceName ? `Task in ${run.workspaceName}` : 'Subagent execution');
+    const providerClass = `provider-${run.provider.toLowerCase()}`;
+    const statusClass = `status-${run.status.toLowerCase()}`;
+    const workspaceName = run.workspaceName || run.workspace || 'workspace';
 
-    return `
-      <tr onclick="openLogDrawer('${run.filename}')" style="cursor: pointer;">
-        <td>
-          <span class="status-dot ${statusClass}"></span>
-          <span style="color: var(--text-dim); font-size: 0.75rem;">${formatTimeIST(run.startTime)}</span>
-        </td>
-        <td>
-          <span class="provider-tag provider-${run.provider}">${run.provider}</span>
-          <div style="font-size: 0.72rem; color: var(--text-dim); margin-top: 2px;">${escapeHtml(run.model)}</div>
-        </td>
-        <td>
-          <div class="table-ws-text" title="${run.workspace}">${escapeHtml(run.workspaceName)}</div>
-        </td>
-        <td>
-          <div class="table-task-text" title="${escapeHtml(run.fullTask || displayTask)}">${escapeHtml(displayTask)}</div>
-        </td>
-        <td style="font-family: var(--font-mono); font-size: 0.75rem;">${run.durationHuman}</td>
-        <td style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-dim);">${run.fileSizeHuman}</td>
-        <td style="text-align: right;">
-          <div style="display: inline-flex; gap: 0.35rem;">
-            ${run.isAlive ? `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); terminateSubagent(${run.pid}, event)">Stop</button>` : ''}
-            <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); openLogDrawer('${run.filename}')">View</button>
-          </div>
-        </td>
-      </tr>
+    const tokenDisplay = run.tokens && run.tokens.total ? `${formatNumber(run.tokens.total)} tok` : run.fileSizeHuman;
+
+    tr.innerHTML = `
+      <td>
+        <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+          <span style="font-family: var(--font-mono); font-size: 0.75rem;">${formatISTTime(run.startTimeIST || run.startTime)}</span>
+          <div><span class="status-pill ${statusClass}">${escapeHtml(run.status)}</span></div>
+        </div>
+      </td>
+      <td>
+        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+          <span class="provider-pill ${providerClass}" style="align-self: flex-start;">${escapeHtml(run.provider)}</span>
+          <span class="model-badge" style="font-size: 0.7rem;">${escapeHtml(run.model)}</span>
+        </div>
+      </td>
+      <td>
+        <div style="display: flex; flex-direction: column;">
+          <strong style="color: var(--text-main); font-size: 0.8rem;">📁 ${escapeHtml(workspaceName)}</strong>
+          <span style="color: var(--text-dim); font-size: 0.7rem;">PID: ${run.pid}</span>
+        </div>
+      </td>
+      <td>
+        <div class="task-preview-cell" title="${escapeHtml(run.fullTask || run.task)}">
+          ${escapeHtml(run.task || 'No task specified')}
+        </div>
+      </td>
+      <td>
+        <span style="font-family: var(--font-mono); font-weight: 600;">${run.durationHuman}</span>
+      </td>
+      <td>
+        <span style="font-family: var(--font-mono); color: var(--text-dim); font-size: 0.75rem;">${tokenDisplay}</span>
+      </td>
+      <td style="text-align: right;">
+        <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.35rem;">
+          <button class="btn btn-sm btn-secondary btn-row-cli" title="Copy CLI Command">CLI</button>
+          <button class="btn btn-sm btn-secondary btn-row-inspect">Inspect</button>
+        </div>
+      </td>
     `;
-  }).join('');
+
+    tr.addEventListener('click', () => {
+      state.selectedRowIndex = idx;
+      renderHistoryTable();
+      openLogDrawer(run.filename);
+    });
+
+    tr.querySelector('.btn-row-cli').addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyToClipboard(run.cliCommand || `opencode-subagent "${run.task || ''}"`, 'CLI command copied!');
+    });
+
+    tr.querySelector('.btn-row-inspect').addEventListener('click', (e) => {
+      e.stopPropagation();
+      openLogDrawer(run.filename);
+    });
+
+    el.historyTbody.appendChild(tr);
+  });
 }
 
 function updatePagination() {
-  const start = totalRunsCount === 0 ? 0 : currentPage * pageSize + 1;
-  const end = Math.min((currentPage + 1) * pageSize, totalRunsCount);
-  paginationInfo.textContent = `Showing ${start} - ${end} of ${totalRunsCount} runs`;
-  btnPrevPage.disabled = currentPage === 0;
-  btnNextPage.disabled = (currentPage + 1) * pageSize >= totalRunsCount;
+  const start = state.totalRuns === 0 ? 0 : state.pageOffset + 1;
+  const end = Math.min(state.pageOffset + state.pageLimit, state.totalRuns);
+  el.paginationInfo.textContent = `Showing ${start}-${end} of ${state.totalRuns} runs`;
+
+  el.btnPrevPage.disabled = state.pageOffset <= 0;
+  el.btnNextPage.disabled = state.pageOffset + state.pageLimit >= state.totalRuns;
 }
 
-/**
- * Open Slide-over Log Viewer Drawer
- */
+// --- Log Drawer & Multi-Tabs ---
+
 async function openLogDrawer(filename) {
-  currentStreamingFile = filename;
-  drawerOverlay.classList.add('open');
-  logDrawer.classList.add('open');
+  state.selectedRun = filename;
+  state.rawLogLines = [];
+  el.terminalContent.textContent = 'Loading log stream...';
+  el.markdownContainer.innerHTML = '<div class="markdown-empty">Loading markdown summary...</div>';
+  el.diffViewerContent.innerHTML = '<div class="diff-empty">Loading diffs...</div>';
+  el.touchedFilesList.innerHTML = '';
+
+  // Open Drawer
+  el.drawerOverlay.classList.add('open');
+  el.logDrawer.classList.add('open');
 
   try {
     const res = await fetch(`/api/runs/${encodeURIComponent(filename)}`);
-    if (res.ok) {
-      const meta = await res.json();
-      drawerFilename.textContent = meta.filename;
-      drawerProvider.textContent = meta.provider;
-      drawerProvider.className = `provider-tag provider-${meta.provider}`;
-      drawerStatusPill.textContent = meta.isAlive ? 'Running' : (meta.status === 'failed' ? 'Failed' : 'Completed');
-      drawerStatusPill.className = `status-pill ${meta.isAlive ? 'running' : (meta.status === 'failed' ? 'failed' : 'completed')}`;
-      drawerWorkspace.textContent = `📁 ${meta.workspace}`;
-      drawerModel.textContent = `🤖 ${meta.model}`;
-      drawerPid.textContent = `PID: ${meta.pid}`;
-      drawerStartTime.textContent = `🕒 ${formatTimeIST(meta.startTime)}`;
-      drawerDuration.textContent = `⏱️ ${meta.durationHuman}`;
-      drawerTaskContent.textContent = meta.fullTask || meta.task || 'No task prompt captured.';
-      
-      btnDownloadLog.href = `/api/logs/${encodeURIComponent(filename)}`;
-      btnDownloadLog.setAttribute('download', filename);
+    if (!res.ok) return;
+    const meta = await res.json();
 
-      if (meta.isAlive) {
-        drawerBtnKill.style.display = 'inline-flex';
-        drawerBtnKill.onclick = () => terminateSubagent(meta.pid);
-      } else {
-        drawerBtnKill.style.display = 'none';
-      }
+    // Populate Header Meta
+    el.drawerProvider.textContent = meta.provider;
+    el.drawerProvider.className = `provider-tag provider-${meta.provider.toLowerCase()}`;
+    el.drawerFilename.textContent = meta.filename;
+    el.drawerStatusPill.textContent = meta.status;
+    el.drawerStatusPill.className = `status-pill status-${meta.status.toLowerCase()}`;
+    el.drawerWorkspace.textContent = `📁 ${meta.workspaceName || meta.workspace}`;
+    el.drawerModel.textContent = `🤖 ${meta.model}`;
+    el.drawerPid.textContent = `PID: ${meta.pid}`;
+    el.drawerStartTime.textContent = `🕒 ${formatISTTime(meta.startTimeIST || meta.startTime)}`;
+    el.drawerDuration.textContent = `⏱️ ${meta.durationHuman}`;
+    el.drawerTaskContent.textContent = meta.fullTask || meta.task || 'No task prompt recorded';
+    el.btnDownloadLog.href = `/api/logs/${encodeURIComponent(meta.filename)}`;
 
-      btnCopyPrompt.onclick = () => {
-        navigator.clipboard.writeText(meta.fullTask || meta.task || '');
-        btnCopyPrompt.textContent = 'Copied!';
-        setTimeout(() => { btnCopyPrompt.textContent = 'Copy Prompt'; }, 1500);
-      };
+    // Kill button
+    if (meta.isAlive) {
+      el.drawerBtnKill.style.display = 'inline-flex';
+      el.drawerBtnKill.onclick = () => killProcess(meta.pid, meta.filename);
+    } else {
+      el.drawerBtnKill.style.display = 'none';
     }
-  } catch (err) {
-    console.error(err);
-  }
 
-  startStreaming(filename);
+    // CLI Copy action
+    el.btnCopyCli.onclick = () => copyToClipboard(meta.cliCommand, 'CLI command copied!');
+    el.btnCopyPrompt.onclick = () => copyToClipboard(meta.fullTask || meta.task, 'Task prompt copied!');
+    el.btnCopyStatCli.onclick = () => copyToClipboard(meta.cliCommand, 'CLI command copied!');
+    el.statCliCommand.textContent = meta.cliCommand || 'No command available';
+
+    // Populate Tab 2: Markdown Output
+    if (meta.markdownSummary) {
+      el.markdownContainer.innerHTML = renderMarkdownToHtml(meta.markdownSummary);
+    } else {
+      el.markdownContainer.innerHTML = '<div class="markdown-empty">No structured markdown summary recorded for this run. Check the Live Terminal tab for full raw output.</div>';
+    }
+
+    // Populate Tab 3: Touched Files & Diffs
+    if (meta.filesModified && meta.filesModified.length > 0) {
+      el.tabDiffsCount.style.display = 'inline-block';
+      el.tabDiffsCount.textContent = meta.filesModified.length;
+      el.touchedFilesList.innerHTML = meta.filesModified.map(f => `<span class="touched-file-chip">${escapeHtml(f)}</span>`).join('');
+    } else {
+      el.tabDiffsCount.style.display = 'none';
+      el.touchedFilesList.innerHTML = '<span style="color: var(--text-dim); font-size: 0.8rem;">No explicit file changes captured.</span>';
+    }
+
+    if (meta.diffs) {
+      el.diffViewerContent.innerHTML = renderDiffToHtml(meta.diffs);
+    } else {
+      el.diffViewerContent.innerHTML = '<div class="diff-empty">No git diff captured for this run.</div>';
+    }
+
+    // Populate Tab 4: Metrics
+    if (meta.tokens) {
+      el.statTokensInput.textContent = formatNumber(meta.tokens.input || 0);
+      el.statTokensOutput.textContent = formatNumber(meta.tokens.output || 0);
+      el.statTokensReasoning.textContent = formatNumber(meta.tokens.reasoning || 0);
+      el.statTokensCache.textContent = formatNumber(meta.tokens.cacheRead || 0);
+      el.statTokensTotal.textContent = formatNumber(meta.tokens.total || 0);
+    } else {
+      el.statTokensInput.textContent = '-';
+      el.statTokensOutput.textContent = '-';
+      el.statTokensReasoning.textContent = '-';
+      el.statTokensCache.textContent = '-';
+      el.statTokensTotal.textContent = '-';
+    }
+    el.statCost.textContent = meta.cost ? `$${meta.cost.toFixed(4)}` : '$0.00';
+
+    // Start Log Streaming
+    startLogStream(meta.filename);
+  } catch (err) {
+    console.error('Error opening log drawer:', err);
+  }
 }
 
 function closeLogDrawer() {
-  drawerOverlay.classList.remove('open');
-  logDrawer.classList.remove('open');
-  if (currentEventSource) {
-    currentEventSource.close();
-    currentEventSource = null;
+  el.drawerOverlay.classList.remove('open');
+  el.logDrawer.classList.remove('open');
+  if (state.activeLogStream) {
+    state.activeLogStream.close();
+    state.activeLogStream = null;
   }
-  currentStreamingFile = null;
 }
 
-/**
- * Dangling Processes Modal Handlers
- */
+function switchDrawerTab(tabId) {
+  state.activeDrawerTab = tabId;
+  el.drawerTabs.forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
+  el.tabPanes.forEach(p => p.classList.toggle('active', p.id === `pane-${tabId}`));
+}
+
+function startLogStream(filename) {
+  if (state.activeLogStream) {
+    state.activeLogStream.close();
+  }
+
+  state.rawLogLines = [];
+  el.terminalContent.innerHTML = '';
+  el.streamStatusBadge.innerHTML = '<span class="stream-dot"></span> Live Streaming';
+  el.streamStatusBadge.style.color = 'var(--accent)';
+
+  const sse = new EventSource(`/api/logs/${encodeURIComponent(filename)}/stream`);
+  state.activeLogStream = sse;
+
+  sse.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.type === 'init' || data.type === 'data') {
+        const lines = data.chunk.split('\n');
+        for (const line of lines) {
+          state.rawLogLines.push(line);
+        }
+        renderTerminalLines();
+      } else if (data.type === 'eof') {
+        el.streamStatusBadge.innerHTML = '<span>●</span> Stream Finished';
+        el.streamStatusBadge.style.color = 'var(--text-dim)';
+      }
+    } catch {}
+  };
+
+  sse.onerror = () => {
+    el.streamStatusBadge.innerHTML = '<span>●</span> Stream Disconnected';
+    el.streamStatusBadge.style.color = 'var(--danger)';
+  };
+}
+
+function renderTerminalLines() {
+  const query = state.filterLogQuery.toLowerCase();
+  let filtered = state.rawLogLines;
+  if (query) {
+    filtered = filtered.filter(l => l.toLowerCase().includes(query));
+  }
+
+  el.logLinesCount.textContent = `${filtered.length} lines`;
+  const rendered = filtered.map(l => ansiToHtml(escapeHtml(l))).join('\n');
+  el.terminalContent.innerHTML = rendered || '<span style="color: var(--text-dim);">No output lines recorded.</span>';
+
+  if (state.autoscroll) {
+    el.terminalContainer.scrollTop = el.terminalContainer.scrollHeight;
+  }
+}
+
+// --- Process Management ---
+
+async function killProcess(pid, filename) {
+  if (!confirm(`Are you sure you want to terminate subagent process PID ${pid}?`)) return;
+  try {
+    const res = await fetch(`/api/runs/${encodeURIComponent(filename)}/kill`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      alert(`Process tree for PID ${pid} terminated.`);
+      fetchStats();
+      fetchRuns();
+      if (state.selectedRun === filename) openLogDrawer(filename);
+    } else {
+      alert(`Could not terminate process: ${data.error || 'Unknown error'}`);
+    }
+  } catch (err) {
+    alert(`Kill request failed: ${err.message}`);
+  }
+}
+
+async function killAllDangling() {
+  if (!confirm(`Terminate all ${state.danglingProcesses.length} dangling subagent processes on the system?`)) return;
+  try {
+    const res = await fetch('/api/dangling/kill-all', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      alert(`Terminated ${data.terminatedCount} dangling subagent processes.`);
+      closeDanglingModal();
+      fetchStats();
+    }
+  } catch (err) {
+    alert(`Failed to terminate dangling processes: ${err.message}`);
+  }
+}
+
 function openDanglingModal() {
-  renderDanglingModal();
-  danglingModalOverlay.classList.add('open');
-  danglingModal.classList.add('open');
+  el.danglingListContainer.innerHTML = '';
+  if (state.danglingProcesses.length === 0) {
+    el.danglingListContainer.innerHTML = '<div style="color: var(--text-dim);">No dangling subagent processes detected.</div>';
+  } else {
+    for (const proc of state.danglingProcesses) {
+      const item = document.createElement('div');
+      item.className = 'dangling-item';
+      item.innerHTML = `
+        <div style="display: flex; flex-direction: column;">
+          <span class="dangling-pid">PID: ${proc.pid}</span>
+          <span class="dangling-cmd">${escapeHtml(proc.cmd || '')}</span>
+        </div>
+        <button class="btn btn-sm btn-danger btn-kill-single">Kill</button>
+      `;
+      item.querySelector('.btn-kill-single').addEventListener('click', async () => {
+        await fetch(`/api/dangling/${proc.pid}/kill`, { method: 'POST' });
+        fetchStats();
+        openDanglingModal();
+      });
+      el.danglingListContainer.appendChild(item);
+    }
+  }
+
+  el.danglingModalOverlay.classList.add('open');
+  el.danglingModal.classList.add('open');
 }
 
 function closeDanglingModal() {
-  danglingModalOverlay.classList.remove('open');
-  danglingModal.classList.remove('open');
+  el.danglingModalOverlay.classList.remove('open');
+  el.danglingModal.classList.remove('open');
 }
 
-function renderDanglingModal() {
-  if (!danglingProcesses || danglingProcesses.length === 0) {
-    danglingListContainer.innerHTML = `<div style="text-align:center; color: var(--text-dim); padding: 1rem;">No dangling processes found.</div>`;
-    return;
-  }
-
-  danglingListContainer.innerHTML = danglingProcesses.map(p => `
-    <div class="dangling-item">
-      <div class="dangling-item-info">
-        <span class="dangling-item-pid">PID ${p.pid}</span>
-        <span class="dangling-item-cmd" title="${escapeHtml(p.cmd)}">${escapeHtml(p.cmd)}</span>
-      </div>
-      <button class="btn btn-sm btn-danger" onclick="terminateSubagent(${p.pid})">Kill</button>
-    </div>
-  `).join('');
+function openShortcutsModal() {
+  el.shortcutsModalOverlay.classList.add('open');
+  el.shortcutsModal.classList.add('open');
 }
 
-metricDanglingChip.addEventListener('click', (e) => {
-  if (e.target.id !== 'btn-kill-all-dangling') {
-    openDanglingModal();
-  }
-});
+function closeShortcutsModal() {
+  el.shortcutsModalOverlay.classList.remove('open');
+  el.shortcutsModal.classList.remove('open');
+}
 
-btnCloseDanglingModal.addEventListener('click', closeDanglingModal);
-btnDismissDangling.addEventListener('click', closeDanglingModal);
-danglingModalOverlay.addEventListener('click', closeDanglingModal);
+// --- Formatters & Parsers ---
 
-btnModalKillAll.addEventListener('click', async () => {
-  if (!confirm('Are you sure you want to terminate all dangling subagent processes?')) return;
+function formatISTTime(isoOrStr) {
+  if (!isoOrStr) return '-';
+  if (isoOrStr.includes(' ')) return isoOrStr;
   try {
-    const res = await fetch('/api/kill-dangling', { method: 'POST' });
-    const data = await res.json();
-    if (res.ok) {
-      alert(`Successfully terminated ${data.killedCount} dangling process(es).`);
-      fetchStats();
-      fetchRuns();
-      closeDanglingModal();
-    }
-  } catch (err) {
-    alert(`Error: ${err.message}`);
-  }
-});
-
-/**
- * Stream Log Content via SSE
- */
-function startStreaming(filename) {
-  if (currentEventSource) {
-    currentEventSource.close();
-  }
-
-  terminalContent.innerHTML = 'Connecting to log stream...';
-  fullLogBuffer = '';
-
-  currentEventSource = new EventSource(`/api/logs/${encodeURIComponent(filename)}/stream`);
-
-  currentEventSource.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      if (data.chunk) {
-        fullLogBuffer += data.chunk;
-        renderTerminal();
-      }
-    } catch (e) {
-      console.error('Error parsing SSE data:', e);
-    }
-  };
-}
-
-function renderTerminal() {
-  const filter = logSearchInput.value.toLowerCase();
-  let textToRender = fullLogBuffer;
-
-  if (filter) {
-    const lines = fullLogBuffer.split('\n');
-    const filteredLines = lines.filter(l => l.toLowerCase().includes(filter));
-    textToRender = filteredLines.join('\n');
-    logLinesCount.textContent = `${filteredLines.length} / ${lines.length} lines`;
-  } else {
-    const lineCount = (fullLogBuffer.match(/\n/g) || []).length + 1;
-    logLinesCount.textContent = `${lineCount} lines`;
-  }
-
-  terminalContent.innerHTML = ansiToHtml(textToRender);
-
-  if (chkAutoscroll.checked) {
-    logTerminal.scrollTop = logTerminal.scrollHeight;
+    const d = new Date(isoOrStr);
+    if (isNaN(d.getTime())) return isoOrStr;
+    return d.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
+    });
+  } catch {
+    return isoOrStr;
   }
 }
 
-btnCopyLog.onclick = () => {
-  navigator.clipboard.writeText(fullLogBuffer);
-  btnCopyLog.textContent = 'Copied!';
-  setTimeout(() => { btnCopyLog.textContent = 'Copy Log'; }, 1500);
-};
-
-logSearchInput.addEventListener('input', renderTerminal);
-
-/**
- * Terminate Subagent / Process
- */
-window.terminateSubagent = async function(pid, e) {
-  if (e) e.stopPropagation();
-  if (!confirm(`Are you sure you want to terminate subagent process tree (PID ${pid})?`)) return;
-
-  try {
-    const res = await fetch(`/api/runs/${pid}/kill`, { method: 'POST' });
-    const data = await res.json();
-    if (res.ok) {
-      fetchStats();
-      fetchRuns();
-      if (currentStreamingFile) {
-        openLogDrawer(currentStreamingFile);
-      }
-    } else {
-      alert(`Error: ${data.error}`);
-    }
-  } catch (err) {
-    alert(`Failed to kill process: ${err.message}`);
-  }
-};
-
-/**
- * Kill all dangling subagent processes from header button
- */
-btnKillAllDangling.addEventListener('click', async (e) => {
-  e.stopPropagation();
-  if (!confirm('Are you sure you want to terminate all dangling subagent processes?')) return;
-  try {
-    const res = await fetch('/api/kill-dangling', { method: 'POST' });
-    const data = await res.json();
-    if (res.ok) {
-      alert(`Successfully terminated ${data.killedCount} dangling process(es).`);
-      fetchStats();
-      fetchRuns();
-    }
-  } catch (err) {
-    alert(`Error: ${err.message}`);
-  }
-});
-
-window.openLogDrawer = openLogDrawer;
-
-/**
- * Connect to Global SSE for Real-Time Updates
- */
-function connectGlobalEvents() {
-  const evtSource = new EventSource('/api/events');
-  const liveIndicator = document.getElementById('live-indicator');
-
-  evtSource.onopen = () => {
-    liveIndicator.style.opacity = '1';
-  };
-
-  evtSource.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      if (data.type === 'stats_update') {
-        metricActiveCount.textContent = data.activeCount;
-        metricTodayCount.textContent = data.todayCount;
-        metricTotalCount.textContent = data.totalCount;
-        activeBadge.textContent = `${data.activeCount} Running`;
-        historyTotalBadge.textContent = `${data.totalCount} Total`;
-        renderActiveSubagents(data.activeRuns || []);
-        fetchStats();
-      }
-    } catch (e) {}
-  };
-
-  evtSource.onerror = () => {
-    liveIndicator.style.opacity = '0.5';
-    evtSource.close();
-    setTimeout(connectGlobalEvents, 3000);
-  };
+function formatNumber(num) {
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
+  return String(num);
 }
 
-// Helper escape HTML
 function escapeHtml(str) {
   if (!str) return '';
-  return str
+  return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -557,70 +759,339 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-// Event Listeners
-drawerOverlay.addEventListener('click', closeLogDrawer);
-btnCloseDrawer.addEventListener('click', closeLogDrawer);
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    if (danglingModal.classList.contains('open')) closeDanglingModal();
-    if (logDrawer.classList.contains('open')) closeLogDrawer();
-  }
-});
+function ansiToHtml(str) {
+  return str
+    .replace(/\x1B\[0m/g, '</span>')
+    .replace(/\x1B\[1m/g, '<span style="font-weight: bold;">')
+    .replace(/\x1B\[31m/g, '<span style="color: #f87171;">')
+    .replace(/\x1B\[32m/g, '<span style="color: #4ade80;">')
+    .replace(/\x1B\[33m/g, '<span style="color: #fbbf24;">')
+    .replace(/\x1B\[34m/g, '<span style="color: #60a5fa;">')
+    .replace(/\x1B\[35m/g, '<span style="color: #c084fc;">')
+    .replace(/\x1B\[36m/g, '<span style="color: #38bdf8;">')
+    .replace(/\x1B\[90m/g, '<span style="color: #64748b;">')
+    .replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+}
 
-btnRefresh.addEventListener('click', () => {
+function renderDiffToHtml(diffText) {
+  if (!diffText) return '<div class="diff-empty">No diff captured.</div>';
+  const lines = diffText.split('\n');
+  return lines.map(line => {
+    const escaped = escapeHtml(line);
+    if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('diff --git')) {
+      return `<span class="diff-line-header">${escaped}</span>`;
+    } else if (line.startsWith('+')) {
+      return `<span class="diff-line-add">${escaped}</span>`;
+    } else if (line.startsWith('-')) {
+      return `<span class="diff-line-del">${escaped}</span>`;
+    } else if (line.startsWith('@@')) {
+      return `<span class="diff-line-header">${escaped}</span>`;
+    }
+    return `<span>${escaped}</span>`;
+  }).join('\n');
+}
+
+function renderMarkdownToHtml(md) {
+  if (!md) return '';
+  let html = escapeHtml(md);
+
+  // Fenced Code blocks
+  html = html.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
+    return `<pre><code class="language-${lang}">${code}</code></pre>`;
+  });
+
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // Headings
+  html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+  html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+  html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+
+  // Bold & Italic
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+  // Unordered Lists
+  html = html.replace(/^\s*-\s+(.*$)/gim, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+
+  // Paragraphs
+  html = html.replace(/\n\n+/g, '</p><p>');
+  html = `<p>${html}</p>`;
+
+  return html;
+}
+
+function copyToClipboard(text, successMsg = 'Copied to clipboard!') {
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    showToast(successMsg);
+  }).catch(() => {
+    prompt('Copy to clipboard:', text);
+  });
+}
+
+function showToast(msg) {
+  const toast = document.createElement('div');
+  toast.textContent = msg;
+  toast.style.position = 'fixed';
+  toast.style.bottom = '2rem';
+  toast.style.right = '2rem';
+  toast.style.padding = '0.6rem 1.2rem';
+  toast.style.backgroundColor = 'var(--accent)';
+  toast.style.color = '#000000';
+  toast.style.fontWeight = '700';
+  toast.style.fontSize = '0.85rem';
+  toast.style.borderRadius = '8px';
+  toast.style.boxShadow = '0 10px 25px rgba(0,0,0,0.5)';
+  toast.style.zIndex = '9999';
+  toast.style.transition = 'opacity 0.3s ease';
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    setTimeout(() => toast.remove(), 300);
+  }, 2200);
+}
+
+// --- Global Event Listeners & Shortcuts ---
+
+function initEventListeners() {
+  // Theme Selector
+  if (el.themeSelector) {
+    el.themeSelector.value = state.theme;
+    el.themeSelector.addEventListener('change', (e) => applyTheme(e.target.value));
+  }
+  applyTheme(state.theme);
+
+  // Density Controls
+  el.btnDensityComfortable.addEventListener('click', () => applyDensity('comfortable'));
+  el.btnDensityCompact.addEventListener('click', () => applyDensity('compact'));
+  applyDensity(state.density);
+
+  // Notification Toggle
+  el.btnToggleNotif.addEventListener('click', () => {
+    state.notificationsEnabled = !state.notificationsEnabled;
+    localStorage.setItem('subagent_notif', state.notificationsEnabled);
+    updateNotifButton();
+    if (state.notificationsEnabled) {
+      if ('Notification' in window && Notification.permission !== 'granted') {
+        Notification.requestPermission();
+      }
+      playChime('success');
+      showToast('Sound & Notifications enabled');
+    } else {
+      showToast('Sound & Notifications disabled');
+    }
+  });
+  updateNotifButton();
+
+  // Search filter with debounce
+  let searchTimer = null;
+  el.filterSearch.addEventListener('input', (e) => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      state.filterSearch = e.target.value.trim();
+      state.pageOffset = 0;
+      fetchRuns();
+    }, 250);
+  });
+
+  // Provider Filter Buttons
+  el.providerFilters.querySelectorAll('.seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      el.providerFilters.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.filterProvider = btn.dataset.provider;
+      state.pageOffset = 0;
+      fetchRuns();
+    });
+  });
+
+  // Status Filter Buttons
+  el.statusFilters.querySelectorAll('.seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      el.statusFilters.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.filterStatus = btn.dataset.status;
+      state.pageOffset = 0;
+      fetchRuns();
+    });
+  });
+
+  // Pagination
+  el.btnPrevPage.addEventListener('click', () => {
+    if (state.pageOffset > 0) {
+      state.pageOffset = Math.max(0, state.pageOffset - state.pageLimit);
+      fetchRuns();
+    }
+  });
+
+  el.btnNextPage.addEventListener('click', () => {
+    if (state.pageOffset + state.pageLimit < state.totalRuns) {
+      state.pageOffset += state.pageLimit;
+      fetchRuns();
+    }
+  });
+
+  // Refresh button
+  el.btnRefresh.addEventListener('click', () => {
+    fetchStats();
+    fetchAnalytics();
+    fetchWorkspaces();
+    fetchRuns();
+    showToast('Refreshed monitor data');
+  });
+
+  // Drawer Controls & Tabs
+  el.btnCloseDrawer.addEventListener('click', closeLogDrawer);
+  el.drawerOverlay.addEventListener('click', closeLogDrawer);
+  el.btnCopyLog.addEventListener('click', () => {
+    copyToClipboard(state.rawLogLines.join('\n'), 'Full log copied to clipboard!');
+  });
+
+  el.drawerTabs.forEach(tab => {
+    tab.addEventListener('click', () => switchDrawerTab(tab.dataset.tab));
+  });
+
+  // Terminal Controls
+  el.chkAutoscroll.addEventListener('change', (e) => state.autoscroll = e.target.checked);
+  el.chkWrap.addEventListener('change', (e) => {
+    state.wordWrap = e.target.checked;
+    el.terminalContent.style.whiteSpace = state.wordWrap ? 'pre-wrap' : 'pre';
+  });
+
+  el.logSearchInput.addEventListener('input', (e) => {
+    state.filterLogQuery = e.target.value.trim();
+    renderTerminalLines();
+  });
+
+  // Dangling Modal
+  el.danglingChip.addEventListener('click', openDanglingModal);
+  el.btnKillAllDangling.addEventListener('click', (e) => {
+    e.stopPropagation();
+    killAllDangling();
+  });
+  el.btnCloseDanglingModal.addEventListener('click', closeDanglingModal);
+  el.btnDismissDangling.addEventListener('click', closeDanglingModal);
+  el.danglingModalOverlay.addEventListener('click', closeDanglingModal);
+  el.btnModalKillAll.addEventListener('click', killAllDangling);
+
+  // Shortcuts Modal
+  el.btnShortcuts.addEventListener('click', openShortcutsModal);
+  el.btnCloseShortcutsModal.addEventListener('click', closeShortcutsModal);
+  el.btnDismissShortcuts.addEventListener('click', closeShortcutsModal);
+  el.shortcutsModalOverlay.addEventListener('click', closeShortcutsModal);
+
+  // Keyboard Shortcuts Handler
+  document.addEventListener('keydown', (e) => {
+    // If typing in input, only handle Esc
+    const isInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
+
+    if (e.key === 'Escape') {
+      closeLogDrawer();
+      closeDanglingModal();
+      closeShortcutsModal();
+      if (isInput) document.activeElement.blur();
+      return;
+    }
+
+    if (isInput) return;
+
+    if (e.key === '/') {
+      e.preventDefault();
+      el.filterSearch.focus();
+    } else if (e.key === '?' || (e.shiftKey && e.key === '?')) {
+      e.preventDefault();
+      openShortcutsModal();
+    } else if (e.key === 'r' || e.key === 'R') {
+      e.preventDefault();
+      fetchStats();
+      fetchRuns();
+      showToast('Refreshed data');
+    } else if (e.key === 't' || e.key === 'T') {
+      e.preventDefault();
+      const themes = ['midnight', 'catppuccin', 'tokyo', 'oled'];
+      const nextTheme = themes[(themes.indexOf(state.theme) + 1) % themes.length];
+      applyTheme(nextTheme);
+      showToast(`Switched to ${nextTheme} theme`);
+    } else if (e.key === 'j' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (state.historyRuns.length > 0) {
+        state.selectedRowIndex = Math.min(state.historyRuns.length - 1, state.selectedRowIndex + 1);
+        renderHistoryTable();
+      }
+    } else if (e.key === 'k' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (state.historyRuns.length > 0) {
+        state.selectedRowIndex = Math.max(0, state.selectedRowIndex - 1);
+        renderHistoryTable();
+      }
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      if (state.selectedRowIndex >= 0 && state.selectedRowIndex < state.historyRuns.length) {
+        e.preventDefault();
+        openLogDrawer(state.historyRuns[state.selectedRowIndex].filename);
+      }
+    }
+  });
+}
+
+function updateNotifButton() {
+  if (state.notificationsEnabled) {
+    el.iconNotifOff.style.display = 'none';
+    el.iconNotifOn.style.display = 'block';
+  } else {
+    el.iconNotifOff.style.display = 'block';
+    el.iconNotifOn.style.display = 'none';
+  }
+}
+
+// --- Global SSE Connection ---
+function initSSE() {
+  const evtSource = new EventSource('/api/events');
+
+  evtSource.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.type === 'stats_update') {
+        el.activeCount.textContent = data.activeCount || 0;
+        el.todayCount.textContent = data.todayCount || 0;
+        el.totalCount.textContent = data.totalCount || 0;
+        el.activeBadge.textContent = `${data.activeCount || 0} Running`;
+        renderActiveCards(data.activeRuns || []);
+      }
+    } catch {}
+  };
+
+  evtSource.onerror = () => {
+    el.liveIndicator.innerHTML = '<span class="indicator-dot" style="background-color: var(--danger);"></span> Reconnecting...';
+  };
+
+  evtSource.onopen = () => {
+    el.liveIndicator.innerHTML = '<span class="indicator-dot"></span> Live Sync';
+  };
+}
+
+// --- App Initialization ---
+document.addEventListener('DOMContentLoaded', () => {
+  initEventListeners();
+  initSSE();
   fetchStats();
+  fetchAnalytics();
+  fetchWorkspaces();
   fetchRuns();
-});
 
-// Search input with debounce
-let searchDebounce = null;
-filterSearch.addEventListener('input', (e) => {
-  if (searchDebounce) clearTimeout(searchDebounce);
-  searchDebounce = setTimeout(() => {
-    currentSearchQuery = e.target.value.trim();
-    currentPage = 0;
-    fetchRuns();
-  }, 250);
+  // Tick duration timers every second
+  setInterval(() => {
+    document.querySelectorAll('.active-clock').forEach(clockEl => {
+      const startTimeIso = clockEl.dataset.start;
+      if (startTimeIso) {
+        const startMs = new Date(startTimeIso).getTime();
+        const diffSec = Math.max(0, Math.round((Date.now() - startMs) / 1000));
+        const m = Math.floor(diffSec / 60);
+        const s = diffSec % 60;
+        clockEl.textContent = `⏱️ ${m}m ${s}s`;
+      }
+    });
+  }, 1000);
 });
-
-// Provider segmented buttons
-document.querySelectorAll('#provider-filters .seg-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#provider-filters .seg-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentFilterProvider = btn.dataset.provider;
-    currentPage = 0;
-    fetchRuns();
-  });
-});
-
-// Status segmented buttons
-document.querySelectorAll('#status-filters .seg-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#status-filters .seg-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentFilterStatus = btn.dataset.status;
-    currentPage = 0;
-    fetchRuns();
-  });
-});
-
-// Pagination buttons
-btnPrevPage.addEventListener('click', () => {
-  if (currentPage > 0) {
-    currentPage--;
-    fetchRuns();
-  }
-});
-
-btnNextPage.addEventListener('click', () => {
-  if ((currentPage + 1) * pageSize < totalRunsCount) {
-    currentPage++;
-    fetchRuns();
-  }
-});
-
-// Initial boot
-fetchStats();
-fetchRuns();
-connectGlobalEvents();
