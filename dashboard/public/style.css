@@ -141,6 +141,74 @@
   --badge-codex: #06b6d4;
 }
 
+/* 5. Clean Slate Light */
+[data-theme="light"] {
+  --bg-app: #f1f5f9;
+  --bg-surface: #ffffff;
+  --bg-card: #f8fafc;
+  --bg-card-hover: #e2e8f0;
+  --bg-muted: #e2e8f0;
+  --bg-subtle: #cbd5e1;
+
+  --border-subtle: #e2e8f0;
+  --border-card: #cbd5e1;
+  --border-hover: #0284c7;
+
+  --text-main: #0f172a;
+  --text-muted: #475569;
+  --text-dim: #94a3b8;
+
+  --accent: #0284c7;
+  --accent-glow: rgba(2, 132, 199, 0.12);
+  --accent-active: #0369a1;
+
+  --success: #16a34a;
+  --success-bg: rgba(22, 163, 74, 0.12);
+  --warning: #d97706;
+  --warning-bg: rgba(217, 119, 6, 0.12);
+  --danger: #dc2626;
+  --danger-bg: rgba(220, 38, 38, 0.12);
+
+  --badge-opencode: #16a34a;
+  --badge-antigravity: #6366f1;
+  --badge-claude: #ea580c;
+  --badge-codex: #0891b2;
+}
+
+/* 6. Catppuccin Latte */
+[data-theme="latte"] {
+  --bg-app: #eff1f5;
+  --bg-surface: #ffffff;
+  --bg-card: #e6e9ef;
+  --bg-card-hover: #dce0e8;
+  --bg-muted: #ccd0da;
+  --bg-subtle: #bcc0cc;
+
+  --border-subtle: #dce0e8;
+  --border-card: #ccd0da;
+  --border-hover: #8839ef;
+
+  --text-main: #4c4f69;
+  --text-muted: #5c5f77;
+  --text-dim: #7c7f93;
+
+  --accent: #8839ef;
+  --accent-glow: rgba(136, 57, 239, 0.15);
+  --accent-active: #7287fd;
+
+  --success: #40a02b;
+  --success-bg: rgba(64, 160, 43, 0.12);
+  --warning: #df8e1d;
+  --warning-bg: rgba(223, 142, 29, 0.12);
+  --danger: #d20f39;
+  --danger-bg: rgba(210, 15, 57, 0.12);
+
+  --badge-opencode: #40a02b;
+  --badge-antigravity: #7287fd;
+  --badge-claude: #fe640b;
+  --badge-codex: #04a5e5;
+}
+
 /* ==========================================================================
    Base & Layout
    ========================================================================== */

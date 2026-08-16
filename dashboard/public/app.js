@@ -1035,7 +1035,7 @@ function initEventListeners() {
       showToast('Refreshed data');
     } else if (e.key === 't' || e.key === 'T') {
       e.preventDefault();
-      const themes = ['midnight', 'catppuccin', 'tokyo', 'oled'];
+      const themes = ['midnight', 'light', 'latte', 'catppuccin', 'tokyo', 'oled'];
       const nextTheme = themes[(themes.indexOf(state.theme) + 1) % themes.length];
       applyTheme(nextTheme);
       showToast(`Switched to ${nextTheme} theme`);
