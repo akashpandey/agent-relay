@@ -44,6 +44,71 @@ export function getOpenCodePromptFromDb(sessionId) {
   return null;
 }
 
+const geminiBrainDirs = [
+  process.env.GEMINI_BRAIN,
+  '/gemini_brain',
+  path.join(process.env.HOME || '/home/akey', '.gemini/antigravity-cli/brain'),
+  '/home/akey/.gemini/antigravity-cli/brain',
+].filter(Boolean);
+
+/**
+ * Matches Antigravity session transcript by timestamp and workspace
+ */
+export function findAntigravityTranscript(startTimeIso, workspace) {
+  if (!startTimeIso) return null;
+  const brainDir = geminiBrainDirs.find(d => fs.existsSync(d));
+  if (!brainDir) return null;
+
+  try {
+    const targetTime = new Date(startTimeIso).getTime();
+    if (isNaN(targetTime)) return null;
+
+    const entries = fs.readdirSync(brainDir);
+    for (const entry of entries) {
+      const transcriptPath = path.join(brainDir, entry, '.system_generated/logs/transcript.jsonl');
+      if (!fs.existsSync(transcriptPath)) continue;
+
+      try {
+        const fd = fs.openSync(transcriptPath, 'r');
+        const buf = Buffer.alloc(16384);
+        const bytesRead = fs.readSync(fd, buf, 0, buf.length, 0);
+        fs.closeSync(fd);
+
+        const text = buf.toString('utf8', 0, bytesRead);
+        if (workspace && !text.includes(workspace)) continue;
+
+        const firstLine = text.split('\n')[0];
+        const parsed = JSON.parse(firstLine);
+        if (parsed && parsed.created_at) {
+          const tTime = new Date(parsed.created_at).getTime();
+          if (Math.abs(tTime - targetTime) <= 180000) {
+            let model = null;
+            const modelMatch = text.match(/setting \`Model Selection\` from [^\n]+ to (.*?)\.\s*No need to/i) ||
+                               text.match(/setting \`Model Selection\` from [^\n]+ to ([^\n<]+)/i) ||
+                               text.match(/model:\s*([^\n<]+)/i);
+            if (modelMatch) {
+              model = modelMatch[1].trim();
+            }
+
+            const taskMatch = text.match(/Task:\s*([\s\S]*?)(?=(?:\\n=== File|\n=== File|\\nRules:|\nRules:|<\/USER_REQUEST>|\\nWhen done|\nWhen done))/i);
+            let task = taskMatch ? taskMatch[1].trim() : null;
+            if (task) {
+              task = task.replace(/\\n/g, '\n').replace(/^[\r\n]+/, '').trim();
+            }
+
+            return {
+              conversationId: entry,
+              model: model || null,
+              task: task || null,
+            };
+          }
+        }
+      } catch (err) {}
+    }
+  } catch (err) {}
+  return null;
+}
+
 /**
  * Parses the filename format: YYYYMMDDTHHMMSS-provider-pid.log
  * All subagent wrappers generate timestamp using local system time (IST, +05:30).
@@ -217,6 +282,16 @@ export function parseLogMetadata(filename, filepath, procDir = '/proc') {
   } else {
     const altTask = headContent.match(/Task:\s*([^\r\n]+)/i);
     if (altTask) task = altTask[1].trim();
+  }
+
+  // If Antigravity provider, resolve transcript for model and prompt
+  if (parsedName.provider === 'antigravity') {
+    const agyMatch = findAntigravityTranscript(parsedName.startTime, workspace);
+    if (agyMatch) {
+      if (!model && agyMatch.model) model = agyMatch.model;
+      if (!task && agyMatch.task) task = agyMatch.task;
+      if (!session && agyMatch.conversationId) session = agyMatch.conversationId;
+    }
   }
 
   // Fallback for historical logs without explicit Task: header
