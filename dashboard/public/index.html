@@ -235,149 +235,165 @@
       </section>
     </main>
 
-    <!-- Slide-over / Modal Log Drawer with Multi-Tabs -->
-    <div class="drawer-overlay" id="drawer-overlay"></div>
-    <aside class="log-drawer" id="log-drawer">
-      <div class="drawer-header">
-        <div class="drawer-header-left">
-          <div class="drawer-title-row">
-            <span class="provider-tag" id="drawer-provider">opencode</span>
-            <h3 class="drawer-title" id="drawer-filename">run.log</h3>
-            <span class="status-pill" id="drawer-status-pill">Running</span>
-          </div>
-          <div class="drawer-meta-row">
-            <span class="meta-item" id="drawer-workspace">📁 workspace</span>
-            <span class="meta-sep">•</span>
-            <span class="meta-item" id="drawer-model">🤖 model</span>
-            <span class="meta-sep">•</span>
-            <span class="meta-item" id="drawer-pid">PID: -</span>
-            <span class="meta-sep">•</span>
-            <span class="meta-item" id="drawer-start-time">🕒 -</span>
-            <span class="meta-sep">•</span>
-            <span class="meta-item" id="drawer-duration">⏱️ -</span>
-          </div>
-        </div>
-        <div class="drawer-header-actions">
-          <button class="btn btn-sm btn-danger" id="drawer-btn-kill" style="display: none;">Stop Process</button>
-          <button class="btn btn-sm btn-secondary" id="btn-copy-cli" title="Copy CLI Command">Copy CLI</button>
-          <button class="btn btn-sm btn-secondary" id="btn-copy-prompt" title="Copy initial prompt">Copy Prompt</button>
-          <button class="btn btn-sm btn-secondary" id="btn-copy-log" title="Copy log content">Copy Log</button>
-          <a class="btn btn-sm btn-secondary" id="btn-download-log" download target="_blank">Raw Log</a>
-          <button class="btn-close" id="btn-close-drawer" title="Close (Esc)">✕</button>
-        </div>
-      </div>
-
-      <!-- Task Prompt Box in Drawer -->
-      <div class="drawer-task-box" id="drawer-task-box">
-        <div class="task-box-header">
-          <span class="task-box-label">Initial Subagent Task:</span>
-        </div>
-        <div class="task-box-content" id="drawer-task-content"></div>
-      </div>
-
-      <!-- Drawer Tab Navigation -->
-      <div class="drawer-tabs">
-        <button class="drawer-tab active" data-tab="terminal">
-          <span class="tab-icon">🖥️</span> Live Terminal
-        </button>
-        <button class="drawer-tab" data-tab="markdown">
-          <span class="tab-icon">📝</span> Output & Summary
-        </button>
-        <button class="drawer-tab" data-tab="diffs">
-          <span class="tab-icon">🔀</span> Changed Files & Diffs
-          <span class="tab-badge" id="tab-diffs-count" style="display: none;">0</span>
-        </button>
-        <button class="drawer-tab" data-tab="metrics">
-          <span class="tab-icon">📊</span> Tokens & Metrics
-        </button>
-      </div>
-
-      <!-- Tab 1: Terminal Output Container -->
-      <div class="tab-pane active" id="pane-terminal">
-        <div class="log-toolbar">
-          <div class="log-toolbar-left">
-            <span class="stream-badge" id="stream-status-badge">
-              <span class="stream-dot"></span> Live Streaming
-            </span>
-            <label class="checkbox-label">
-              <input type="checkbox" id="chk-autoscroll" checked>
-              <span>Auto-scroll</span>
-            </label>
-            <label class="checkbox-label">
-              <input type="checkbox" id="chk-wrap" checked>
-              <span>Word Wrap</span>
-            </label>
-          </div>
-          <div class="log-toolbar-right">
-            <input type="text" id="log-search-input" placeholder="Filter log text..." class="log-filter-input">
-            <span class="log-lines-count" id="log-lines-count">0 lines</span>
-          </div>
+    <!-- Full-Page Modal Workspace Inspection Dialog -->
+    <div class="modal-overlay" id="workspace-modal-overlay"></div>
+    <div class="fullscreen-modal" id="workspace-modal">
+      <!-- Full Modal Header Bar -->
+      <div class="fullscreen-modal-header">
+        <div class="fs-header-left">
+          <span class="provider-tag" id="modal-provider">opencode</span>
+          <h2 class="fs-modal-title" id="modal-filename">run.log</h2>
+          <span class="status-pill" id="modal-status-pill">Running</span>
         </div>
 
-        <div class="log-terminal" id="log-terminal">
-          <pre class="terminal-content" id="terminal-content">Connecting to stream...</pre>
+        <div class="fs-header-meta">
+          <span class="fs-meta-item" id="modal-workspace">📁 ~/Code/fitschool</span>
+          <span class="fs-meta-sep">•</span>
+          <span class="fs-meta-item" id="modal-model">🤖 glm-5.2</span>
+          <span class="fs-meta-sep">•</span>
+          <span class="fs-meta-item" id="modal-pid">PID: 1123377</span>
+          <span class="fs-meta-sep">•</span>
+          <span class="fs-meta-item" id="modal-start-time">🕒 07:09:41 PM IST</span>
+          <span class="fs-meta-sep">•</span>
+          <span class="fs-meta-item" id="modal-duration">⏱️ 1m 20s</span>
+        </div>
+
+        <div class="fs-header-actions">
+          <button class="btn btn-sm btn-danger" id="modal-btn-kill" style="display: none;">Stop Process</button>
+          <button class="btn btn-sm btn-secondary" id="btn-modal-copy-cli" title="Copy CLI Command">Copy CLI</button>
+          <button class="btn btn-sm btn-secondary" id="btn-modal-copy-prompt" title="Copy initial prompt">Copy Prompt</button>
+          <button class="btn btn-sm btn-secondary" id="btn-modal-copy-log" title="Copy log content">Copy Log</button>
+          <a class="btn btn-sm btn-secondary" id="btn-modal-download-log" download target="_blank">Raw Log</a>
+          <button class="btn-icon" id="btn-toggle-fullscreen" title="Toggle Fullscreen Width">⛶</button>
+          <button class="btn-close" id="btn-close-workspace-modal" title="Close (Esc)">✕</button>
         </div>
       </div>
 
-      <!-- Tab 2: Rendered Markdown Output -->
-      <div class="tab-pane" id="pane-markdown">
-        <div class="markdown-container" id="markdown-container">
-          <div class="markdown-empty">No structured markdown summary recorded for this run. Check the Live Terminal tab for full raw output.</div>
-        </div>
-      </div>
+      <!-- Full Modal Body Grid (Left Sidebar + Right Main Workspace) -->
+      <div class="fullscreen-modal-body">
+        <!-- Left Sidebar / Info & Prompt Pane -->
+        <aside class="fs-sidebar">
+          <!-- Initial Task Prompt Box -->
+          <div class="fs-task-card">
+            <div class="fs-card-header">
+              <span class="fs-card-title">Initial Subagent Task</span>
+              <button class="btn btn-sm btn-secondary" id="btn-task-copy-small" style="padding: 1px 6px; font-size: 0.7rem;">Copy</button>
+            </div>
+            <div class="fs-task-text" id="modal-task-content">Loading task...</div>
+          </div>
 
-      <!-- Tab 3: Changed Files & Diffs -->
-      <div class="tab-pane" id="pane-diffs">
-        <div class="diffs-container" id="diffs-container">
-          <div class="touched-files-header">
-            <h4>Files Modified in Session</h4>
-          </div>
-          <div class="touched-files-list" id="touched-files-list">
-            <!-- Populated by JS -->
-          </div>
-          <div class="diff-viewer" id="diff-viewer-content">
-            <div class="diff-empty">No git diff captured for this run.</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Tab 4: Performance & Token Breakdown -->
-      <div class="tab-pane" id="pane-metrics">
-        <div class="metrics-grid-container" id="metrics-grid-container">
-          <div class="metric-stat-card">
-            <div class="metric-stat-title">Input Tokens</div>
-            <div class="metric-stat-value" id="stat-tokens-input">0</div>
-          </div>
-          <div class="metric-stat-card">
-            <div class="metric-stat-title">Output Tokens</div>
-            <div class="metric-stat-value" id="stat-tokens-output">0</div>
-          </div>
-          <div class="metric-stat-card">
-            <div class="metric-stat-title">Reasoning Tokens</div>
-            <div class="metric-stat-value" id="stat-tokens-reasoning">0</div>
-          </div>
-          <div class="metric-stat-card">
-            <div class="metric-stat-title">Cache Read Tokens</div>
-            <div class="metric-stat-value" id="stat-tokens-cache">0</div>
-          </div>
-          <div class="metric-stat-card">
-            <div class="metric-stat-title">Total Tokens</div>
-            <div class="metric-stat-value" id="stat-tokens-total">0</div>
-          </div>
-          <div class="metric-stat-card">
-            <div class="metric-stat-title">Estimated Cost</div>
-            <div class="metric-stat-value" id="stat-cost">$0.00</div>
-          </div>
-          <div class="metric-stat-card wide-card">
-            <div class="metric-stat-title">CLI Reproduction Command</div>
-            <div class="metric-stat-code-wrap">
-              <code id="stat-cli-command">Loading command...</code>
-              <button class="btn btn-sm btn-secondary" id="btn-copy-stat-cli">Copy</button>
+          <!-- Tokens & Cost Summary -->
+          <div class="fs-metrics-card">
+            <div class="fs-card-header">
+              <span class="fs-card-title">Token & Cost Breakdown</span>
+            </div>
+            <div class="fs-stats-mini-grid">
+              <div class="fs-mini-stat">
+                <span class="fs-mini-label">Input</span>
+                <span class="fs-mini-val" id="mini-tokens-input">0</span>
+              </div>
+              <div class="fs-mini-stat">
+                <span class="fs-mini-label">Output</span>
+                <span class="fs-mini-val" id="mini-tokens-output">0</span>
+              </div>
+              <div class="fs-mini-stat">
+                <span class="fs-mini-label">Reasoning</span>
+                <span class="fs-mini-val" id="mini-tokens-reasoning">0</span>
+              </div>
+              <div class="fs-mini-stat">
+                <span class="fs-mini-label">Cache Read</span>
+                <span class="fs-mini-val" id="mini-tokens-cache">0</span>
+              </div>
+              <div class="fs-mini-stat">
+                <span class="fs-mini-label">Total</span>
+                <span class="fs-mini-val" id="mini-tokens-total">0</span>
+              </div>
+              <div class="fs-mini-stat">
+                <span class="fs-mini-label">Est. Cost</span>
+                <span class="fs-mini-val" id="mini-cost">$0.00</span>
+              </div>
             </div>
           </div>
-        </div>
+
+          <!-- Files Touched / Modified -->
+          <div class="fs-files-card">
+            <div class="fs-card-header">
+              <span class="fs-card-title">Modified Files (<span id="modal-files-count">0</span>)</span>
+            </div>
+            <div class="fs-files-chips" id="modal-files-chips">
+              <span style="color: var(--text-dim); font-size: 0.75rem;">No files modified</span>
+            </div>
+          </div>
+
+          <!-- CLI Command Card -->
+          <div class="fs-cli-card">
+            <div class="fs-card-header">
+              <span class="fs-card-title">CLI Reproduction</span>
+              <button class="btn btn-sm btn-secondary" id="btn-cli-copy-small" style="padding: 1px 6px; font-size: 0.7rem;">Copy</button>
+            </div>
+            <code class="fs-cli-code" id="modal-cli-code">Loading command...</code>
+          </div>
+        </aside>
+
+        <!-- Right Main Content Workspace with Multi-Tabs -->
+        <section class="fs-main-viewport">
+          <!-- Workspace Tab Bar -->
+          <div class="fs-tabs-bar">
+            <button class="fs-tab active" data-tab="terminal">
+              <span class="tab-icon">🖥️</span> Live Terminal
+            </button>
+            <button class="fs-tab" data-tab="markdown">
+              <span class="tab-icon">📝</span> Output & Markdown Summary
+            </button>
+            <button class="fs-tab" data-tab="diffs">
+              <span class="tab-icon">🔀</span> Changed Files & Diffs
+              <span class="tab-badge" id="tab-modal-diffs-count" style="display: none;">0</span>
+            </button>
+          </div>
+
+          <!-- Tab 1: Live Terminal Workspace -->
+          <div class="fs-tab-pane active" id="modal-pane-terminal">
+            <div class="log-toolbar">
+              <div class="log-toolbar-left">
+                <span class="stream-badge" id="stream-status-badge">
+                  <span class="stream-dot"></span> Live Streaming
+                </span>
+                <label class="checkbox-label">
+                  <input type="checkbox" id="chk-autoscroll" checked>
+                  <span>Auto-scroll</span>
+                </label>
+                <label class="checkbox-label">
+                  <input type="checkbox" id="chk-wrap" checked>
+                  <span>Word Wrap</span>
+                </label>
+              </div>
+              <div class="log-toolbar-right">
+                <input type="text" id="log-search-input" placeholder="Filter terminal lines (regex)..." class="log-filter-input">
+                <span class="log-lines-count" id="log-lines-count">0 lines</span>
+              </div>
+            </div>
+
+            <div class="fs-terminal-box" id="modal-terminal-box">
+              <pre class="terminal-content" id="modal-terminal-content">Connecting to stream...</pre>
+            </div>
+          </div>
+
+          <!-- Tab 2: Rendered Markdown Summary -->
+          <div class="fs-tab-pane" id="modal-pane-markdown">
+            <div class="fs-markdown-box" id="modal-markdown-container">
+              <div class="markdown-empty">No structured markdown summary recorded for this run. Check the Live Terminal tab for full raw output.</div>
+            </div>
+          </div>
+
+          <!-- Tab 3: Changed Files & Diffs Viewer -->
+          <div class="fs-tab-pane" id="modal-pane-diffs">
+            <div class="fs-diff-box" id="modal-diff-container">
+              <div class="diff-empty">No git diff captured for this run.</div>
+            </div>
+          </div>
+        </section>
       </div>
-    </aside>
+    </div>
 
     <!-- Keyboard Shortcuts Modal -->
     <div class="modal-overlay" id="shortcuts-modal-overlay"></div>
@@ -400,12 +416,16 @@
             <div><kbd>J</kbd> / <kbd>K</kbd> or <kbd>↓</kbd> / <kbd>↑</kbd></div>
           </div>
           <div class="shortcut-item">
-            <span class="shortcut-desc">Open selected run log</span>
+            <span class="shortcut-desc">Open selected run full-page modal</span>
             <div><kbd>Enter</kbd> or <kbd>Space</kbd></div>
           </div>
           <div class="shortcut-item">
-            <span class="shortcut-desc">Close drawer / modals</span>
+            <span class="shortcut-desc">Close full-page modal / dialogs</span>
             <kbd>Esc</kbd>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-desc">Toggle fullscreen width</span>
+            <kbd>F</kbd>
           </div>
           <div class="shortcut-item">
             <span class="shortcut-desc">Force refresh data</span>

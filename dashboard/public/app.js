@@ -1,7 +1,7 @@
 /**
  * Subagents Monitor - Client Application
- * Features: Real-time SSE streaming, Multi-theme support, Markdown & Diff viewer,
- * Sound & Desktop notifications, Keyboard shortcuts, Workspace filtering, Analytics.
+ * Features: Full-Page Modal Workspace, Real-time SSE streaming, Multi-theme support,
+ * Markdown & Diff viewer, Sound & Desktop notifications, Keyboard shortcuts, Workspace filtering, Analytics.
  */
 
 // --- Application State ---
@@ -27,7 +27,8 @@ const state = {
   theme: localStorage.getItem('subagent_theme') || 'midnight',
   density: localStorage.getItem('subagent_density') || 'comfortable',
   notificationsEnabled: localStorage.getItem('subagent_notif') === 'true',
-  activeDrawerTab: 'terminal',
+  activeModalTab: 'terminal',
+  isFullscreen: false,
   
   // Terminal
   activeLogStream: null,
@@ -80,47 +81,52 @@ const el = {
   btnPrevPage: document.getElementById('btn-prev-page'),
   btnNextPage: document.getElementById('btn-next-page'),
 
-  // Drawer & Tabs
-  drawerOverlay: document.getElementById('drawer-overlay'),
-  logDrawer: document.getElementById('log-drawer'),
-  drawerProvider: document.getElementById('drawer-provider'),
-  drawerFilename: document.getElementById('drawer-filename'),
-  drawerStatusPill: document.getElementById('drawer-status-pill'),
-  drawerWorkspace: document.getElementById('drawer-workspace'),
-  drawerModel: document.getElementById('drawer-model'),
-  drawerPid: document.getElementById('drawer-pid'),
-  drawerStartTime: document.getElementById('drawer-start-time'),
-  drawerDuration: document.getElementById('drawer-duration'),
-  drawerBtnKill: document.getElementById('drawer-btn-kill'),
-  btnCopyCli: document.getElementById('btn-copy-cli'),
-  btnCopyPrompt: document.getElementById('btn-copy-prompt'),
-  btnCopyLog: document.getElementById('btn-copy-log'),
-  btnDownloadLog: document.getElementById('btn-download-log'),
-  btnCloseDrawer: document.getElementById('btn-close-drawer'),
-  drawerTaskContent: document.getElementById('drawer-task-content'),
-  drawerTabs: document.querySelectorAll('.drawer-tab'),
-  tabPanes: document.querySelectorAll('.tab-pane'),
-  tabDiffsCount: document.getElementById('tab-diffs-count'),
+  // Full-Page Workspace Modal
+  workspaceModalOverlay: document.getElementById('workspace-modal-overlay'),
+  workspaceModal: document.getElementById('workspace-modal'),
+  modalProvider: document.getElementById('modal-provider'),
+  modalFilename: document.getElementById('modal-filename'),
+  modalStatusPill: document.getElementById('modal-status-pill'),
+  modalWorkspace: document.getElementById('modal-workspace'),
+  modalModel: document.getElementById('modal-model'),
+  modalPid: document.getElementById('modal-pid'),
+  modalStartTime: document.getElementById('modal-start-time'),
+  modalDuration: document.getElementById('modal-duration'),
+  modalBtnKill: document.getElementById('modal-btn-kill'),
+  btnModalCopyCli: document.getElementById('btn-modal-copy-cli'),
+  btnModalCopyPrompt: document.getElementById('btn-modal-copy-prompt'),
+  btnModalCopyLog: document.getElementById('btn-modal-copy-log'),
+  btnModalDownloadLog: document.getElementById('btn-modal-download-log'),
+  btnToggleFullscreen: document.getElementById('btn-toggle-fullscreen'),
+  btnCloseWorkspaceModal: document.getElementById('btn-close-workspace-modal'),
 
-  // Tab Panes
+  // Left Sidebar
+  modalTaskContent: document.getElementById('modal-task-content'),
+  btnTaskCopySmall: document.getElementById('btn-task-copy-small'),
+  miniTokensInput: document.getElementById('mini-tokens-input'),
+  miniTokensOutput: document.getElementById('mini-tokens-output'),
+  miniTokensReasoning: document.getElementById('mini-tokens-reasoning'),
+  miniTokensCache: document.getElementById('mini-tokens-cache'),
+  miniTokensTotal: document.getElementById('mini-tokens-total'),
+  miniCost: document.getElementById('mini-cost'),
+  modalFilesCount: document.getElementById('modal-files-count'),
+  modalFilesChips: document.getElementById('modal-files-chips'),
+  modalCliCode: document.getElementById('modal-cli-code'),
+  btnCliCopySmall: document.getElementById('btn-cli-copy-small'),
+
+  // Right Viewport Tabs
+  fsTabs: document.querySelectorAll('.fs-tab'),
+  fsTabPanes: document.querySelectorAll('.fs-tab-pane'),
+  tabModalDiffsCount: document.getElementById('tab-modal-diffs-count'),
   streamStatusBadge: document.getElementById('stream-status-badge'),
   chkAutoscroll: document.getElementById('chk-autoscroll'),
   chkWrap: document.getElementById('chk-wrap'),
   logSearchInput: document.getElementById('log-search-input'),
   logLinesCount: document.getElementById('log-lines-count'),
-  terminalContainer: document.getElementById('log-terminal'),
-  terminalContent: document.getElementById('terminal-content'),
-  markdownContainer: document.getElementById('markdown-container'),
-  touchedFilesList: document.getElementById('touched-files-list'),
-  diffViewerContent: document.getElementById('diff-viewer-content'),
-  statTokensInput: document.getElementById('stat-tokens-input'),
-  statTokensOutput: document.getElementById('stat-tokens-output'),
-  statTokensReasoning: document.getElementById('stat-tokens-reasoning'),
-  statTokensCache: document.getElementById('stat-tokens-cache'),
-  statTokensTotal: document.getElementById('stat-tokens-total'),
-  statCost: document.getElementById('stat-cost'),
-  statCliCommand: document.getElementById('stat-cli-command'),
-  btnCopyStatCli: document.getElementById('btn-copy-stat-cli'),
+  modalTerminalBox: document.getElementById('modal-terminal-box'),
+  modalTerminalContent: document.getElementById('modal-terminal-content'),
+  modalMarkdownContainer: document.getElementById('modal-markdown-container'),
+  modalDiffContainer: document.getElementById('modal-diff-container'),
 
   // Modals
   shortcutsModalOverlay: document.getElementById('shortcuts-modal-overlay'),
@@ -373,11 +379,11 @@ function renderActiveCards(activeRuns) {
       <div class="active-card-actions">
         <button class="btn btn-sm btn-secondary btn-card-cli" title="Copy CLI Command">Copy CLI</button>
         <button class="btn btn-sm btn-danger btn-card-kill">Stop</button>
-        <button class="btn btn-sm btn-secondary btn-card-view">Live Log</button>
+        <button class="btn btn-sm btn-secondary btn-card-view">Inspect Run</button>
       </div>
     `;
 
-    card.querySelector('.btn-card-view').addEventListener('click', () => openLogDrawer(run.filename));
+    card.querySelector('.btn-card-view').addEventListener('click', () => openWorkspaceModal(run.filename));
     card.querySelector('.btn-card-cli').addEventListener('click', (e) => {
       e.stopPropagation();
       copyToClipboard(run.cliCommand || `opencode-subagent "${run.task || ''}"`, 'CLI command copied!');
@@ -457,7 +463,7 @@ function renderHistoryTable() {
     tr.addEventListener('click', () => {
       state.selectedRowIndex = idx;
       renderHistoryTable();
-      openLogDrawer(run.filename);
+      openWorkspaceModal(run.filename);
     });
 
     tr.querySelector('.btn-row-cli').addEventListener('click', (e) => {
@@ -467,7 +473,7 @@ function renderHistoryTable() {
 
     tr.querySelector('.btn-row-inspect').addEventListener('click', (e) => {
       e.stopPropagation();
-      openLogDrawer(run.filename);
+      openWorkspaceModal(run.filename);
     });
 
     el.historyTbody.appendChild(tr);
@@ -483,112 +489,125 @@ function updatePagination() {
   el.btnNextPage.disabled = state.pageOffset + state.pageLimit >= state.totalRuns;
 }
 
-// --- Log Drawer & Multi-Tabs ---
+// --- Full-Page Workspace Modal Dialog ---
 
-async function openLogDrawer(filename) {
+async function openWorkspaceModal(filename) {
   state.selectedRun = filename;
   state.rawLogLines = [];
-  el.terminalContent.textContent = 'Loading log stream...';
-  el.markdownContainer.innerHTML = '<div class="markdown-empty">Loading markdown summary...</div>';
-  el.diffViewerContent.innerHTML = '<div class="diff-empty">Loading diffs...</div>';
-  el.touchedFilesList.innerHTML = '';
+  el.modalTerminalContent.textContent = 'Loading log stream...';
+  el.modalMarkdownContainer.innerHTML = '<div class="markdown-empty">Loading markdown summary...</div>';
+  el.modalDiffContainer.innerHTML = '<div class="diff-empty">Loading diffs...</div>';
+  el.modalFilesChips.innerHTML = '';
 
-  // Open Drawer
-  el.drawerOverlay.classList.add('open');
-  el.logDrawer.classList.add('open');
+  // Open Fullscreen Modal
+  el.workspaceModalOverlay.classList.add('open');
+  el.workspaceModal.classList.add('open');
 
   try {
     const res = await fetch(`/api/runs/${encodeURIComponent(filename)}`);
     if (!res.ok) return;
     const meta = await res.json();
 
-    // Populate Header Meta
-    el.drawerProvider.textContent = meta.provider;
-    el.drawerProvider.className = `provider-tag provider-${meta.provider.toLowerCase()}`;
-    el.drawerFilename.textContent = meta.filename;
-    el.drawerStatusPill.textContent = meta.status;
-    el.drawerStatusPill.className = `status-pill status-${meta.status.toLowerCase()}`;
-    el.drawerWorkspace.textContent = `📁 ${meta.workspaceName || meta.workspace}`;
-    el.drawerModel.textContent = `🤖 ${meta.model}`;
-    el.drawerPid.textContent = `PID: ${meta.pid}`;
-    el.drawerStartTime.textContent = `🕒 ${formatISTTime(meta.startTimeIST || meta.startTime)}`;
-    el.drawerDuration.textContent = `⏱️ ${meta.durationHuman}`;
-    el.drawerTaskContent.textContent = meta.fullTask || meta.task || 'No task prompt recorded';
-    el.btnDownloadLog.href = `/api/logs/${encodeURIComponent(meta.filename)}`;
+    // Header Meta
+    el.modalProvider.textContent = meta.provider;
+    el.modalProvider.className = `provider-tag provider-${meta.provider.toLowerCase()}`;
+    el.modalFilename.textContent = meta.filename;
+    el.modalStatusPill.textContent = meta.status;
+    el.modalStatusPill.className = `status-pill status-${meta.status.toLowerCase()}`;
+    el.modalWorkspace.textContent = `📁 ${meta.workspaceName || meta.workspace}`;
+    el.modalModel.textContent = `🤖 ${meta.model}`;
+    el.modalPid.textContent = `PID: ${meta.pid}`;
+    el.modalStartTime.textContent = `🕒 ${formatISTTime(meta.startTimeIST || meta.startTime)}`;
+    el.modalDuration.textContent = `⏱️ ${meta.durationHuman}`;
+    el.btnModalDownloadLog.href = `/api/logs/${encodeURIComponent(meta.filename)}`;
 
     // Kill button
     if (meta.isAlive) {
-      el.drawerBtnKill.style.display = 'inline-flex';
-      el.drawerBtnKill.onclick = () => killProcess(meta.pid, meta.filename);
+      el.modalBtnKill.style.display = 'inline-flex';
+      el.modalBtnKill.onclick = () => killProcess(meta.pid, meta.filename);
     } else {
-      el.drawerBtnKill.style.display = 'none';
+      el.modalBtnKill.style.display = 'none';
     }
 
-    // CLI Copy action
-    el.btnCopyCli.onclick = () => copyToClipboard(meta.cliCommand, 'CLI command copied!');
-    el.btnCopyPrompt.onclick = () => copyToClipboard(meta.fullTask || meta.task, 'Task prompt copied!');
-    el.btnCopyStatCli.onclick = () => copyToClipboard(meta.cliCommand, 'CLI command copied!');
-    el.statCliCommand.textContent = meta.cliCommand || 'No command available';
+    // Left Sidebar: Task Prompt
+    el.modalTaskContent.textContent = meta.fullTask || meta.task || 'No task prompt recorded';
+    el.btnTaskCopySmall.onclick = () => copyToClipboard(meta.fullTask || meta.task, 'Task prompt copied!');
+    el.btnModalCopyPrompt.onclick = () => copyToClipboard(meta.fullTask || meta.task, 'Task prompt copied!');
 
-    // Populate Tab 2: Markdown Output
-    if (meta.markdownSummary) {
-      el.markdownContainer.innerHTML = renderMarkdownToHtml(meta.markdownSummary);
-    } else {
-      el.markdownContainer.innerHTML = '<div class="markdown-empty">No structured markdown summary recorded for this run. Check the Live Terminal tab for full raw output.</div>';
-    }
+    // Left Sidebar: CLI Command
+    el.modalCliCode.textContent = meta.cliCommand || 'No command available';
+    el.btnCliCopySmall.onclick = () => copyToClipboard(meta.cliCommand, 'CLI command copied!');
+    el.btnModalCopyCli.onclick = () => copyToClipboard(meta.cliCommand, 'CLI command copied!');
 
-    // Populate Tab 3: Touched Files & Diffs
-    if (meta.filesModified && meta.filesModified.length > 0) {
-      el.tabDiffsCount.style.display = 'inline-block';
-      el.tabDiffsCount.textContent = meta.filesModified.length;
-      el.touchedFilesList.innerHTML = meta.filesModified.map(f => `<span class="touched-file-chip">${escapeHtml(f)}</span>`).join('');
-    } else {
-      el.tabDiffsCount.style.display = 'none';
-      el.touchedFilesList.innerHTML = '<span style="color: var(--text-dim); font-size: 0.8rem;">No explicit file changes captured.</span>';
-    }
-
-    if (meta.diffs) {
-      el.diffViewerContent.innerHTML = renderDiffToHtml(meta.diffs);
-    } else {
-      el.diffViewerContent.innerHTML = '<div class="diff-empty">No git diff captured for this run.</div>';
-    }
-
-    // Populate Tab 4: Metrics
+    // Left Sidebar: Tokens & Cost Mini Stats
     if (meta.tokens) {
-      el.statTokensInput.textContent = formatNumber(meta.tokens.input || 0);
-      el.statTokensOutput.textContent = formatNumber(meta.tokens.output || 0);
-      el.statTokensReasoning.textContent = formatNumber(meta.tokens.reasoning || 0);
-      el.statTokensCache.textContent = formatNumber(meta.tokens.cacheRead || 0);
-      el.statTokensTotal.textContent = formatNumber(meta.tokens.total || 0);
+      el.miniTokensInput.textContent = formatNumber(meta.tokens.input || 0);
+      el.miniTokensOutput.textContent = formatNumber(meta.tokens.output || 0);
+      el.miniTokensReasoning.textContent = formatNumber(meta.tokens.reasoning || 0);
+      el.miniTokensCache.textContent = formatNumber(meta.tokens.cacheRead || 0);
+      el.miniTokensTotal.textContent = formatNumber(meta.tokens.total || 0);
     } else {
-      el.statTokensInput.textContent = '-';
-      el.statTokensOutput.textContent = '-';
-      el.statTokensReasoning.textContent = '-';
-      el.statTokensCache.textContent = '-';
-      el.statTokensTotal.textContent = '-';
+      el.miniTokensInput.textContent = '-';
+      el.miniTokensOutput.textContent = '-';
+      el.miniTokensReasoning.textContent = '-';
+      el.miniTokensCache.textContent = '-';
+      el.miniTokensTotal.textContent = '-';
     }
-    el.statCost.textContent = meta.cost ? `$${meta.cost.toFixed(4)}` : '$0.00';
+    el.miniCost.textContent = meta.cost ? `$${meta.cost.toFixed(4)}` : '$0.00';
+
+    // Left Sidebar: Touched Files Chips
+    if (meta.filesModified && meta.filesModified.length > 0) {
+      el.modalFilesCount.textContent = meta.filesModified.length;
+      el.tabModalDiffsCount.style.display = 'inline-block';
+      el.tabModalDiffsCount.textContent = meta.filesModified.length;
+      el.modalFilesChips.innerHTML = meta.filesModified.map(f => `<span class="touched-file-chip">${escapeHtml(f)}</span>`).join('');
+    } else {
+      el.modalFilesCount.textContent = '0';
+      el.tabModalDiffsCount.style.display = 'none';
+      el.modalFilesChips.innerHTML = '<span style="color: var(--text-dim); font-size: 0.75rem;">No files modified</span>';
+    }
+
+    // Right Viewport: Markdown Output
+    if (meta.markdownSummary) {
+      el.modalMarkdownContainer.innerHTML = renderMarkdownToHtml(meta.markdownSummary);
+    } else {
+      el.modalMarkdownContainer.innerHTML = '<div class="markdown-empty">No structured markdown summary recorded for this run. Check the Live Terminal tab for full raw output.</div>';
+    }
+
+    // Right Viewport: Diffs
+    if (meta.diffs) {
+      el.modalDiffContainer.innerHTML = renderDiffToHtml(meta.diffs);
+    } else {
+      el.modalDiffContainer.innerHTML = '<div class="diff-empty">No git diff captured for this run.</div>';
+    }
 
     // Start Log Streaming
     startLogStream(meta.filename);
   } catch (err) {
-    console.error('Error opening log drawer:', err);
+    console.error('Error opening workspace modal:', err);
   }
 }
 
-function closeLogDrawer() {
-  el.drawerOverlay.classList.remove('open');
-  el.logDrawer.classList.remove('open');
+function closeWorkspaceModal() {
+  el.workspaceModalOverlay.classList.remove('open');
+  el.workspaceModal.classList.remove('open');
   if (state.activeLogStream) {
     state.activeLogStream.close();
     state.activeLogStream = null;
   }
 }
 
-function switchDrawerTab(tabId) {
-  state.activeDrawerTab = tabId;
-  el.drawerTabs.forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
-  el.tabPanes.forEach(p => p.classList.toggle('active', p.id === `pane-${tabId}`));
+function toggleFullscreenModal() {
+  state.isFullscreen = !state.isFullscreen;
+  el.workspaceModal.classList.toggle('is-fullscreen', state.isFullscreen);
+  el.btnToggleFullscreen.textContent = state.isFullscreen ? '🗗' : '⛶';
+  el.btnToggleFullscreen.title = state.isFullscreen ? 'Exit Fullscreen' : 'Toggle Fullscreen Width';
+}
+
+function switchModalTab(tabId) {
+  state.activeModalTab = tabId;
+  el.fsTabs.forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
+  el.fsTabPanes.forEach(p => p.classList.toggle('active', p.id === `modal-pane-${tabId}`));
 }
 
 function startLogStream(filename) {
@@ -597,7 +616,7 @@ function startLogStream(filename) {
   }
 
   state.rawLogLines = [];
-  el.terminalContent.innerHTML = '';
+  el.modalTerminalContent.innerHTML = '';
   el.streamStatusBadge.innerHTML = '<span class="stream-dot"></span> Live Streaming';
   el.streamStatusBadge.style.color = 'var(--accent)';
 
@@ -635,10 +654,10 @@ function renderTerminalLines() {
 
   el.logLinesCount.textContent = `${filtered.length} lines`;
   const rendered = filtered.map(l => ansiToHtml(escapeHtml(l))).join('\n');
-  el.terminalContent.innerHTML = rendered || '<span style="color: var(--text-dim);">No output lines recorded.</span>';
+  el.modalTerminalContent.innerHTML = rendered || '<span style="color: var(--text-dim);">No output lines recorded.</span>';
 
   if (state.autoscroll) {
-    el.terminalContainer.scrollTop = el.terminalContainer.scrollHeight;
+    el.modalTerminalBox.scrollTop = el.modalTerminalBox.scrollHeight;
   }
 }
 
@@ -653,7 +672,7 @@ async function killProcess(pid, filename) {
       alert(`Process tree for PID ${pid} terminated.`);
       fetchStats();
       fetchRuns();
-      if (state.selectedRun === filename) openLogDrawer(filename);
+      if (state.selectedRun === filename) openWorkspaceModal(filename);
     } else {
       alert(`Could not terminate process: ${data.error || 'Unknown error'}`);
     }
@@ -943,22 +962,23 @@ function initEventListeners() {
     showToast('Refreshed monitor data');
   });
 
-  // Drawer Controls & Tabs
-  el.btnCloseDrawer.addEventListener('click', closeLogDrawer);
-  el.drawerOverlay.addEventListener('click', closeLogDrawer);
-  el.btnCopyLog.addEventListener('click', () => {
+  // Fullscreen Modal Controls & Tabs
+  el.btnCloseWorkspaceModal.addEventListener('click', closeWorkspaceModal);
+  el.workspaceModalOverlay.addEventListener('click', closeWorkspaceModal);
+  el.btnToggleFullscreen.addEventListener('click', toggleFullscreenModal);
+  el.btnModalCopyLog.addEventListener('click', () => {
     copyToClipboard(state.rawLogLines.join('\n'), 'Full log copied to clipboard!');
   });
 
-  el.drawerTabs.forEach(tab => {
-    tab.addEventListener('click', () => switchDrawerTab(tab.dataset.tab));
+  el.fsTabs.forEach(tab => {
+    tab.addEventListener('click', () => switchModalTab(tab.dataset.tab));
   });
 
   // Terminal Controls
   el.chkAutoscroll.addEventListener('change', (e) => state.autoscroll = e.target.checked);
   el.chkWrap.addEventListener('change', (e) => {
     state.wordWrap = e.target.checked;
-    el.terminalContent.style.whiteSpace = state.wordWrap ? 'pre-wrap' : 'pre';
+    el.modalTerminalContent.style.whiteSpace = state.wordWrap ? 'pre-wrap' : 'pre';
   });
 
   el.logSearchInput.addEventListener('input', (e) => {
@@ -985,11 +1005,10 @@ function initEventListeners() {
 
   // Keyboard Shortcuts Handler
   document.addEventListener('keydown', (e) => {
-    // If typing in input, only handle Esc
     const isInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
 
     if (e.key === 'Escape') {
-      closeLogDrawer();
+      closeWorkspaceModal();
       closeDanglingModal();
       closeShortcutsModal();
       if (isInput) document.activeElement.blur();
@@ -1004,6 +1023,11 @@ function initEventListeners() {
     } else if (e.key === '?' || (e.shiftKey && e.key === '?')) {
       e.preventDefault();
       openShortcutsModal();
+    } else if (e.key === 'f' || e.key === 'F') {
+      if (el.workspaceModal.classList.contains('open')) {
+        e.preventDefault();
+        toggleFullscreenModal();
+      }
     } else if (e.key === 'r' || e.key === 'R') {
       e.preventDefault();
       fetchStats();
@@ -1030,7 +1054,7 @@ function initEventListeners() {
     } else if (e.key === 'Enter' || e.key === ' ') {
       if (state.selectedRowIndex >= 0 && state.selectedRowIndex < state.historyRuns.length) {
         e.preventDefault();
-        openLogDrawer(state.historyRuns[state.selectedRowIndex].filename);
+        openWorkspaceModal(state.historyRuns[state.selectedRowIndex].filename);
       }
     }
   });
