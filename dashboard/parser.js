@@ -335,6 +335,62 @@ export function findAntigravityTranscript(startTimeIso, workspace) {
   return null;
 }
 
+/**
+ * Cleans raw prompt strings and removes wrapper boilerplate
+ */
+export function cleanTaskPrompt(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  let clean = raw.trim();
+
+  // Extract from Task: header block if present
+  const taskMatch = clean.match(/Task:\s*([\s\S]*?)(?=(?:\n=== File|\nRules:|<\/USER_REQUEST>|\nWhen done|---|---\n|$))/i);
+  if (taskMatch && taskMatch[1].trim()) {
+    clean = taskMatch[1].trim();
+  } else {
+    // Strip subagent wrapper boilerplate
+    clean = clean.replace(/^You are running as a non-interactive coding subagent\.[\s\S]*?Task:\s*/i, '');
+    clean = clean.replace(/^You are running as a non-interactive coding subagent\.[^\n]*\n*/i, '');
+  }
+
+  clean = clean.replace(/\\n/g, '\n').replace(/^[\r\n]+/, '').trim();
+
+  // Strip error/smoke test strings
+  if (
+    clean === 'CLAUDE_SUBAGENT_OK' ||
+    clean.startsWith('Fable 5 requires') ||
+    clean.startsWith("You've hit your session limit")
+  ) {
+    return null;
+  }
+
+  return clean || null;
+}
+
+/**
+ * Formats provider and model name cleanly with intelligent defaults
+ */
+export function formatModelName(model, provider) {
+  if (!model || model === 'default' || model === 'Default Model' || model === 'undefined' || model === 'null') {
+    if (provider === 'claude') return 'Claude 3.7 Sonnet (Default)';
+    if (provider === 'opencode') return 'glm-5.2 (Default)';
+    if (provider === 'codex') return 'gpt-5.5 (Default)';
+    if (provider === 'antigravity') return 'Gemini 3.5 Flash (Default)';
+    return 'Default Model';
+  }
+
+  const mLower = model.toLowerCase();
+  if (provider === 'claude') {
+    if (mLower === 'sonnet' || mLower.includes('claude-3-7-sonnet') || mLower.includes('3.7-sonnet')) return 'Claude 3.7 Sonnet';
+    if (mLower === 'opus' || mLower.includes('claude-3-7-opus') || mLower.includes('3-opus')) return 'Claude 3.7 Opus';
+    if (mLower === 'haiku' || mLower.includes('claude-3-5-haiku') || mLower.includes('3.5-haiku')) return 'Claude 3.5 Haiku';
+  } else if (provider === 'opencode') {
+    if (mLower === 'default') return 'glm-5.2 (Default)';
+  } else if (provider === 'codex') {
+    if (mLower === 'default' || mLower === 'gpt-5') return 'gpt-5.5 (Default)';
+  }
+  return model;
+}
+
 const claudeDataDirs = [
   process.env.CLAUDE_DATA,
   '/claude_data',
@@ -353,11 +409,12 @@ export function getClaudeSessionDetails(sessionId, startTimeIso, workspace) {
   let matchedWorkspace = workspace;
   let task = null;
 
+  const targetTime = startTimeIso ? new Date(startTimeIso).getTime() : null;
+
   // Correlate with history.jsonl if needed
   const historyPath = path.join(claudeDir, 'history.jsonl');
   if (fs.existsSync(historyPath)) {
     try {
-      const targetTime = startTimeIso ? new Date(startTimeIso).getTime() : null;
       const content = fs.readFileSync(historyPath, 'utf8');
       const lines = content.split('\n').filter(Boolean);
       for (let i = lines.length - 1; i >= 0; i--) {
@@ -365,13 +422,13 @@ export function getClaudeSessionDetails(sessionId, startTimeIso, workspace) {
           const entry = JSON.parse(lines[i]);
           if (sessionId && entry.sessionId === sessionId) {
             matchedWorkspace = entry.project || matchedWorkspace;
-            task = entry.display || task;
+            task = cleanTaskPrompt(entry.display) || task;
             break;
           }
           if (!matchedSessionId && targetTime && entry.timestamp && Math.abs(entry.timestamp - targetTime) <= 180000) {
             matchedSessionId = entry.sessionId;
             matchedWorkspace = entry.project || matchedWorkspace;
-            task = entry.display || task;
+            task = cleanTaskPrompt(entry.display) || task;
             break;
           }
         } catch {}
@@ -401,11 +458,40 @@ export function getClaudeSessionDetails(sessionId, startTimeIso, workspace) {
     }
   }
 
+  // Fallback: Scan projects by timestamp if no session ID was found in log
+  if (!targetFile && targetTime && fs.existsSync(projectsDir)) {
+    try {
+      let closestDiff = Infinity;
+      for (const pDir of fs.readdirSync(projectsDir)) {
+        const fullPDir = path.join(projectsDir, pDir);
+        if (!fs.statSync(fullPDir).isDirectory()) continue;
+        for (const f of fs.readdirSync(fullPDir)) {
+          if (!f.endsWith('.jsonl')) continue;
+          const fPath = path.join(fullPDir, f);
+          try {
+            const firstLine = fs.readFileSync(fPath, 'utf8').split('\n')[0];
+            const parsed = JSON.parse(firstLine);
+            if (parsed && parsed.timestamp) {
+              const tTime = new Date(parsed.timestamp).getTime();
+              const diff = Math.abs(tTime - targetTime);
+              if (diff <= 300000 && diff < closestDiff) {
+                closestDiff = diff;
+                targetFile = fPath;
+                matchedSessionId = f.replace('.jsonl', '');
+                if (parsed.cwd) matchedWorkspace = parsed.cwd;
+              }
+            }
+          } catch {}
+        }
+      }
+    } catch {}
+  }
+
   if (!targetFile) {
     return {
       sessionId: matchedSessionId,
       workspace: matchedWorkspace,
-      task,
+      task: cleanTaskPrompt(task),
     };
   }
 
@@ -419,6 +505,9 @@ export function getClaudeSessionDetails(sessionId, startTimeIso, workspace) {
     for (const line of lines) {
       try {
         const item = JSON.parse(line);
+        if (item.type === 'user' && item.message && item.message.content && !task) {
+          task = cleanTaskPrompt(item.message.content) || task;
+        }
         if (item.type === 'assistant' && item.message) {
           if (!model && item.message.model && item.message.model !== '<synthetic>') {
             model = item.message.model;
@@ -454,37 +543,51 @@ export function getClaudeSessionDetails(sessionId, startTimeIso, workspace) {
       total: totalTokens,
       input: totalIn,
       output: totalOut,
+      reasoning: totalThinking,
       cacheRead: totalCacheRead,
       cacheWrite: totalCacheWrite,
-      reasoning: totalThinking,
     } : null;
 
-    let cost = 0;
-    if (tokens) {
-      const isOpus = model && model.includes('opus');
-      const inRate = isOpus ? 0.000015 : 0.000003;
-      const outRate = isOpus ? 0.000075 : 0.000015;
-      cost = Number(((tokens.input * inRate) + (tokens.output * outRate)).toFixed(4));
+    let inRate = 0.000003;
+    let outRate = 0.000015;
+    let cacheReadRate = 0.0000003;
+    let cacheWriteRate = 0.00000375;
+
+    if (model && model.includes('opus')) {
+      inRate = 0.000015;
+      outRate = 0.000075;
+      cacheReadRate = 0.0000015;
+      cacheWriteRate = 0.00001875;
+    } else if (model && model.includes('haiku')) {
+      inRate = 0.0000008;
+      outRate = 0.000004;
+      cacheReadRate = 0.00000008;
+      cacheWriteRate = 0.000001;
     }
+
+    const cost = tokens ? Number((
+      (totalIn * inRate) +
+      (totalOut * outRate) +
+      (totalCacheRead * cacheReadRate) +
+      (totalCacheWrite * cacheWriteRate)
+    ).toFixed(4)) : 0;
 
     return {
       sessionId: matchedSessionId,
       workspace: matchedWorkspace,
-      task,
-      model,
+      task: cleanTaskPrompt(task),
+      model: model || null,
       tokens,
       cost,
-      markdownSummary: lastAssistantText ? lastAssistantText.trim() : null,
+      markdownSummary: lastAssistantText,
       toolCalls,
     };
-  } catch {}
+  } catch (err) {}
 
-  return {
-    sessionId: matchedSessionId,
-    workspace: matchedWorkspace,
-    task,
-  };
+  return null;
 }
+
+
 
 const codexDataDirs = [
   process.env.CODEX_DATA,
@@ -1051,7 +1154,7 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
     status,
     workspace: workspace || 'Unknown',
     workspaceName: workspace ? path.basename(workspace) : 'workspace',
-    model: model || 'Default Model',
+    model: formatModelName(model, parsedName.provider),
     session,
     task: task ? (task.length > 300 ? task.slice(0, 300) + '...' : task) : 'No task prompt specified',
     fullTask: task || '',
