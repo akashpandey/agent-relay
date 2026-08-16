@@ -884,7 +884,7 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
                      combinedSample.match(/llm\.model=([^\s]+)/i) ||
                      combinedSample.match(/> build · ([^\r\n]+)/i) ||
                      combinedSample.match(/model:\s*([^\r\n]+)/i) ||
-                     combinedSample.match(/model=([^\s,]+)/i) ||
+                     combinedSample.match(/model=(.*?)(?=\s+session=|\s+provider=|\s+workspace=|\n|$)/i) ||
                      combinedSample.match(/AGY_MODEL='([^']+)'/i) ||
                      combinedSample.match(/OPENCODE_MODEL='([^']+)'/i) ||
                      combinedSample.match(/CODEX_MODEL='([^']+)'/i) ||
@@ -926,11 +926,11 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
   let toolCalls = [];
 
   // Check explicit standardized wrapper subagent: header
-  const headerMatch = headContent.match(/subagent:\s*provider=([^\s]+)\s+workspace=([^\s]+)\s+model=([^\s]+)\s+session=([^\s]+)/i);
+  const headerMatch = headContent.match(/subagent:\s*provider=([^\s]+)\s+workspace=([^\s]+)\s+model=(.*?)\s+session=([^\s\r\n]+)/i);
   if (headerMatch) {
     if (!workspace || workspace === 'Unknown') workspace = headerMatch[2].trim();
-    if (!model && headerMatch[3] !== 'default') model = headerMatch[3].trim();
-    if (!session && headerMatch[4] !== 'new') session = headerMatch[4].trim();
+    if (headerMatch[3].trim() && headerMatch[3].trim() !== 'default') model = headerMatch[3].trim();
+    if (!session && headerMatch[4].trim() !== 'new') session = headerMatch[4].trim();
   }
 
   // If Antigravity provider, resolve transcript for workspace, model, prompt, summary, and tool calls
@@ -938,7 +938,7 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
     const agyMatch = findAntigravityTranscript(parsedName.startTime, workspace);
     if (agyMatch) {
       if (!workspace || workspace === 'Unknown') workspace = agyMatch.workspace;
-      if (!model && agyMatch.model) model = agyMatch.model;
+      if (agyMatch.model) model = agyMatch.model;
       if (!task && agyMatch.task) task = agyMatch.task;
       if (!session && agyMatch.conversationId) session = agyMatch.conversationId;
       if (agyMatch.markdownSummary) markdownSummary = agyMatch.markdownSummary;
