@@ -35,6 +35,15 @@
   --badge-claude: #f97316;
   --badge-codex: #06b6d4;
 
+  --bg-terminal: #070a12;
+  --text-terminal: #f1f5f9;
+  --bg-diff: #080c16;
+  --text-diff-context: #94a3b8;
+  --diff-add-text: #4ade80;
+  --diff-add-bg: rgba(74, 222, 128, 0.15);
+  --diff-del-text: #f87171;
+  --diff-del-bg: rgba(248, 113, 113, 0.15);
+
   --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   --font-mono: 'Fira Code', ui-monospace, SFMono-Regular, monospace;
 }
@@ -71,6 +80,15 @@
   --badge-antigravity: #89b4fa;
   --badge-claude: #fab387;
   --badge-codex: #94e2d5;
+
+  --bg-terminal: #11111b;
+  --text-terminal: #cdd6f4;
+  --bg-diff: #181825;
+  --text-diff-context: #a6adc8;
+  --diff-add-text: #a6e3a1;
+  --diff-add-bg: rgba(166, 227, 161, 0.15);
+  --diff-del-text: #f38ba8;
+  --diff-del-bg: rgba(243, 139, 168, 0.15);
 }
 
 /* 3. Tokyo Night */
@@ -105,6 +123,15 @@
   --badge-antigravity: #bb9af7;
   --badge-claude: #ff9e64;
   --badge-codex: #7dcfff;
+
+  --bg-terminal: #16161e;
+  --text-terminal: #c0caf5;
+  --bg-diff: #1a1b26;
+  --text-diff-context: #9aa5ce;
+  --diff-add-text: #9ece6a;
+  --diff-add-bg: rgba(158, 206, 106, 0.15);
+  --diff-del-text: #f7768e;
+  --diff-del-bg: rgba(247, 118, 142, 0.15);
 }
 
 /* 4. OLED Pitch Black */
@@ -139,6 +166,15 @@
   --badge-antigravity: #a855f7;
   --badge-claude: #f97316;
   --badge-codex: #06b6d4;
+
+  --bg-terminal: #000000;
+  --text-terminal: #ffffff;
+  --bg-diff: #050505;
+  --text-diff-context: #a3a3a3;
+  --diff-add-text: #22c55e;
+  --diff-add-bg: rgba(34, 197, 94, 0.2);
+  --diff-del-text: #ef4444;
+  --diff-del-bg: rgba(239, 68, 68, 0.2);
 }
 
 /* 5. Clean Slate Light */
@@ -173,6 +209,15 @@
   --badge-antigravity: #6366f1;
   --badge-claude: #ea580c;
   --badge-codex: #0891b2;
+
+  --bg-terminal: #0f172a;
+  --text-terminal: #f8fafc;
+  --bg-diff: #ffffff;
+  --text-diff-context: #334155;
+  --diff-add-text: #15803d;
+  --diff-add-bg: #dcfce7;
+  --diff-del-text: #b91c1c;
+  --diff-del-bg: #fee2e2;
 }
 
 /* 6. Catppuccin Latte */
@@ -207,6 +252,15 @@
   --badge-antigravity: #7287fd;
   --badge-claude: #fe640b;
   --badge-codex: #04a5e5;
+
+  --bg-terminal: #1e1e2e;
+  --text-terminal: #eff1f5;
+  --bg-diff: #ffffff;
+  --text-diff-context: #4c4f69;
+  --diff-add-text: #40a02b;
+  --diff-add-bg: #e6f7e6;
+  --diff-del-text: #d20f39;
+  --diff-del-bg: #fde8ec;
 }
 
 /* ==========================================================================
@@ -1187,7 +1241,7 @@ kbd {
 /* Expansive Terminal */
 .fs-terminal-box {
   flex: 1;
-  background-color: #05080d;
+  background-color: var(--bg-terminal);
   padding: 1.25rem 1.5rem;
   overflow-y: auto;
 }
@@ -1196,7 +1250,7 @@ kbd {
   font-family: var(--font-mono);
   font-size: 0.825rem;
   line-height: 1.5;
-  color: #e2e8f0;
+  color: var(--text-terminal);
   white-space: pre-wrap;
   word-break: break-all;
 }
@@ -1209,7 +1263,7 @@ kbd {
   color: var(--text-main);
   line-height: 1.7;
   font-size: 0.925rem;
-  background-color: var(--bg-app);
+  background-color: var(--bg-surface);
 }
 
 .fs-markdown-box h1, .fs-markdown-box h2, .fs-markdown-box h3 {
@@ -1264,12 +1318,41 @@ kbd {
   font-family: var(--font-mono);
   font-size: 0.825rem;
   line-height: 1.5;
-  background-color: #05080d;
+  background-color: var(--bg-diff);
+  color: var(--text-diff-context);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
 }
 
-.diff-line-add { color: var(--success); background-color: var(--success-bg); display: block; padding: 0 4px; }
-.diff-line-del { color: var(--danger); background-color: var(--danger-bg); display: block; padding: 0 4px; }
-.diff-line-header { color: var(--accent); font-weight: 600; display: block; padding: 2px 4px; margin-top: 4px; }
+.diff-line-add {
+  color: var(--diff-add-text);
+  background-color: var(--diff-add-bg);
+  display: block;
+  padding: 2px 6px;
+  border-radius: 2px;
+}
+
+.diff-line-del {
+  color: var(--diff-del-text);
+  background-color: var(--diff-del-bg);
+  display: block;
+  padding: 2px 6px;
+  border-radius: 2px;
+}
+
+.diff-line-header {
+  color: var(--accent);
+  font-weight: 600;
+  display: block;
+  padding: 2px 6px;
+  margin-top: 6px;
+}
+
+.diff-line-context {
+  color: var(--text-diff-context);
+  display: block;
+  padding: 1px 6px;
+}
 
 /* ==========================================================================
    Modals

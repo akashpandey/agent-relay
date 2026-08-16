@@ -423,7 +423,7 @@ const server = http.createServer(async (req, res) => {
           currentPos = stat.size;
 
           const chunk = buf.toString('utf8');
-          res.write(`data: ${JSON.stringify({ chunk, size: stat.size })}\n\n`);
+          res.write(`data: ${JSON.stringify({ type: 'data', chunk, size: stat.size })}\n\n`);
         }
       } catch (err) {}
     };

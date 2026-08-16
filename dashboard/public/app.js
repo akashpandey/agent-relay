@@ -610,15 +610,27 @@ function switchModalTab(tabId) {
   el.fsTabPanes.forEach(p => p.classList.toggle('active', p.id === `modal-pane-${tabId}`));
 }
 
-function startLogStream(filename) {
+async function startLogStream(filename) {
   if (state.activeLogStream) {
     state.activeLogStream.close();
   }
 
   state.rawLogLines = [];
-  el.modalTerminalContent.innerHTML = '';
+  el.modalTerminalContent.innerHTML = 'Connecting to log stream...';
   el.streamStatusBadge.innerHTML = '<span class="stream-dot"></span> Live Streaming';
   el.streamStatusBadge.style.color = 'var(--accent)';
+
+  // Initial immediate fetch for instant rendering of completed/existing logs
+  try {
+    const res = await fetch(`/api/logs/${encodeURIComponent(filename)}`);
+    if (res.ok) {
+      const fullText = await res.text();
+      state.rawLogLines = fullText.split('\n');
+      renderTerminalLines();
+    }
+  } catch (e) {
+    console.warn('Initial log fetch failed:', e);
+  }
 
   const sse = new EventSource(`/api/logs/${encodeURIComponent(filename)}/stream`);
   state.activeLogStream = sse;
@@ -626,10 +638,14 @@ function startLogStream(filename) {
   sse.onmessage = (e) => {
     try {
       const data = JSON.parse(e.data);
-      if (data.type === 'init' || data.type === 'data') {
+      if (data.chunk) {
         const lines = data.chunk.split('\n');
-        for (const line of lines) {
-          state.rawLogLines.push(line);
+        if (state.rawLogLines.length === 0) {
+          state.rawLogLines = lines;
+        } else {
+          for (const line of lines) {
+            state.rawLogLines.push(line);
+          }
         }
         renderTerminalLines();
       } else if (data.type === 'eof') {
@@ -640,8 +656,8 @@ function startLogStream(filename) {
   };
 
   sse.onerror = () => {
-    el.streamStatusBadge.innerHTML = '<span>●</span> Stream Disconnected';
-    el.streamStatusBadge.style.color = 'var(--danger)';
+    el.streamStatusBadge.innerHTML = '<span>●</span> Stream Finished';
+    el.streamStatusBadge.style.color = 'var(--text-dim)';
   };
 }
 
@@ -806,7 +822,7 @@ function renderDiffToHtml(diffText) {
     } else if (line.startsWith('@@')) {
       return `<span class="diff-line-header">${escaped}</span>`;
     }
-    return `<span>${escaped}</span>`;
+    return `<span class="diff-line-context">${escaped}</span>`;
   }).join('\n');
 }
 
