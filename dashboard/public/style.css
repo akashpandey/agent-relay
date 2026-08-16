@@ -1238,6 +1238,98 @@ kbd {
   display: flex;
 }
 
+/* Terminal Toolbar & Status Badge */
+.log-toolbar {
+  padding: 0.6rem 1.25rem;
+  background-color: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.log-toolbar-left, .log-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.stream-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background-color: var(--accent-glow);
+  color: var(--accent);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  letter-spacing: 0.02em;
+}
+
+.stream-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+  animation: pulse-glow 1.5s infinite ease-in-out;
+}
+
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-muted);
+  font-size: 0.775rem;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s ease;
+}
+
+.checkbox-label:hover {
+  color: var(--text-main);
+}
+
+.checkbox-label input[type="checkbox"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+
+.log-filter-input {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 0.3rem 0.65rem;
+  color: var(--text-main);
+  font-size: 0.775rem;
+  font-family: var(--font-sans);
+  outline: none;
+  min-width: 220px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.log-filter-input:focus {
+  border-color: var(--accent);
+  background-color: var(--bg-surface);
+}
+
+.log-lines-count {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* Expansive Terminal */
 .fs-terminal-box {
   flex: 1;
