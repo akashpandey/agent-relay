@@ -24,21 +24,40 @@ console.log(`[Dashboard] Logs Directory: ${LOGS_DIR}`);
 console.log(`[Dashboard] Proc Directory: ${PROC_DIR}`);
 
 /**
- * Returns all log entries sorted newest first
+ * In-memory cache for parsed metadata of completed runs to eliminate DB and disk load
+ */
+const parsedRunsCache = new Map();
+
+/**
+ * Returns all log entries sorted newest first with high-performance caching
  */
 function getAllRuns() {
   if (!fs.existsSync(LOGS_DIR)) return [];
   const files = fs.readdirSync(LOGS_DIR).filter(f => f.endsWith('.log'));
-  // Sort descending by filename timestamp
   files.sort((a, b) => b.localeCompare(a));
   
   const runs = [];
   for (const file of files) {
     const filePath = path.join(LOGS_DIR, file);
-    const meta = parseLogMetadata(file, filePath, PROC_DIR);
-    if (meta) {
-      runs.push(meta);
-    }
+    try {
+      const stats = fs.statSync(filePath);
+      const cacheKey = `${file}:${stats.size}:${stats.mtimeMs}`;
+      
+      let meta = parsedRunsCache.get(cacheKey);
+      if (!meta) {
+        meta = parseLogMetadata(file, filePath, PROC_DIR);
+        if (meta) {
+          // If run is completed, cache it permanently by mtime:size
+          if (!meta.isAlive) {
+            parsedRunsCache.set(cacheKey, meta);
+          }
+        }
+      }
+      
+      if (meta) {
+        runs.push(meta);
+      }
+    } catch {}
   }
   return runs;
 }
