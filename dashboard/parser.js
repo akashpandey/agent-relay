@@ -367,26 +367,21 @@ export function cleanTaskPrompt(raw) {
 }
 
 /**
- * Formats provider and model name cleanly with intelligent defaults
+ * Formats provider and model name cleanly based on telemetry
  */
 export function formatModelName(model, provider) {
   if (!model || model === 'default' || model === 'Default Model' || model === 'undefined' || model === 'null') {
-    if (provider === 'claude') return 'Claude 3.7 Sonnet (Default)';
-    if (provider === 'opencode') return 'glm-5.2 (Default)';
-    if (provider === 'codex') return 'gpt-5.5 (Default)';
-    if (provider === 'antigravity') return 'Gemini 3.5 Flash (Default)';
-    return 'Default Model';
+    return 'Default';
   }
 
   const mLower = model.toLowerCase();
   if (provider === 'claude') {
-    if (mLower === 'sonnet' || mLower.includes('claude-3-7-sonnet') || mLower.includes('3.7-sonnet')) return 'Claude 3.7 Sonnet';
-    if (mLower === 'opus' || mLower.includes('claude-3-7-opus') || mLower.includes('3-opus')) return 'Claude 3.7 Opus';
-    if (mLower === 'haiku' || mLower.includes('claude-3-5-haiku') || mLower.includes('3.5-haiku')) return 'Claude 3.5 Haiku';
-  } else if (provider === 'opencode') {
-    if (mLower === 'default') return 'glm-5.2 (Default)';
-  } else if (provider === 'codex') {
-    if (mLower === 'default' || mLower === 'gpt-5') return 'gpt-5.5 (Default)';
+    if (mLower === 'claude-opus-4-7' || mLower.includes('opus-4-7')) return 'Claude Opus 4.7';
+    if (mLower === 'claude-sonnet-4-6' || mLower.includes('sonnet-4-6')) return 'Claude Sonnet 4.6';
+    if (mLower === 'claude-sonnet-4-5' || mLower.includes('sonnet-4-5')) return 'Claude Sonnet 4.5';
+    if (mLower === 'sonnet') return 'Claude Sonnet';
+    if (mLower === 'opus') return 'Claude Opus';
+    if (mLower === 'haiku') return 'Claude Haiku';
   }
   return model;
 }
