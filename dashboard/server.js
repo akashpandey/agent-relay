@@ -476,16 +476,23 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // POST /api/runs/:pid/kill
-  if (pathname.startsWith('/api/runs/') && pathname.endsWith('/kill') && req.method === 'POST') {
-    const match = pathname.match(/\/api\/runs\/(\d+)\/kill/);
-    if (!match) {
+  // POST /api/runs/:id/kill or /api/dangling/:id/kill (supports PID or filename)
+  if ((pathname.startsWith('/api/runs/') || pathname.startsWith('/api/dangling/')) && pathname.endsWith('/kill') && req.method === 'POST') {
+    const rawParam = pathname.replace(/^\/api\/(?:runs|dangling)\//, '').replace(/\/kill$/, '');
+    let pid = parseInt(rawParam, 10);
+    if (isNaN(pid)) {
+      const parsed = parseLogFilename(rawParam);
+      if (parsed && parsed.pid) {
+        pid = parsed.pid;
+      }
+    }
+
+    if (!pid || isNaN(pid)) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Invalid PID' }));
+      res.end(JSON.stringify({ error: 'Invalid PID or filename' }));
       return;
     }
 
-    const pid = parseInt(match[1], 10);
     const result = await terminateProcessTree(pid);
     
     // Broadcast update immediately
@@ -500,8 +507,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // POST /api/kill-dangling (Kill all dangling subagent processes)
-  if (pathname === '/api/kill-dangling' && req.method === 'POST') {
+  // POST /api/dangling/kill-all or /api/kill-dangling (Kill all dangling subagent processes)
+  if ((pathname === '/api/dangling/kill-all' || pathname === '/api/kill-dangling') && req.method === 'POST') {
     const dangling = findDanglingSubagentProcesses();
     const results = [];
     for (const proc of dangling) {
@@ -517,6 +524,13 @@ const server = http.createServer(async (req, res) => {
       killedCount: results.length,
       killedPids: results,
     }));
+    return;
+  }
+
+  // Return 404 JSON for unmatched API endpoints (prevents returning index.html)
+  if (pathname.startsWith('/api/')) {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'API endpoint not found', path: pathname }));
     return;
   }
 

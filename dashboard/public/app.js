@@ -854,7 +854,7 @@ async function killAllDangling() {
     const res = await fetch('/api/dangling/kill-all', { method: 'POST' });
     const data = await res.json();
     if (data.success) {
-      alert(`Terminated ${data.terminatedCount} dangling subagent processes.`);
+      alert(`Terminated ${data.killedCount ?? data.terminatedCount ?? 0} dangling subagent processes.`);
       closeDanglingModal();
       fetchStats();
     }
