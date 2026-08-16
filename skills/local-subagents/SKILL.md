@@ -61,6 +61,24 @@ SUBAGENT_SESSION='<session-id>' opencode-subagent "Implement the second step."
 - **Log Files**: Stored in `~/local-subagents/logs/<timestamp>-<provider>-<pid>.log`.
 - **Dangling Process Cleanup**: The dashboard sentinel automatically tracks and allows 1-click termination of orphaned processes.
 
+## Programmatic Observability & Monitoring APIs
+
+Orchestrator agents can monitor background runs via `http://localhost:4242` without loading multi-megabyte log files into context:
+
+```sh
+# 1. Check live active runs and process sentinel status
+curl -s http://localhost:4242/api/stats | jq '.activeRuns[] | {pid, provider, model, durationHuman, currentAction}'
+
+# 2. Query runs with filters (tokens, costs, summaries, diffs)
+curl -s "http://localhost:4242/api/runs?provider=opencode&limit=5" | jq
+
+# 3. Get detailed telemetry & tool execution timeline for a run
+curl -s "http://localhost:4242/api/runs/<log-filename>" | jq '{status, tokens, cost, filesModified, markdownSummary, toolCalls}'
+
+# 4. Terminate a runaway subagent process tree
+curl -X POST "http://localhost:4242/api/runs/<log-filename>/kill"
+```
+
 ## Rules & Best Practices
 
 1. **Keep tasks bounded**: One bug trace, one refactor, one test implementation, or one code review.
