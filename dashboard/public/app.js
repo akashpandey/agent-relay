@@ -344,13 +344,51 @@ function renderActiveCards(activeRuns) {
   if (activeRuns.length === 0) {
     el.activeContainer.innerHTML = `
       <div class="empty-active-state">
-        <div class="radar-scan"></div>
-        <div class="empty-active-text">
-          <h3>No Active Subagent Calls</h3>
-          <p>Whenever you run <code>opencode-subagent</code>, <code>antigravity-subagent</code>, <code>claude-subagent</code>, or <code>codex-subagent</code>, live progress will appear here automatically.</p>
+        <div class="sentinel-radar-wrap">
+          <div class="sentinel-radar">
+            <div class="radar-ring radar-ring-1"></div>
+            <div class="radar-ring radar-ring-2"></div>
+            <div class="radar-ring radar-ring-3"></div>
+            <div class="radar-sweep"></div>
+            <div class="radar-blip blip-1" title="OpenCode"></div>
+            <div class="radar-blip blip-2" title="Antigravity"></div>
+            <div class="radar-blip blip-3" title="Codex"></div>
+            <div class="radar-blip blip-4" title="Claude"></div>
+            <div class="radar-core"></div>
+          </div>
+        </div>
+        <div class="empty-active-content">
+          <div class="empty-active-header">
+            <div class="sentinel-status-pill">
+              <span class="sentinel-dot"></span>
+              <span>SENTINEL ACTIVE · LISTENING FOR RUNNERS</span>
+            </div>
+            <h3>No Active Subagent Calls</h3>
+          </div>
+          <p>Processes currently running in your terminal will stream live progress, tokens, and diffs here automatically. Quick launch:</p>
+          <div class="quick-cmd-pills">
+            <button class="quick-cmd-pill" data-cmd='opencode-subagent "Task..."' title="Click to copy CLI command">
+              <span class="pill-dot dot-opencode"></span><code>opencode-subagent "..."</code>
+            </button>
+            <button class="quick-cmd-pill" data-cmd='antigravity-subagent "Task..."' title="Click to copy CLI command">
+              <span class="pill-dot dot-antigravity"></span><code>antigravity-subagent "..."</code>
+            </button>
+            <button class="quick-cmd-pill" data-cmd='codex-subagent "Task..."' title="Click to copy CLI command">
+              <span class="pill-dot dot-codex"></span><code>codex-subagent "..."</code>
+            </button>
+            <button class="quick-cmd-pill" data-cmd='claude-subagent "Task..."' title="Click to copy CLI command">
+              <span class="pill-dot dot-claude"></span><code>claude-subagent "..."</code>
+            </button>
+          </div>
         </div>
       </div>
     `;
+
+    el.activeContainer.querySelectorAll('.quick-cmd-pill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        copyToClipboard(btn.dataset.cmd, `Copied: ${btn.dataset.cmd}`);
+      });
+    });
     return;
   }
 
