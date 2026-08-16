@@ -1512,6 +1512,8 @@ kbd {
   overflow: hidden;
   box-shadow: var(--shadow-sm);
   transition: border-color 0.15s ease;
+  flex-shrink: 0;
+  width: 100%;
 }
 
 .tool-card:hover {
