@@ -19,32 +19,54 @@ export function normalizeToolCall({ tool, input, output, durationMs, status }) {
   let detail = '';
   let summary = '';
 
+  // Clean stringified inputs if needed
+  let cleanedInput = input;
+  if (typeof cleanedInput === 'string' && cleanedInput.startsWith('"') && cleanedInput.endsWith('"')) {
+    try { cleanedInput = JSON.parse(cleanedInput); } catch {}
+  } else if (typeof cleanedInput === 'object' && cleanedInput !== null) {
+    const unquoted = {};
+    for (const [k, v] of Object.entries(cleanedInput)) {
+      if (typeof v === 'string' && v.startsWith('"') && v.endsWith('"')) {
+        try { unquoted[k] = JSON.parse(v); } catch { unquoted[k] = v.slice(1, -1); }
+      } else {
+        unquoted[k] = v;
+      }
+    }
+    cleanedInput = unquoted;
+  }
+
   if (toolLower.includes('bash') || toolLower.includes('run_command') || toolLower === 'exec' || toolLower === 'exec_command' || toolLower === 'shell') {
     type = 'command';
-    detail = input?.command || input?.CommandLine || input?.cmd || (typeof input === 'string' ? input : '');
+    detail = cleanedInput?.CommandLine || cleanedInput?.command || cleanedInput?.cmd || (typeof cleanedInput === 'string' ? cleanedInput : '');
     summary = detail ? detail.split('\n')[0].slice(0, 120) : 'Shell Command';
   } else if (toolLower.includes('read') || toolLower.includes('view_file')) {
     type = 'read';
-    detail = input?.file_path || input?.filePath || input?.AbsolutePath || input?.path || (typeof input === 'string' ? input : '');
+    detail = cleanedInput?.AbsolutePath || cleanedInput?.file_path || cleanedInput?.filePath || cleanedInput?.path || (typeof cleanedInput === 'string' ? cleanedInput : '');
     summary = detail ? path.basename(detail) : 'Read File';
   } else if (toolLower.includes('edit') || toolLower.includes('write') || toolLower.includes('replace_file_content') || toolLower.includes('write_to_file')) {
     type = 'edit';
-    detail = input?.file_path || input?.filePath || input?.TargetFile || input?.path || (typeof input === 'string' ? input : '');
+    detail = cleanedInput?.TargetFile || cleanedInput?.file_path || cleanedInput?.filePath || cleanedInput?.path || (typeof cleanedInput === 'string' ? cleanedInput : '');
     summary = detail ? path.basename(detail) : 'Edit File';
   } else if (toolLower.includes('grep') || toolLower.includes('glob') || toolLower.includes('search')) {
     type = 'grep';
-    detail = input?.pattern || input?.query || input?.Query || input?.glob || '';
-    summary = `Search: ${detail || 'Pattern'}`;
+    detail = cleanedInput?.Query || cleanedInput?.pattern || cleanedInput?.query || cleanedInput?.glob || '';
+    summary = `Search: ${detail || 'Query'}`;
   } else {
     type = 'tool';
     summary = tool || 'Custom Tool';
-    detail = typeof input === 'object' ? JSON.stringify(input, null, 2) : String(input || '');
+    detail = typeof cleanedInput === 'object' ? JSON.stringify(cleanedInput, null, 2) : String(cleanedInput || '');
+  }
+
+  if (typeof detail === 'string') {
+    if (detail.startsWith('"') && detail.endsWith('"')) {
+      try { detail = JSON.parse(detail); } catch {}
+    }
   }
 
   return {
     type,
     tool: tool || 'Unknown',
-    summary,
+    summary: summary || tool || 'Tool Action',
     detail: String(detail || summary).trim(),
     status: status || 'completed',
     durationMs: durationMs || null,
@@ -192,12 +214,7 @@ export function findAntigravityTranscript(startTimeIso, workspace) {
       if (!fs.existsSync(transcriptPath)) continue;
 
       try {
-        const fd = fs.openSync(transcriptPath, 'r');
-        const buf = Buffer.alloc(32768);
-        const bytesRead = fs.readSync(fd, buf, 0, buf.length, 0);
-        fs.closeSync(fd);
-
-        const text = buf.toString('utf8', 0, bytesRead);
+        const text = fs.readFileSync(transcriptPath, 'utf8');
         if (workspace && !text.includes(workspace)) continue;
 
         const firstLine = text.split('\n')[0];
@@ -223,23 +240,46 @@ export function findAntigravityTranscript(startTimeIso, workspace) {
               task = task.replace(/\\n/g, '\n').replace(/^[\r\n]+/, '').trim();
             }
 
-            // Extract touched files, tool calls, and last planner markdown response
+            // Extract touched files, tool calls, token estimation, and last planner markdown response
             const touchedFiles = new Set();
             const toolCalls = [];
             let markdownSummary = null;
+            let totalInputChars = 0;
+            let totalOutputChars = 0;
+            let totalThinkingChars = 0;
 
             const lines = text.split('\n').filter(Boolean);
             for (const line of lines) {
               try {
                 const step = JSON.parse(line);
+                const contentLen = (step.content || '').length;
+                const thinkingLen = (step.thinking || '').length;
+
+                if (step.source === 'USER' || step.source === 'SYSTEM' || step.source === 'TOOL') {
+                  totalInputChars += contentLen;
+                } else if (step.source === 'MODEL') {
+                  totalOutputChars += contentLen;
+                  totalThinkingChars += thinkingLen;
+                }
+
                 if (step.tool_calls) {
                   for (const tc of step.tool_calls) {
-                    if (tc.arguments && tc.arguments.TargetFile) {
-                      touchedFiles.add(tc.arguments.TargetFile);
+                    const rawArgs = tc.args || tc.arguments || {};
+                    const cleanedArgs = {};
+                    for (const [k, v] of Object.entries(rawArgs)) {
+                      if (typeof v === 'string' && v.startsWith('"') && v.endsWith('"')) {
+                        try { cleanedArgs[k] = JSON.parse(v); } catch { cleanedArgs[k] = v.slice(1, -1); }
+                      } else {
+                        cleanedArgs[k] = v;
+                      }
+                    }
+
+                    if (cleanedArgs.TargetFile) {
+                      touchedFiles.add(cleanedArgs.TargetFile);
                     }
                     toolCalls.push(normalizeToolCall({
                       tool: tc.name,
-                      input: tc.arguments,
+                      input: cleanedArgs,
                       status: 'completed',
                     }));
                   }
@@ -250,6 +290,32 @@ export function findAntigravityTranscript(startTimeIso, workspace) {
               } catch {}
             }
 
+            const inputTokens = Math.max(10, Math.round(totalInputChars / 4));
+            const outputTokens = Math.max(10, Math.round(totalOutputChars / 4));
+            const reasoningTokens = Math.round(totalThinkingChars / 4);
+            const totalTokens = inputTokens + outputTokens;
+
+            const tokens = {
+              total: totalTokens,
+              input: inputTokens,
+              output: outputTokens,
+              reasoning: reasoningTokens,
+              cacheRead: 0,
+              cacheWrite: 0,
+            };
+
+            // Estimate cost for Gemini / Claude models in Antigravity
+            let inRate = 0.0000001; // default flash $0.10/M
+            let outRate = 0.0000004; // default flash $0.40/M
+            if (model && (model.includes('Pro') || model.includes('pro'))) {
+              inRate = 0.00000125; // $1.25/M
+              outRate = 0.000005;  // $5.00/M
+            } else if (model && (model.includes('Sonnet') || model.includes('Claude') || model.includes('claude'))) {
+              inRate = 0.000003;   // $3.00/M
+              outRate = 0.000015;  // $15.00/M
+            }
+            const cost = Number(((tokens.input * inRate) + (tokens.output * outRate)).toFixed(4));
+
             return {
               conversationId: entry,
               workspace: agyWorkspace || null,
@@ -258,6 +324,8 @@ export function findAntigravityTranscript(startTimeIso, workspace) {
               markdownSummary: markdownSummary || null,
               filesModified: Array.from(touchedFiles),
               toolCalls,
+              tokens,
+              cost,
             };
           }
         }
@@ -778,6 +846,8 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
       if (agyMatch.markdownSummary) markdownSummary = agyMatch.markdownSummary;
       if (agyMatch.filesModified && agyMatch.filesModified.length > 0) filesModified = agyMatch.filesModified;
       if (agyMatch.toolCalls && agyMatch.toolCalls.length > 0) toolCalls = agyMatch.toolCalls;
+      if (agyMatch.tokens) tokens = agyMatch.tokens;
+      if (agyMatch.cost) cost = agyMatch.cost;
     }
   }
 
