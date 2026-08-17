@@ -315,6 +315,7 @@ const server = http.createServer(async (req, res) => {
   // GET /api/analytics
   if (pathname === '/api/analytics' && req.method === 'GET') {
     const runs = getAllRuns();
+    const activeCount = runs.filter(r => r.isAlive).length;
     let totalTokens = 0;
     let totalCost = 0;
     let totalDurationSec = 0;
@@ -339,6 +340,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       totalRuns: runs.length,
+      activeCount,
       totalTokens,
       totalCost,
       avgDurationSec,

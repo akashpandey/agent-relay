@@ -246,11 +246,12 @@ async function fetchAnalytics() {
     const data = await res.json();
     state.analytics = data;
 
-    el.kpiActiveVal.textContent = state.activeRuns.length;
-    el.kpiActiveSub = `${state.activeRuns.length} tasks executing`;
-    el.kpiTokensVal.textContent = formatNumber(data.totalTokens || 0);
-    el.kpiDurationVal.textContent = `${data.avgDurationSec || 0}s`;
-    el.kpiSuccessVal.textContent = `${data.successRate || 100}%`;
+    const activeCount = data.activeCount ?? state.activeRuns.length ?? 0;
+    if (el.kpiActiveVal) el.kpiActiveVal.textContent = activeCount;
+    if (el.kpiActiveSub) el.kpiActiveSub.textContent = `${activeCount} tasks executing`;
+    if (el.kpiTokensVal) el.kpiTokensVal.textContent = formatNumber(data.totalTokens || 0);
+    if (el.kpiDurationVal) el.kpiDurationVal.textContent = `${data.avgDurationSec || 0}s`;
+    if (el.kpiSuccessVal) el.kpiSuccessVal.textContent = `${data.successRate || 100}%`;
   } catch (err) {
     console.error('Failed to fetch analytics:', err);
   }
@@ -330,6 +331,9 @@ function renderWorkspaceChips() {
 function renderActiveCards(activeRuns) {
   const prevActiveCount = state.activeRuns.length;
   state.activeRuns = activeRuns;
+
+  if (el.kpiActiveVal) el.kpiActiveVal.textContent = activeRuns.length;
+  if (el.kpiActiveSub) el.kpiActiveSub.textContent = `${activeRuns.length} tasks executing`;
 
   if (activeRuns.length > prevActiveCount && prevActiveCount === 0) {
     // New run started
