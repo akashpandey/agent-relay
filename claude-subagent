@@ -93,7 +93,7 @@ stop_subagent() {
 trap 'stop_subagent' EXIT
 trap 'stop_subagent; exit 143' HUP INT TERM
 
-set -- --print --add-dir "$workspace" --dangerously-skip-permissions
+set -- --print --output-format stream-json --add-dir "$workspace" --dangerously-skip-permissions
 [ -z "${SUBAGENT_SESSION:-}" ] || set -- "$@" --resume "$SUBAGENT_SESSION"
 [ -z "${CLAUDE_MODEL:-}" ] || set -- "$@" --model "$CLAUDE_MODEL"
 [ -z "${CLAUDE_FALLBACK_MODEL:-}" ] || set -- "$@" --fallback-model "$CLAUDE_FALLBACK_MODEL"
