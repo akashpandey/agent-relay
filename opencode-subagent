@@ -47,7 +47,7 @@ for the final result.
 Examples:
   OPENCODE_MODEL='openai/gpt-5.4-mini' opencode-subagent "Fix the bug"
   OPENCODE_MODEL='opencode-go/qwen3.7-plus' opencode-subagent "Review this repo"
-  OPENCODE_MODEL='zai-coding-plan/glm-5.2' opencode-subagent "Implement TASK.md"
+  OPENCODE_MODEL='zai-coding-plan/glm-5.3' opencode-subagent "Implement TASK.md"
 
 Supported model providers: opencode-go, openai, zai-coding-plan.
 Use `opencode-subagent --models` to list the currently available models, or
@@ -104,11 +104,14 @@ $user_prompt"
 timeout_seconds="${OPENCODE_TIMEOUT:-7200}"
 log_flag="${OPENCODE_LOGS:-1}"
 
-# ponytail: opencode-go/glm-5.2 is token-heavy for the same work as the
+# ponytail: opencode-go/glm-5.3 (and 5.2) are token-heavy for the same work as the
 # zai-coding-plan route — reroute automatically instead of trusting every
 # caller to know that. Widen this if other opencode-go models get the same
 # recommendation.
-if [ "${OPENCODE_MODEL:-}" = "opencode-go/glm-5.2" ]; then
+if [ "${OPENCODE_MODEL:-}" = "opencode-go/glm-5.3" ]; then
+  echo "opencode-subagent: rerouting opencode-go/glm-5.3 -> zai-coding-plan/glm-5.3 (token-heavy route)" >&2
+  OPENCODE_MODEL="zai-coding-plan/glm-5.3"
+elif [ "${OPENCODE_MODEL:-}" = "opencode-go/glm-5.2" ]; then
   echo "opencode-subagent: rerouting opencode-go/glm-5.2 -> zai-coding-plan/glm-5.2 (token-heavy route)" >&2
   OPENCODE_MODEL="zai-coding-plan/glm-5.2"
 fi

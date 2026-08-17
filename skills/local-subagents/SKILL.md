@@ -18,7 +18,7 @@ cd /path/to/workspace
 opencode-subagent "Task prompt..."
 
 # OpenCode with Automatic Model Fallback Chain (Quota/Rate-Limit Failover)
-OPENCODE_MODEL_CHAIN='zai-coding-plan/glm-5.2,openai/gpt-5.4-mini' opencode-subagent-fallback "Task prompt..."
+OPENCODE_MODEL_CHAIN='zai-coding-plan/glm-5.3,openai/gpt-5.4-mini' opencode-subagent-fallback "Task prompt..."
 
 # Antigravity (Gemini / Claude Sonnet via AGY)
 antigravity-subagent "Task prompt..."
@@ -111,7 +111,7 @@ codex-subagent --models
 ```
 
 Specify a non-default model via environment variables:
-- `OPENCODE_MODEL='openai/gpt-5.4-mini' opencode-subagent "..."`
+- `OPENCODE_MODEL='zai-coding-plan/glm-5.3' opencode-subagent "..."`
 - `AGY_MODEL='Claude Sonnet 4.6 (Thinking)' antigravity-subagent "..."`
 - `CLAUDE_MODEL='opus' claude-subagent "..."`
 - `CODEX_MODEL='gpt-5.5' codex-subagent "..."`
@@ -119,7 +119,7 @@ Specify a non-default model via environment variables:
 ### Automatic Model Failover Chains (opencode-subagent-fallback)
 To prevent jobs from failing when a model hits monthly quota exhaustion or rate limits, define an `OPENCODE_MODEL_CHAIN`:
 ```sh
-OPENCODE_MODEL_CHAIN='zai-coding-plan/glm-5.2,openai/gpt-5.4-mini,opencode-go/qwen3.7-plus' \
+OPENCODE_MODEL_CHAIN='zai-coding-plan/glm-5.3,openai/gpt-5.4-mini,opencode-go/qwen3.7-plus' \
   opencode-subagent-fallback "Implement feature X..."
 ```
 *Sends a cheap pre-flight probe to verify provider quota before committing the full task prompt.*
