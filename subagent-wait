@@ -1,0 +1,74 @@
+#!/usr/bin/env sh
+set -eu
+
+LOGS_DIR="${SUBAGENT_LOG_DIR:-$HOME/local-subagents/logs}"
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat <<'HELP'
+Usage:
+  subagent-wait [LOG_FILE | PID | --last]
+  subagent-wait LOG_1 LOG_2 ...
+
+Description:
+  Waits for one or more background local subagents to complete using zero-polling
+  OS process monitors. Unblocks immediately upon process exit and outputs summary.
+
+Examples:
+  subagent-wait --last
+  subagent-wait 20260817T193219-antigravity-3345675.log
+  subagent-wait 3345675
+  subagent-wait "$log1" "$log2"
+HELP
+  exit 0
+fi
+
+# If no args or --last, find the most recent log file
+if [ "$#" -eq 0 ] || [ "${1:-}" = "--last" ]; then
+  latest_log="$(ls -t "$LOGS_DIR"/*.log 2>/dev/null | head -n 1 || true)"
+  if [ -z "$latest_log" ]; then
+    echo "subagent-wait: no subagent logs found in $LOGS_DIR" >&2
+    exit 1
+  fi
+  set -- "$latest_log"
+fi
+
+overall_status=0
+
+for target in "$@"; do
+  log_path=""
+  pid=""
+
+  # Check if target is a numeric PID
+  if [ "$target" -eq "$target" ] 2>/dev/null; then
+    pid="$target"
+    log_path="$(ls "$LOGS_DIR"/*-"$pid".log 2>/dev/null | head -n 1 || true)"
+  elif [ -f "$target" ]; then
+    log_path="$target"
+    pid="$(basename "$target" .log | grep -oE '[0-9]+$' || true)"
+  elif [ -f "$LOGS_DIR/$target" ]; then
+    log_path="$LOGS_DIR/$target"
+    pid="$(basename "$target" .log | grep -oE '[0-9]+$' || true)"
+  else
+    echo "subagent-wait: target not found: $target" >&2
+    overall_status=1
+    continue
+  fi
+
+  # If PID is running, wait on it with zero CPU usage
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    tail --pid="$pid" -f /dev/null 2>/dev/null || while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
+  fi
+
+  # Check for .done sentinel or log metadata
+  done_file="${log_path%.log}.done"
+  if [ -f "$done_file" ]; then
+    cat "$done_file"
+  elif [ -n "$log_path" ] && [ -f "$log_path" ]; then
+    echo "=== Subagent Run Finished: $(basename "$log_path") ==="
+    tail -n 15 "$log_path"
+  else
+    echo "subagent-wait: process $pid finished"
+  fi
+done
+
+exit "$overall_status"

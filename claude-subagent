@@ -45,6 +45,23 @@ EOF
   exit 0
 fi
 
+resume_session="${SUBAGENT_SESSION:-}"
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --continue|-c)
+      resume_session="--last"
+      shift
+      ;;
+    --resume|--session)
+      resume_session="$2"
+      shift 2
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
 if [ "$#" -gt 0 ]; then
   user_prompt="$*"
 else
@@ -98,20 +115,24 @@ trap 'stop_subagent' EXIT
 trap 'stop_subagent; exit 143' HUP INT TERM
 
 set -- --print --output-format stream-json --add-dir "$workspace" --dangerously-skip-permissions
-[ -z "${SUBAGENT_SESSION:-}" ] || set -- "$@" --resume "$SUBAGENT_SESSION"
+if [ "$resume_session" = "--last" ] || [ "$resume_session" = "last" ]; then
+  set -- "$@" --resume
+elif [ -n "$resume_session" ] && [ "$resume_session" != "new" ]; then
+  set -- "$@" --resume "$resume_session"
+fi
 [ -z "${CLAUDE_MODEL:-}" ] || set -- "$@" --model "$CLAUDE_MODEL"
 [ -z "${CLAUDE_FALLBACK_MODEL:-}" ] || set -- "$@" --fallback-model "$CLAUDE_FALLBACK_MODEL"
 [ -z "${CLAUDE_EFFORT:-}" ] || set -- "$@" --effort "$CLAUDE_EFFORT"
 set -- "$@" "$prompt"
 
 if [ "$log_flag" = "1" ]; then
-  echo "claude-subagent: workspace=$workspace model=${CLAUDE_MODEL:-default} effort=${CLAUDE_EFFORT:-default} fallback=${CLAUDE_FALLBACK_MODEL:-none} session=${SUBAGENT_SESSION:-new} timeout=${timeout_seconds}s run_log=$log_file" >&2
+  echo "claude-subagent: workspace=$workspace model=${CLAUDE_MODEL:-default} effort=${CLAUDE_EFFORT:-default} fallback=${CLAUDE_FALLBACK_MODEL:-none} session=${resume_session:-new} timeout=${timeout_seconds}s run_log=$log_file" >&2
 fi
 
 # ponytail: a separate process group makes timeout cleanup cover ordinary children.
 before_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
 printf 'subagent: provider=claude workspace=%s model=%s session=%s\nTask:\n%s\n\n---\n\n' \
-  "$workspace" "${CLAUDE_MODEL:-default}" "${SUBAGENT_SESSION:-new}" "$user_prompt" > "$log_file"
+  "$workspace" "${CLAUDE_MODEL:-default}" "${resume_session:-new}" "$user_prompt" > "$log_file"
 
 if [ "$use_systemd" -eq 1 ]; then
   systemd-run --user --pipe --same-dir --setenv=PATH="$PATH" --wait --collect --quiet --unit="$unit" --property=KillMode=control-group --property=RuntimeMaxSec="${timeout_seconds}s" "$HOME/.local/bin/claude" "$@" >>"$log_file" 2>&1 &
@@ -155,5 +176,25 @@ for sig in TERM KILL; do
     esac
   done
 done
+
+# Write completion sentinel file (.done)
+done_file="${log_file%.log}.done"
+sess_id="$(grep -oE '"session_id":"[^"]+"' "$log_file" 2>/dev/null | head -n 1 | cut -d'"' -f4 || echo "${resume_session:-new}")"
+cat <<DONE_JSON > "$done_file"
+{
+  "status": "$([ "$status" -eq 0 ] && echo "completed" || echo "failed")",
+  "exitCode": $status,
+  "provider": "claude",
+  "workspace": "$workspace",
+  "model": "${CLAUDE_MODEL:-default}",
+  "sessionId": "$sess_id",
+  "logFile": "$log_file",
+  "completedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+DONE_JSON
+
+if [ "$log_flag" = "1" ]; then
+  echo "claude-subagent: finished status=$status ($([ "$status" -eq 0 ] && echo "completed" || echo "failed")) session=$sess_id" >&2
+fi
 
 exit "$status"

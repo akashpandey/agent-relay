@@ -37,6 +37,23 @@ EOF
   exit 0
 fi
 
+resume_session="${SUBAGENT_SESSION:-}"
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --continue|-c)
+      resume_session="--last"
+      shift
+      ;;
+    --resume|--session)
+      resume_session="$2"
+      shift 2
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
 if [ "$#" -gt 0 ]; then
   user_prompt="$*"
 else
@@ -101,5 +118,5 @@ echo "opencode-subagent-fallback: selected model=$selected_model" >&2
 
 exec env OPENCODE_MODEL="$selected_model" OPENCODE_TIMEOUT="$real_timeout" \
   OPENCODE_VARIANT="${OPENCODE_VARIANT:-}" OPENCODE_AGENT="${OPENCODE_AGENT:-}" \
-  OPENCODE_LOGS="${OPENCODE_LOGS:-1}" \
+  OPENCODE_LOGS="${OPENCODE_LOGS:-1}" SUBAGENT_SESSION="$resume_session" \
   "$HOME/.local/bin/opencode-subagent" "$user_prompt"

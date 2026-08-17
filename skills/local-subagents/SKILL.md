@@ -32,29 +32,70 @@ Multi-line prompts can be piped via stdin:
 printf '%s\n' "$DETAILED_TASK" | opencode-subagent
 ```
 
-## Recommended Orchestration: Background Execution & API Monitoring
+## Session Reuse & Continuation (Save Context)
 
-To avoid flooding your prompt context window with thousands of lines of raw terminal logs, follow this **API-First Background Protocol**:
+Avoid spawning a fresh session when a task is a continuation or follow-up. Reusing sessions preserves the conversation context, loaded files, and reasoning history:
 
-### Step 1: Launch in Background
-Launch the subagent in the background with `&`:
+### 1. Continue the Most Recent Session in Workspace
+Use the `--continue` (or `-c`) flag:
 ```sh
-opencode-subagent "Refactor token auth middleware..." &
+# OpenCode
+opencode-subagent --continue "Fix the type error reported in the last step"
+
+# Antigravity
+antigravity-subagent --continue "Run tests on the modified component"
+
+# Claude Code
+claude-subagent --continue "Proceed with step 2"
+
+# OpenAI Codex
+codex-subagent --continue "Add edge case unit tests"
 ```
 
-### Step 2: Check Liveness & Progress via API (Heartbeat)
-Query the structured sentinel endpoint rather than running raw `tail` on logs:
+### 2. Resume a Specific Session ID
+Pass `--resume <session-id>` or `SUBAGENT_SESSION`:
 ```sh
-curl -s http://localhost:4242/api/stats | jq '.activeRuns[] | {pid, provider, model, durationHuman, currentAction, isAlive}'
+opencode-subagent --resume "session-abc-123" "Next step prompt..."
+# or
+SUBAGENT_SESSION="session-abc-123" antigravity-subagent "Next step prompt..."
 ```
-*Returns clean JSON with explicit process state, active tool in flight, and duration (consuming only ~60 tokens).*
+*(Every subagent run writes its persisted `sessionId` in `logs/<log>.done` and in the dashboard header).*
 
-### Step 3: Retrieve Clean Structured Result Upon Completion
-Once `isAlive` is `false`, fetch the parsed telemetry and summary directly:
+---
+
+## Recommended Orchestration: Zero-Polling & Event-Driven Execution
+
+Avoid busy polling loops (`while sleep 5; check status`) which waste tokens, context window, and CPU. Use one of these **zero-polling** patterns:
+
+### Pattern A: AI Agent Native Reactive Wake-Up (Recommended for AI Assistants)
+When calling a subagent from an agentic runtime (Antigravity, Claude Code, Codex):
+1. Launch the command directly (or as a background task):
+   ```sh
+   opencode-subagent "Implement auth token refresh"
+   ```
+2. **Stop calling tools**. The harness runtime monitors the process at the OS kernel level and automatically resumes your execution with a `<SYSTEM_MESSAGE> Task finished with result: ...` the exact millisecond the subagent completes.
+
+### Pattern B: Event-Driven `subagent-wait` CLI (For Scripts & Parallel Chaining)
+When orchestrating multi-agent parallel pipelines:
+```sh
+# Launch multiple subagents in parallel
+log1=$(opencode-subagent "Refactor service A" &)
+log2=$(antigravity-subagent "Refactor service B" &)
+
+# Block until all finish with ZERO CPU/network polling
+subagent-wait --last
+# or
+subagent-wait "$log1" "$log2"
+```
+*Uses Linux kernel process monitors (`tail --pid` / `inotify`) and immediately outputs the structured JSON result upon completion.*
+
+### Pattern C: Structured API Result Retrieval
+Once notified of completion:
 ```sh
 curl -s "http://localhost:4242/api/runs/<log-filename>" | jq '{status, filesModified, cost, markdownSummary, toolCalls}'
 ```
-*Returns the exact modified files, diff summary, token spend, and verification status with zero ANSI garbage or log noise.*
+
+---
 
 ## Model Selection
 
@@ -72,12 +113,7 @@ Specify a non-default model via environment variables:
 - `CLAUDE_MODEL='opus' claude-subagent "..."`
 - `CODEX_MODEL='gpt-5.5' codex-subagent "..."`
 
-## Session Resumption (Sequential Follow-ups)
-
-Every subagent run prints its persisted session ID. To continue a previous turn:
-```sh
-SUBAGENT_SESSION='<session-id>' opencode-subagent "Implement the second step."
-```
+---
 
 ## Emergency Process Control
 
@@ -90,9 +126,12 @@ curl -X POST "http://localhost:4242/api/runs/<log-filename>/kill"
 curl -X POST "http://localhost:4242/api/dangling/kill-all"
 ```
 
+---
+
 ## Rules & Best Practices
 
-1. **Prefer API monitoring for background tasks**: Always query `http://localhost:4242/api/stats` and `http://localhost:4242/api/runs/:id` instead of raw `tail` to protect context windows.
-2. **Keep tasks bounded**: One bug trace, one refactor, one test implementation, or one code review.
-3. **Parallel execution**: When running multiple write-capable subagents simultaneously, execute them in separate `git worktree` directories to prevent file write collisions.
-4. **Verify deliverables**: Inspect the generated git diff or test results locally after a subagent reports completion before accepting changes.
+1. **Reuse sessions for multi-step tasks**: Always use `--continue` or `--resume <id>` for follow-up prompts to save context and tokens.
+2. **Never poll in busy loops**: Use native reactive agent wake-up or `subagent-wait` instead of `sleep` polling.
+3. **Keep tasks bounded**: One bug trace, one refactor, one test implementation, or one code review per turn.
+4. **Parallel execution safety**: When running multiple write-capable subagents simultaneously, execute them in separate `git worktree` directories to prevent file write collisions.
+5. **Verify deliverables**: Inspect the generated git diff or test results locally after a subagent reports completion before accepting changes.
