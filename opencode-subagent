@@ -30,7 +30,7 @@ Environment:
   OPENCODE_MODEL    Model in provider/model format.
   OPENCODE_VARIANT  Optional model variant, e.g. high.
   OPENCODE_AGENT    Optional opencode agent name.
-  OPENCODE_TIMEOUT  Optional timeout in seconds. Default: 1800.
+  OPENCODE_TIMEOUT  Optional timeout in seconds. Default: 7200.
   OPENCODE_LOGS     Print opencode logs to stderr. Default: 1.
   SUBAGENT_SESSION  Resume this provider's existing session ID.
   SUBAGENT_LOG_DIR  Where wrapper run logs are written. Default: ~/local-subagents/logs.
@@ -80,7 +80,7 @@ Rules:
 Task:
 $user_prompt"
 
-timeout_seconds="${OPENCODE_TIMEOUT:-1800}"
+timeout_seconds="${OPENCODE_TIMEOUT:-7200}"
 log_flag="${OPENCODE_LOGS:-1}"
 
 # ponytail: opencode-go/glm-5.2 is token-heavy for the same work as the

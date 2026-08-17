@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-timeout="${AGY_PRINT_TIMEOUT:-20m}"
+timeout="${AGY_PRINT_TIMEOUT:-120m}"
 workspace="$(pwd -P)"
 
 if [ "${1:-}" = "--models" ]; then
@@ -22,7 +22,7 @@ Usage:
 
 Environment:
   AGY_MODEL          Model label exactly as shown below.
-  AGY_PRINT_TIMEOUT  Print-mode timeout, default: 20m.
+  AGY_PRINT_TIMEOUT  Print-mode timeout, default: 120m.
   AGY_LOG_FILE       Optional agy --log-file path (agy's own internal log).
   AGY_LOGS           Print wrapper banner to stderr. Default: 1.
   SUBAGENT_SESSION   Resume this provider's existing conversation ID.

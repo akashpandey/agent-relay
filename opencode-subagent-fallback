@@ -21,7 +21,7 @@ check for it up front. See ~/subagents/README.md for the incident that motivated
 Environment:
   OPENCODE_MODEL_CHAIN   Required. Comma-separated provider/model list, in priority order.
   OPENCODE_PROBE_TIMEOUT Seconds for the cheap probe call per model. Default: 30.
-  OPENCODE_TIMEOUT       Seconds for the real task once a model is selected. Default: 1800.
+  OPENCODE_TIMEOUT       Seconds for the real task once a model is selected. Default: 7200.
   OPENCODE_VARIANT       Passed through to opencode-subagent for the real task.
   OPENCODE_AGENT         Passed through to opencode-subagent for the real task.
   OPENCODE_LOGS          Passed through to opencode-subagent for the real task. Default: 1.
@@ -46,7 +46,7 @@ if [ -z "$chain" ]; then
 fi
 
 probe_timeout="${OPENCODE_PROBE_TIMEOUT:-30}"
-real_timeout="${OPENCODE_TIMEOUT:-1800}"
+real_timeout="${OPENCODE_TIMEOUT:-7200}"
 
 # ponytail: fixed alternation of known quota/rate-limit phrases, not a general error
 # classifier — widen this list if a new provider's wording doesn't match.

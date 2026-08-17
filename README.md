@@ -287,7 +287,7 @@ Environment variables:
 - `OPENCODE_MODEL` - model in `provider/model` format
 - `OPENCODE_VARIANT` - optional model variant
 - `OPENCODE_AGENT` - optional agent name
-- `OPENCODE_TIMEOUT` - timeout in seconds, default `1800`
+- `OPENCODE_TIMEOUT` - timeout in seconds, default `7200`
 - `OPENCODE_LOGS` - set to `0` to suppress wrapper log banner
 - `SUBAGENT_SESSION` - optional OpenCode session ID to resume
 - `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/local-subagents/logs`
@@ -329,7 +329,7 @@ Environment variables:
 
 - `OPENCODE_MODEL_CHAIN` - required, comma-separated `provider/model` list in priority order
 - `OPENCODE_PROBE_TIMEOUT` - seconds for the cheap probe call per candidate, default `30`
-- `OPENCODE_TIMEOUT` - seconds for the real task once a model is selected, default `1800`
+- `OPENCODE_TIMEOUT` - seconds for the real task once a model is selected, default `7200`
 - `OPENCODE_VARIANT`, `OPENCODE_AGENT`, `OPENCODE_LOGS` - passed through to `opencode-subagent` for the real task
 
 Behavior:
@@ -357,7 +357,7 @@ Best fit:
 Environment variables:
 
 - `AGY_MODEL` - model label exactly as shown by `agy models`
-- `AGY_PRINT_TIMEOUT` - print-mode timeout, default `20m`
+- `AGY_PRINT_TIMEOUT` - print-mode timeout, default `120m`
 - `AGY_LOG_FILE` - optional path passed to `agy --log-file` (agy's own internal log, separate from the wrapper's run log)
 - `AGY_LOGS` - set to `0` to suppress wrapper log banner
 - `SUBAGENT_SESSION` - optional Antigravity conversation ID to resume
@@ -389,7 +389,7 @@ Environment variables:
 - `CLAUDE_MODEL` - Claude Code model alias or full model ID
 - `CLAUDE_FALLBACK_MODEL` - optional comma-separated fallback aliases or IDs
 - `CLAUDE_EFFORT` - optional `low`, `medium`, `high`, `xhigh`, or `max` reasoning effort
-- `CLAUDE_TIMEOUT` - timeout in seconds, default `1800`
+- `CLAUDE_TIMEOUT` - timeout in seconds, default `7200`
 - `CLAUDE_LOGS` - set to `0` to suppress the wrapper log banner
 - `SUBAGENT_SESSION` - optional Claude Code session ID to resume
 - `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/local-subagents/logs`
@@ -412,7 +412,7 @@ Environment variables:
 - `CODEX_SANDBOX` - sandbox mode; defaults to `workspace-write`, with an automatic
   `danger-full-access` fallback only when the host blocks Bubblewrap user namespaces
 - `SUBAGENT_SESSION` - optional Codex session ID to resume
-- `CODEX_TIMEOUT` - timeout in seconds, default `1800`
+- `CODEX_TIMEOUT` - timeout in seconds, default `7200`
 - `CODEX_LOGS` - set to `0` to suppress the wrapper log banner
 - `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/local-subagents/logs`
 

@@ -137,6 +137,9 @@ export function getOpenCodeSessionDetails(sessionId) {
 
     // Query tool invocations
     const toolCalls = [];
+    const touchedFiles = new Set();
+    const collectedDiffs = [];
+
     const toolsCmd = `sqlite3 -json "file:${dbPath}?immutable=1" "SELECT data FROM part WHERE session_id = '${safeSession}' AND data LIKE '%\\"type\\":\\"tool\\"%' ORDER BY time_created ASC;" 2>/dev/null`;
     try {
       const toolsOut = execSync(toolsCmd, { encoding: 'utf8', timeout: 2000 }).trim();
@@ -153,6 +156,22 @@ export function getOpenCodeSessionDetails(sessionId) {
                 status: partObj.state?.status,
                 durationMs: (partObj.state?.time?.end && partObj.state?.time?.start) ? (partObj.state.time.end - partObj.state.time.start) : null,
               }));
+
+              // Extract modified files and unified diffs from edit/write tool parts
+              const toolName = (partObj.tool || '').toLowerCase();
+              if (toolName === 'edit' || toolName === 'write' || toolName === 'patch') {
+                const filePath = partObj.state?.input?.filePath ||
+                                 partObj.state?.input?.path ||
+                                 partObj.state?.metadata?.filediff?.file;
+                if (filePath && typeof filePath === 'string') {
+                  touchedFiles.add(filePath.trim());
+                }
+                const diffPatch = partObj.state?.metadata?.diff ||
+                                  partObj.state?.metadata?.filediff?.patch;
+                if (diffPatch && typeof diffPatch === 'string') {
+                  collectedDiffs.push(diffPatch.trim());
+                }
+              }
             }
           } catch {}
         }
@@ -177,6 +196,10 @@ export function getOpenCodeSessionDetails(sessionId) {
       diffs = sessionRow.summary_diffs || null;
     }
 
+    if (!diffs && collectedDiffs.length > 0) {
+      diffs = collectedDiffs.join('\n\n');
+    }
+
     return {
       task,
       markdownSummary,
@@ -184,6 +207,7 @@ export function getOpenCodeSessionDetails(sessionId) {
       cost,
       diffs,
       toolCalls,
+      filesModified: Array.from(touchedFiles),
     };
   } catch (err) {}
   return null;
@@ -494,6 +518,7 @@ export function getClaudeSessionDetails(sessionId, startTimeIso, workspace) {
     const lines = fs.readFileSync(targetFile, 'utf8').split('\n').filter(Boolean);
     let totalIn = 0, totalOut = 0, totalCacheRead = 0, totalCacheWrite = 0, totalThinking = 0;
     const toolCalls = [];
+    const touchedFiles = new Set();
     let lastAssistantText = null;
     let model = null;
 
@@ -524,6 +549,11 @@ export function getClaudeSessionDetails(sessionId, startTimeIso, workspace) {
                   input: c.input,
                   status: 'completed',
                 }));
+                const tName = (c.name || '').toLowerCase();
+                if (tName.includes('edit') || tName.includes('write') || tName.includes('patch') || tName.includes('file')) {
+                  const fp = c.input?.file_path || c.input?.path || c.input?.target_file || c.input?.filePath || c.input?.TargetFile;
+                  if (fp && typeof fp === 'string') touchedFiles.add(fp.trim());
+                }
               } else if (c.type === 'text' && c.text) {
                 lastAssistantText = c.text;
               }
@@ -575,6 +605,7 @@ export function getClaudeSessionDetails(sessionId, startTimeIso, workspace) {
       tokens,
       cost,
       markdownSummary: lastAssistantText,
+      filesModified: Array.from(touchedFiles),
       toolCalls,
     };
   } catch (err) {}
@@ -650,6 +681,7 @@ export function getCodexSessionDetails(sessionId, startTimeIso, workspace) {
 
     let markdownSummary = null;
     const toolCalls = [];
+    const touchedFiles = new Set();
     let rolloutPath = row.rollout_path;
     if (rolloutPath) {
       if (!fs.existsSync(rolloutPath) && rolloutPath.includes('.codex')) {
@@ -665,10 +697,15 @@ export function getCodexSessionDetails(sessionId, startTimeIso, workspace) {
           for (let i = 0; i < lines.length; i++) {
             try {
               const item = JSON.parse(lines[i]);
-              if (item?.payload?.type === 'function_call') {
-                let args = item.payload.arguments;
+              if (item?.payload?.type === 'function_call' || item?.payload?.type === 'tool_call') {
+                let args = item.payload.arguments || item.payload.input;
                 if (typeof args === 'string') {
                   try { args = JSON.parse(args); } catch {}
+                }
+                const tName = (item.payload.name || '').toLowerCase();
+                if (tName.includes('edit') || tName.includes('write') || tName.includes('patch') || tName.includes('file')) {
+                  const fp = args?.file_path || args?.path || args?.target_file || args?.filePath || args?.TargetFile;
+                  if (fp && typeof fp === 'string') touchedFiles.add(fp.trim());
                 }
                 toolCalls.push(normalizeToolCall({
                   tool: item.payload.name,
@@ -695,6 +732,7 @@ export function getCodexSessionDetails(sessionId, startTimeIso, workspace) {
       tokens,
       cost,
       markdownSummary,
+      filesModified: Array.from(touchedFiles),
       toolCalls,
     };
   } catch (err) {}
@@ -781,7 +819,10 @@ function extractFilesAndDiffs(rawContent) {
   // Match file touched/edited lines
   const fileRegexes = [
     /(?:file=|touching file\s+file=|Writing\s+|Editing\s+|diff --git a\/|=== File \d+:\s*)([^\s\r\n",]+)/gi,
-    /(?:Replacing content in |Created file |Updated |Modified )([^\s\r\n",]+\.[a-zA-Z0-9]+)/gi
+    /(?:Replacing content in |Created file |Updated |Modified )([^\s\r\n",]+\.[a-zA-Z0-9]+)/gi,
+    /(?:permission=(?:edit|write|patch)\s+pattern=)([^\s\r\n",]+)/gi,
+    /(?:Index:\s*)([^\s\r\n",]+)/gi,
+    /(?:---\s+(?:a\/)?)([^\s\r\n",]+\.[a-zA-Z0-9]+)/gi
   ];
 
   for (const regex of fileRegexes) {
@@ -807,6 +848,11 @@ function extractFilesAndDiffs(rawContent) {
       const diffBlockEnd = rawContent.indexOf('[diff_block_end]', diffBlockStart);
       if (diffBlockEnd !== -1) {
         diffHunks.push(rawContent.slice(diffBlockStart, diffBlockEnd + 16));
+      }
+    } else {
+      const indexStart = rawContent.indexOf('Index: ');
+      if (indexStart !== -1) {
+        diffHunks.push(rawContent.slice(indexStart, indexStart + 20000));
       }
     }
   }
@@ -898,11 +944,11 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
 
   // Extract Session ID
   let session = null;
-  const sessionMatch = combinedSample.match(/session=([^\s,]+)/i) ||
+  const sessionMatch = combinedSample.match(/session\.id=([^\s]+)/i) ||
                         combinedSample.match(/session id:\s*([^\r\n]+)/i) ||
-                        combinedSample.match(/session\.id=([^\s]+)/i) ||
                         combinedSample.match(/created id=([^\s]+)/i) ||
-                        combinedSample.match(/thread_id=([^\s,]+)/i);
+                        combinedSample.match(/thread_id=([^\s,]+)/i) ||
+                        combinedSample.match(/session=(?!new\b)([^\s,]+)/i);
   if (sessionMatch) {
     session = sessionMatch[1].trim();
     if (session === 'new') session = null;
@@ -960,19 +1006,21 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
       if (claudeMatch.tokens) tokens = claudeMatch.tokens;
       if (claudeMatch.cost) cost = claudeMatch.cost;
       if (claudeMatch.markdownSummary) markdownSummary = claudeMatch.markdownSummary;
+      if (claudeMatch.filesModified && claudeMatch.filesModified.length > 0) filesModified = claudeMatch.filesModified;
       if (claudeMatch.toolCalls && claudeMatch.toolCalls.length > 0) toolCalls = claudeMatch.toolCalls;
     }
   }
 
-  // If OpenCode provider, query SQLite for tokens, cost, diffs, prompt, summary, and tool calls
+  // If OpenCode provider, query SQLite for tokens, cost, diffs, prompt, summary, files, and tool calls
   if (parsedName.provider === 'opencode' && session) {
     const opencodeDetails = getOpenCodeSessionDetails(session);
     if (opencodeDetails) {
       if (!task && opencodeDetails.task) task = opencodeDetails.task;
-      if (opencodeDetails.tokens) tokens = opencodeDetails.tokens;
+      if (!tokens && opencodeDetails.tokens) tokens = opencodeDetails.tokens;
       if (opencodeDetails.cost) cost = opencodeDetails.cost;
       if (opencodeDetails.markdownSummary) markdownSummary = opencodeDetails.markdownSummary;
       if (opencodeDetails.diffs) diffs = opencodeDetails.diffs;
+      if (opencodeDetails.filesModified && opencodeDetails.filesModified.length > 0) filesModified = opencodeDetails.filesModified;
       if (opencodeDetails.toolCalls && opencodeDetails.toolCalls.length > 0) toolCalls = opencodeDetails.toolCalls;
     }
   }
@@ -987,6 +1035,7 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
       if (codexDetails.tokens) tokens = codexDetails.tokens;
       if (codexDetails.cost) cost = codexDetails.cost;
       if (codexDetails.markdownSummary) markdownSummary = codexDetails.markdownSummary;
+      if (codexDetails.filesModified && codexDetails.filesModified.length > 0) filesModified = codexDetails.filesModified;
       if (codexDetails.toolCalls && codexDetails.toolCalls.length > 0) toolCalls = codexDetails.toolCalls;
     }
   }
@@ -1105,7 +1154,9 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
     status = 'running';
   } else if (fileSize === 0) {
     status = 'empty';
-  } else if (tailContent.includes('session limit') || tailContent.includes('failed to') || tailContent.includes('Error:') || tailContent.includes('FATAL')) {
+  } else if (tailContent.includes('message="exiting loop"') || tailContent.includes('message="disposing instance"') || markdownSummary) {
+    status = 'completed';
+  } else if (tailContent.includes('session limit') || tailContent.includes('failed to') || tailContent.includes('FATAL') || tailContent.includes('Error: timeout')) {
     status = 'failed';
   } else {
     status = 'completed';

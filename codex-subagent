@@ -2,7 +2,7 @@
 set -eu
 
 workspace="$(pwd -P)"
-timeout_seconds="${CODEX_TIMEOUT:-1800}"
+timeout_seconds="${CODEX_TIMEOUT:-7200}"
 
 if [ "${1:-}" = "--models" ]; then
   if [ "$#" -ne 1 ]; then
@@ -27,7 +27,7 @@ Environment:
   CODEX_SANDBOX    Sandbox mode. Default: workspace-write, or danger-full-access
                    when this host cannot create Bubblewrap user namespaces.
   SUBAGENT_SESSION Resume this provider's existing session ID.
-  CODEX_TIMEOUT    Timeout in seconds. Default: 1800.
+  CODEX_TIMEOUT    Timeout in seconds. Default: 7200.
   CODEX_LOGS       Print wrapper banner to stderr. Default: 1.
   SUBAGENT_LOG_DIR Where wrapper run logs are written. Default: ~/local-subagents/logs.
 
