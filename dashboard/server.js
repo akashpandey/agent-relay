@@ -63,12 +63,25 @@ function getAllRuns() {
 }
 
 /**
- * Find all dangling subagent processes on the system
- * Strictly scoped to local-subagent wrapper scripts and local-subagent systemd units.
+ * Find all dangling (orphaned) subagent processes on the system
+ * Strictly scoped to local-subagent wrapper scripts and local-subagent systemd units
+ * that DO NOT belong to any currently active run.
  */
-function findDanglingSubagentProcesses() {
+function findDanglingSubagentProcesses(activeRuns = []) {
   const dangling = [];
   if (!fs.existsSync(PROC_DIR)) return dangling;
+
+  // Collect active wrapper PIDs and active cgroup units
+  const activePids = new Set();
+  const activeUnits = new Set();
+
+  for (const r of activeRuns) {
+    if (r.pid) {
+      activePids.add(r.pid);
+      activeUnits.add(`local-subagent-${r.provider}-${r.pid}`);
+      activeUnits.add(`local-subagent-${r.pid}`);
+    }
+  }
 
   try {
     const entries = fs.readdirSync(PROC_DIR);
@@ -80,6 +93,7 @@ function findDanglingSubagentProcesses() {
         const cgroupPath = path.join(PROC_DIR, entry, 'cgroup');
 
         let isSubagent = false;
+        let isPartOfActiveRun = false;
         let cmd = '';
 
         // Check if part of local-subagent systemd unit
@@ -87,6 +101,12 @@ function findDanglingSubagentProcesses() {
           const cgroupContent = fs.readFileSync(cgroupPath, 'utf8');
           if (cgroupContent.includes('local-subagent-')) {
             isSubagent = true;
+            for (const unit of activeUnits) {
+              if (cgroupContent.includes(unit)) {
+                isPartOfActiveRun = true;
+                break;
+              }
+            }
           }
         }
 
@@ -102,6 +122,9 @@ function findDanglingSubagentProcesses() {
             cmd.includes('codex-subagent')
           ) {
             isSubagent = true;
+            if (activePids.has(pid)) {
+              isPartOfActiveRun = true;
+            }
           }
         }
 
@@ -110,10 +133,10 @@ function findDanglingSubagentProcesses() {
           isSubagent = false;
         }
 
-        if (isSubagent) {
+        if (isSubagent && !isPartOfActiveRun) {
           dangling.push({
             pid,
-            cmd: cmd.slice(0, 140) || 'local-subagent process',
+            cmd: cmd.slice(0, 140) || 'orphaned subagent process',
           });
         }
       } catch {}
@@ -249,7 +272,7 @@ const server = http.createServer(async (req, res) => {
       byProvider[r.provider] = (byProvider[r.provider] || 0) + 1;
     }
 
-    const dangling = findDanglingSubagentProcesses();
+    const dangling = findDanglingSubagentProcesses(activeRuns);
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
@@ -509,7 +532,9 @@ const server = http.createServer(async (req, res) => {
 
   // POST /api/dangling/kill-all or /api/kill-dangling (Kill all dangling subagent processes)
   if ((pathname === '/api/dangling/kill-all' || pathname === '/api/kill-dangling') && req.method === 'POST') {
-    const dangling = findDanglingSubagentProcesses();
+    const runs = getAllRuns();
+    const activeRuns = runs.filter(r => r.isAlive);
+    const dangling = findDanglingSubagentProcesses(activeRuns);
     const results = [];
     for (const proc of dangling) {
       await terminateProcessTree(proc.pid);
