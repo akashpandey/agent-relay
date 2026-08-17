@@ -223,17 +223,21 @@ const geminiBrainDirs = [
 /**
  * Matches Antigravity session transcript by timestamp and workspace
  */
-export function findAntigravityTranscript(startTimeIso, workspace) {
-  if (!startTimeIso) return null;
+export function findAntigravityTranscript(sessionId, startTimeIso, workspace) {
   const brainDir = geminiBrainDirs.find(d => fs.existsSync(d));
   if (!brainDir) return null;
 
   try {
-    const targetTime = new Date(startTimeIso).getTime();
-    if (isNaN(targetTime)) return null;
+    const targetTime = startTimeIso ? new Date(startTimeIso).getTime() : null;
 
-    const entries = fs.readdirSync(brainDir);
-    for (const entry of entries) {
+    let targetEntries = [];
+    if (sessionId && fs.existsSync(path.join(brainDir, sessionId))) {
+      targetEntries.push(sessionId);
+    } else {
+      targetEntries = fs.readdirSync(brainDir);
+    }
+
+    for (const entry of targetEntries) {
       const transcriptPath = path.join(brainDir, entry, '.system_generated/logs/transcript.jsonl');
       if (!fs.existsSync(transcriptPath)) continue;
 
@@ -243,115 +247,125 @@ export function findAntigravityTranscript(startTimeIso, workspace) {
 
         const firstLine = text.split('\n')[0];
         const parsed = JSON.parse(firstLine);
-        if (parsed && parsed.created_at) {
-          const tTime = new Date(parsed.created_at).getTime();
-          if (Math.abs(tTime - targetTime) <= 180000) {
-            const wsMatch = text.match(/Workspace:\s*([^\r\n<\\"]+)/i) ||
-                            text.match(/Repo:\s*([^\r\n<\s\)]+)/i);
-            let agyWorkspace = wsMatch ? wsMatch[1].trim() : null;
+        if (entry === sessionId || (parsed && parsed.created_at && targetTime && Math.abs(new Date(parsed.created_at).getTime() - targetTime) <= 300000)) {
+          const wsMatch = text.match(/Workspace:\s*([^\r\n<\\"]+)/i) ||
+                          text.match(/Repo:\s*([^\r\n<\s\)]+)/i);
+          let agyWorkspace = wsMatch ? wsMatch[1].trim() : null;
 
-            let model = null;
-            const modelMatch = text.match(/setting \`Model Selection\` from [^\n]+ to (.*?)\.\s*No need to/i) ||
-                               text.match(/setting \`Model Selection\` from [^\n]+ to ([^\n<]+)/i) ||
-                               text.match(/model:\s*([^\n<]+)/i);
-            if (modelMatch) {
-              model = modelMatch[1].trim();
-            }
-
-            const taskMatch = text.match(/Task:\s*([\s\S]*?)(?=(?:\\n=== File|\n=== File|\\nRules:|\nRules:|<\/USER_REQUEST>|\\nWhen done|\nWhen done))/i);
-            let task = taskMatch ? taskMatch[1].trim() : null;
-            if (task) {
-              task = task.replace(/\\n/g, '\n').replace(/^[\r\n]+/, '').trim();
-            }
-
-            // Extract touched files, tool calls, token estimation, and last planner markdown response
-            const touchedFiles = new Set();
-            const toolCalls = [];
-            let markdownSummary = null;
-            let totalInputChars = 0;
-            let totalOutputChars = 0;
-            let totalThinkingChars = 0;
-
-            const lines = text.split('\n').filter(Boolean);
-            for (const line of lines) {
-              try {
-                const step = JSON.parse(line);
-                const contentLen = (step.content || '').length;
-                const thinkingLen = (step.thinking || '').length;
-
-                if (step.source === 'USER' || step.source === 'SYSTEM' || step.source === 'TOOL') {
-                  totalInputChars += contentLen;
-                } else if (step.source === 'MODEL') {
-                  totalOutputChars += contentLen;
-                  totalThinkingChars += thinkingLen;
-                }
-
-                if (step.tool_calls) {
-                  for (const tc of step.tool_calls) {
-                    const rawArgs = tc.args || tc.arguments || {};
-                    const cleanedArgs = {};
-                    for (const [k, v] of Object.entries(rawArgs)) {
-                      if (typeof v === 'string' && v.startsWith('"') && v.endsWith('"')) {
-                        try { cleanedArgs[k] = JSON.parse(v); } catch { cleanedArgs[k] = v.slice(1, -1); }
-                      } else {
-                        cleanedArgs[k] = v;
-                      }
-                    }
-
-                    if (cleanedArgs.TargetFile) {
-                      touchedFiles.add(cleanedArgs.TargetFile);
-                    }
-                    toolCalls.push(normalizeToolCall({
-                      tool: tc.name,
-                      input: cleanedArgs,
-                      status: 'completed',
-                    }));
-                  }
-                }
-                if (step.type === 'PLANNER_RESPONSE' && step.content) {
-                  markdownSummary = step.content;
-                }
-              } catch {}
-            }
-
-            const inputTokens = Math.max(10, Math.round(totalInputChars / 4));
-            const outputTokens = Math.max(10, Math.round(totalOutputChars / 4));
-            const reasoningTokens = Math.round(totalThinkingChars / 4);
-            const totalTokens = inputTokens + outputTokens;
-
-            const tokens = {
-              total: totalTokens,
-              input: inputTokens,
-              output: outputTokens,
-              reasoning: reasoningTokens,
-              cacheRead: 0,
-              cacheWrite: 0,
-            };
-
-            // Estimate cost for Gemini / Claude models in Antigravity
-            let inRate = 0.0000001; // default flash $0.10/M
-            let outRate = 0.0000004; // default flash $0.40/M
-            if (model && (model.includes('Pro') || model.includes('pro'))) {
-              inRate = 0.00000125; // $1.25/M
-              outRate = 0.000005;  // $5.00/M
-            } else if (model && (model.includes('Sonnet') || model.includes('Claude') || model.includes('claude'))) {
-              inRate = 0.000003;   // $3.00/M
-              outRate = 0.000015;  // $15.00/M
-            }
-            const cost = Number(((tokens.input * inRate) + (tokens.output * outRate)).toFixed(4));
-
-            return {
-              conversationId: entry,
-              workspace: agyWorkspace || null,
-              model: model || null,
-              task: task || null,
-              markdownSummary: markdownSummary || null,
-              filesModified: Array.from(touchedFiles),
-              toolCalls,
-              tokens,
-              cost,
-            };
+          let model = null;
+          const modelMatch = text.match(/setting \`Model Selection\` from [^\n]+ to (.*?)\.\s*No need to/i) ||
+                             text.match(/setting \`Model Selection\` from [^\n]+ to ([^\n<]+)/i) ||
+                             text.match(/model:\s*([^\n<]+)/i);
+          if (modelMatch) {
+            model = modelMatch[1].trim();
           }
+
+          const taskMatch = text.match(/Task:\s*([\s\S]*?)(?=(?:\\n=== File|\n=== File|\\nRules:|\nRules:|<\/USER_REQUEST>|\\nWhen done|\nWhen done))/i);
+          let task = taskMatch ? taskMatch[1].trim() : null;
+          if (task) {
+            task = task.replace(/\\n/g, '\n').replace(/^[\r\n]+/, '').trim();
+          }
+
+          // Extract touched files, diffs, tool calls, token estimation, and last planner markdown response
+          const touchedFiles = new Set();
+          const collectedDiffs = [];
+          const toolCalls = [];
+          let markdownSummary = null;
+          let totalInputChars = 0;
+          let totalOutputChars = 0;
+          let totalThinkingChars = 0;
+
+          const lines = text.split('\n').filter(Boolean);
+          for (const line of lines) {
+            try {
+              const step = JSON.parse(line);
+              const contentLen = (step.content || '').length;
+              const thinkingLen = (step.thinking || '').length;
+
+              if (step.source === 'USER' || step.source === 'SYSTEM' || step.source === 'TOOL') {
+                totalInputChars += contentLen;
+              } else if (step.source === 'MODEL') {
+                totalOutputChars += contentLen;
+                totalThinkingChars += thinkingLen;
+              }
+
+              if (step.type === 'CODE_ACTION' && step.content) {
+                const diffStart = step.content.indexOf('[diff_block_start]');
+                const diffEnd = step.content.indexOf('[diff_block_end]');
+                if (diffStart !== -1 && diffEnd !== -1) {
+                  collectedDiffs.push(step.content.slice(diffStart, diffEnd + 16));
+                } else if (step.content.includes('@@')) {
+                  collectedDiffs.push(step.content.trim());
+                }
+              }
+
+              if (step.tool_calls) {
+                for (const tc of step.tool_calls) {
+                  const rawArgs = tc.args || tc.arguments || {};
+                  const cleanedArgs = {};
+                  for (const [k, v] of Object.entries(rawArgs)) {
+                    if (typeof v === 'string' && v.startsWith('"') && v.endsWith('"')) {
+                      try { cleanedArgs[k] = JSON.parse(v); } catch { cleanedArgs[k] = v.slice(1, -1); }
+                    } else {
+                      cleanedArgs[k] = v;
+                    }
+                  }
+
+                  const targetF = cleanedArgs.TargetFile || cleanedArgs.target_file || cleanedArgs.path;
+                  if (targetF) {
+                    touchedFiles.add(targetF);
+                  }
+                  toolCalls.push(normalizeToolCall({
+                    tool: tc.name,
+                    input: cleanedArgs,
+                    status: 'completed',
+                  }));
+                }
+              }
+              if (step.type === 'PLANNER_RESPONSE' && step.content) {
+                markdownSummary = step.content;
+              }
+            } catch {}
+          }
+
+          const inputTokens = Math.max(10, Math.round(totalInputChars / 4));
+          const outputTokens = Math.max(10, Math.round(totalOutputChars / 4));
+          const reasoningTokens = Math.round(totalThinkingChars / 4);
+          const totalTokens = inputTokens + outputTokens;
+
+          const tokens = {
+            total: totalTokens,
+            input: inputTokens,
+            output: outputTokens,
+            reasoning: reasoningTokens,
+            cacheRead: 0,
+            cacheWrite: 0,
+          };
+
+          // Estimate cost for Gemini / Claude models in Antigravity
+          let inRate = 0.0000001; // default flash $0.10/M
+          let outRate = 0.0000004; // default flash $0.40/M
+          if (model && (model.includes('Pro') || model.includes('pro'))) {
+            inRate = 0.00000125; // $1.25/M
+            outRate = 0.000005;  // $5.00/M
+          } else if (model && (model.includes('Sonnet') || model.includes('Claude') || model.includes('claude'))) {
+            inRate = 0.000003;   // $3.00/M
+            outRate = 0.000015;  // $15.00/M
+          }
+          const cost = Number(((tokens.input * inRate) + (tokens.output * outRate)).toFixed(4));
+
+          return {
+            conversationId: entry,
+            workspace: agyWorkspace || null,
+            model: model || null,
+            task: task || null,
+            markdownSummary: markdownSummary || null,
+            filesModified: Array.from(touchedFiles),
+            diffs: collectedDiffs.length > 0 ? collectedDiffs.join('\n\n') : null,
+            toolCalls,
+            tokens,
+            cost,
+          };
         }
       } catch (err) {}
     }
@@ -982,13 +996,14 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
 
   // If Antigravity provider, resolve transcript for workspace, model, prompt, summary, and tool calls
   if (parsedName.provider === 'antigravity') {
-    const agyMatch = findAntigravityTranscript(parsedName.startTime, workspace);
+    const agyMatch = findAntigravityTranscript(session, parsedName.startTime, workspace);
     if (agyMatch) {
       if (!workspace || workspace === 'Unknown') workspace = agyMatch.workspace;
       if (agyMatch.model) model = agyMatch.model;
       if (!task && agyMatch.task) task = agyMatch.task;
       if (!session && agyMatch.conversationId) session = agyMatch.conversationId;
       if (agyMatch.markdownSummary) markdownSummary = agyMatch.markdownSummary;
+      if (agyMatch.diffs) diffs = agyMatch.diffs;
       if (agyMatch.filesModified && agyMatch.filesModified.length > 0) filesModified = agyMatch.filesModified;
       if (agyMatch.toolCalls && agyMatch.toolCalls.length > 0) toolCalls = agyMatch.toolCalls;
       if (agyMatch.tokens) tokens = agyMatch.tokens;
