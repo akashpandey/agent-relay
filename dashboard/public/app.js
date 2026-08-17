@@ -869,23 +869,35 @@ function formatLogLine(rawLine) {
         return `<span style="color: var(--accent); font-weight: 600;">🚀 [Session Init]</span> <span style="color: var(--text-dim);">${escapeHtml(obj.conversation_id || '')}</span> (Model: <span style="color: var(--accent);">${escapeHtml(obj.model || 'default')}</span>)`;
       }
       if (obj.event === 'step_update') {
-        const step = obj.step || {};
-        const parts = [];
-        if (step.step_index !== undefined) {
-          parts.push(`<span style="color: var(--badge-gemini); font-weight: 600;">[Step ${step.step_index}]</span>`);
+        const su = obj.step_update || obj.step || {};
+        if (su.step_type === 'tool') {
+          const toolName = su.tool_name || su.tool_info?.name || su.name || 'tool';
+          const params = su.tool_info?.parameters || su.args || {};
+          const duration = su.duration_seconds ? ` (${su.duration_seconds.toFixed(2)}s)` : '';
+          const output = su.tool_info?.output ? `\n<span style="color: var(--text-dim); font-size: 0.8rem;">${escapeHtml(su.tool_info.output.slice(0, 300))}</span>` : '';
+          return `<div style="color: var(--badge-opencode); font-weight: 600; margin-top: 4px;">⚙ ${escapeHtml(toolName)}${duration} <span style="color: var(--text-dim); font-weight: 400;">${escapeHtml(JSON.stringify(params).slice(0, 120))}</span></div>${output}`;
         }
-        if (step.thought || step.thinking) {
-          parts.push(`<div style="color: var(--text-dim); padding: 2px 0 2px 8px; border-left: 2px solid rgba(255,255,255,0.15); margin: 3px 0;">💭 ${escapeHtml(step.thought || step.thinking)}</div>`);
-        }
-        if (step.tool_calls && Array.isArray(step.tool_calls)) {
-          for (const tc of step.tool_calls) {
-            parts.push(`<div style="color: var(--badge-opencode); font-weight: 600;">⚙ ${escapeHtml(tc.name || 'tool')}(${escapeHtml(JSON.stringify(tc.args || {}).slice(0, 100))})</div>`);
+        if (su.step_type === 'agent_response') {
+          if (su.text_delta) {
+            return escapeHtml(su.text_delta);
+          }
+          if (su.usage) {
+            return `<span style="color: var(--text-dim); font-size: 0.75rem;">[Step ${su.step_index || ''} Usage: ${su.usage.total_tokens || 0} tokens]</span>`;
           }
         }
-        if (parts.length > 0) return parts.join('\n');
+        if (su.thought || su.thinking) {
+          return `<div style="color: var(--text-dim); padding: 2px 0 2px 8px; border-left: 2px solid rgba(255,255,255,0.15); margin: 3px 0;">💭 ${escapeHtml(su.thought || su.thinking)}</div>`;
+        }
+        if (su.tool_calls && Array.isArray(su.tool_calls)) {
+          return su.tool_calls.map(tc => `<div style="color: var(--badge-opencode); font-weight: 600;">⚙ ${escapeHtml(tc.name || 'tool')}(${escapeHtml(JSON.stringify(tc.args || {}).slice(0, 100))})</div>`).join('\n');
+        }
       }
       if (obj.event === 'result') {
-        return `<span style="color: var(--badge-opencode); font-weight: 600;">✨ [Task Result]</span>\n${escapeHtml(obj.result || obj.content || '')}`;
+        const resObj = typeof obj.result === 'object' && obj.result !== null ? obj.result : obj;
+        const respText = resObj.response || resObj.content || resObj.summary || resObj.output || (typeof obj.result === 'string' ? obj.result : '');
+        const duration = resObj.duration_seconds ? ` (${Math.round(resObj.duration_seconds)}s)` : '';
+        const tokens = resObj.usage?.total_tokens ? ` · ${formatNumber(resObj.usage.total_tokens)} tokens` : '';
+        return `\n<div style="padding: 8px 12px; background: rgba(34, 197, 94, 0.1); border-left: 3px solid var(--success); margin: 8px 0; border-radius: 4px;"><span style="color: var(--success); font-weight: 600;">✨ [Task Completed${duration}${tokens}]</span>\n${escapeHtml(respText)}</div>`;
       }
       if (obj.type === 'tool_use') {
         return `<span style="color: var(--badge-claude); font-weight: 600;">⚙ [Tool Use: ${escapeHtml(obj.name || '')}]</span> <span style="color: var(--text-dim);">${escapeHtml(JSON.stringify(obj.input || {}).slice(0, 120))}</span>`;
