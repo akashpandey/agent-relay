@@ -311,9 +311,12 @@ export function findAntigravityTranscript(sessionId, startTimeIso, workspace) {
                     }
                   }
 
-                  const targetF = cleanedArgs.TargetFile || cleanedArgs.target_file || cleanedArgs.path;
-                  if (targetF) {
-                    touchedFiles.add(targetF);
+                  const isMutating = ['replace_file_content', 'write_to_file', 'multi_replace_file_content', 'edit_file', 'apply_diff', 'patch'].includes(tc.name);
+                  if (isMutating) {
+                    const targetF = cleanedArgs.TargetFile || cleanedArgs.target_file || cleanedArgs.path;
+                    if (targetF) {
+                      touchedFiles.add(targetF);
+                    }
                   }
                   toolCalls.push(normalizeToolCall({
                     tool: tc.name,
