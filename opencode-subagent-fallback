@@ -3,6 +3,10 @@ set -eu
 
 workspace="$(pwd -P)"
 
+# Prevent hanging network commands from blocking subprocess cleanup
+export PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-5}"
+export CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-10}"
+
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   cat <<'EOF'
 Usage:

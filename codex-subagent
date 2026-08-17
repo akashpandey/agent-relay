@@ -4,6 +4,10 @@ set -eu
 workspace="$(pwd -P)"
 timeout_seconds="${CODEX_TIMEOUT:-7200}"
 
+# Prevent hanging network commands from blocking subprocess cleanup
+export PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-5}"
+export CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-10}"
+
 if [ "${1:-}" = "--models" ]; then
   if [ "$#" -ne 1 ]; then
     echo "Usage: codex-subagent --models" >&2

@@ -816,6 +816,44 @@ async function startLogStream(filename) {
   };
 }
 
+function formatLogLine(rawLine) {
+  const trimmed = rawLine.trim();
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    try {
+      const obj = JSON.parse(trimmed);
+      if (obj.event === 'init') {
+        return `<span style="color: var(--accent); font-weight: 600;">🚀 [Session Init]</span> <span style="color: var(--text-dim);">${escapeHtml(obj.conversation_id || '')}</span> (Model: <span style="color: var(--accent);">${escapeHtml(obj.model || 'default')}</span>)`;
+      }
+      if (obj.event === 'step_update') {
+        const step = obj.step || {};
+        const parts = [];
+        if (step.step_index !== undefined) {
+          parts.push(`<span style="color: var(--badge-gemini); font-weight: 600;">[Step ${step.step_index}]</span>`);
+        }
+        if (step.thought || step.thinking) {
+          parts.push(`<div style="color: var(--text-dim); padding: 2px 0 2px 8px; border-left: 2px solid rgba(255,255,255,0.15); margin: 3px 0;">💭 ${escapeHtml(step.thought || step.thinking)}</div>`);
+        }
+        if (step.tool_calls && Array.isArray(step.tool_calls)) {
+          for (const tc of step.tool_calls) {
+            parts.push(`<div style="color: var(--badge-opencode); font-weight: 600;">⚙ ${escapeHtml(tc.name || 'tool')}(${escapeHtml(JSON.stringify(tc.args || {}).slice(0, 100))})</div>`);
+          }
+        }
+        if (parts.length > 0) return parts.join('\n');
+      }
+      if (obj.event === 'result') {
+        return `<span style="color: var(--badge-opencode); font-weight: 600;">✨ [Task Result]</span>\n${escapeHtml(obj.result || obj.content || '')}`;
+      }
+      if (obj.type === 'tool_use') {
+        return `<span style="color: var(--badge-claude); font-weight: 600;">⚙ [Tool Use: ${escapeHtml(obj.name || '')}]</span> <span style="color: var(--text-dim);">${escapeHtml(JSON.stringify(obj.input || {}).slice(0, 120))}</span>`;
+      }
+      if (obj.type === 'text') {
+        return escapeHtml(obj.text || '');
+      }
+    } catch {}
+  }
+  return ansiToHtml(escapeHtml(rawLine));
+}
+
 function renderTerminalLines() {
   const query = state.filterLogQuery.toLowerCase();
   let filtered = state.rawLogLines;
@@ -824,7 +862,7 @@ function renderTerminalLines() {
   }
 
   el.logLinesCount.textContent = `${filtered.length} lines`;
-  const rendered = filtered.map(l => ansiToHtml(escapeHtml(l))).join('\n');
+  const rendered = filtered.map(l => formatLogLine(l)).join('\n');
   el.modalTerminalContent.innerHTML = rendered || '<span style="color: var(--text-dim);">No output lines recorded.</span>';
 
   if (state.autoscroll) {

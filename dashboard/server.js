@@ -413,6 +413,39 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // POST /api/runs/:filename/kill (Gracefully stop / cancel an active subagent run)
+  if (pathname.startsWith('/api/runs/') && pathname.endsWith('/kill') && req.method === 'POST') {
+    const filename = decodeURIComponent(pathname.replace('/api/runs/', '').replace('/kill', ''));
+    const safeFile = path.basename(filename);
+    const filePath = path.join(LOGS_DIR, safeFile);
+
+    if (!fs.existsSync(filePath)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Log file not found' }));
+      return;
+    }
+
+    const meta = parseLogMetadata(safeFile, filePath, PROC_DIR);
+    if (!meta.pid) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'No PID associated with this run' }));
+      return;
+    }
+
+    const unit = `local-subagent-${meta.provider}-${meta.pid}`;
+    exec(`systemctl --user stop ${unit} 2>/dev/null`, () => {});
+    const result = await terminateProcessTree(meta.pid);
+    setTimeout(broadcastDashboardUpdate, 500);
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      success: true,
+      message: `Subagent run ${safeFile} (PID ${meta.pid}) stopped`,
+      details: result,
+    }));
+    return;
+  }
+
   // GET /api/logs/:filename
   if (pathname.startsWith('/api/logs/') && !pathname.endsWith('/stream') && req.method === 'GET') {
     const filename = decodeURIComponent(pathname.replace('/api/logs/', ''));
