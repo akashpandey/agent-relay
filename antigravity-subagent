@@ -110,7 +110,7 @@ stop_subagent() {
 trap 'stop_subagent' EXIT
 trap 'stop_subagent; exit 143' HUP INT TERM
 
-set -- --print "$prompt" --add-dir "$workspace" --dangerously-skip-permissions --print-timeout "$timeout"
+set -- --print "$prompt" --output-format stream-json --add-dir "$workspace" --dangerously-skip-permissions --print-timeout "$timeout"
 
 if [ "${AGY_MODEL:-}" ]; then
   set -- --model "$AGY_MODEL" "$@"

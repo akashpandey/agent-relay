@@ -945,6 +945,7 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
   // Extract Session ID
   let session = null;
   const sessionMatch = combinedSample.match(/session\.id=([^\s]+)/i) ||
+                        combinedSample.match(/"conversation_id":"([^"]+)"/i) ||
                         combinedSample.match(/session id:\s*([^\r\n]+)/i) ||
                         combinedSample.match(/created id=([^\s]+)/i) ||
                         combinedSample.match(/thread_id=([^\s,]+)/i) ||
