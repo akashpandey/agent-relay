@@ -542,6 +542,94 @@ function updatePagination() {
 
 // --- Full-Page Workspace Modal Dialog ---
 
+function applyModalMetadata(meta) {
+  state.activeRunData = meta;
+
+  // Header Meta
+  el.modalProvider.textContent = meta.provider;
+  el.modalProvider.className = `provider-tag provider-${meta.provider.toLowerCase()}`;
+  el.modalFilename.textContent = meta.filename;
+  el.modalStatusPill.textContent = meta.status;
+  el.modalStatusPill.className = `status-pill status-${meta.status.toLowerCase()}`;
+  el.modalWorkspace.textContent = `📁 ${meta.workspaceName || meta.workspace}`;
+  el.modalModel.textContent = `🤖 ${meta.model}`;
+  el.modalPid.textContent = `PID: ${meta.pid}`;
+  el.modalStartTime.textContent = `🕒 ${formatISTTime(meta.startTimeIST || meta.startTime)}`;
+  el.modalDuration.textContent = `⏱️ ${meta.durationHuman}`;
+  el.btnModalDownloadLog.href = `/api/logs/${encodeURIComponent(meta.filename)}`;
+
+  // Kill button
+  if (meta.isAlive) {
+    el.modalBtnKill.style.display = 'inline-flex';
+    el.modalBtnKill.onclick = () => killProcess(meta.pid, meta.filename);
+  } else {
+    el.modalBtnKill.style.display = 'none';
+  }
+
+  // Left Sidebar: Task Prompt
+  el.modalTaskContent.textContent = meta.fullTask || meta.task || 'No task prompt recorded';
+  el.btnTaskCopySmall.onclick = () => copyToClipboard(meta.fullTask || meta.task, 'Task prompt copied!');
+  el.btnModalCopyPrompt.onclick = () => copyToClipboard(meta.fullTask || meta.task, 'Task prompt copied!');
+
+  // Left Sidebar: CLI Command
+  el.modalCliCode.textContent = meta.cliCommand || 'No command available';
+  el.btnCliCopySmall.onclick = () => copyToClipboard(meta.cliCommand, 'CLI command copied!');
+  el.btnModalCopyCli.onclick = () => copyToClipboard(meta.cliCommand, 'CLI command copied!');
+
+  // Left Sidebar: Tokens & Cost Mini Stats
+  if (meta.tokens) {
+    el.miniTokensInput.textContent = formatNumber(meta.tokens.input || 0);
+    el.miniTokensOutput.textContent = formatNumber(meta.tokens.output || 0);
+    el.miniTokensReasoning.textContent = formatNumber(meta.tokens.reasoning || 0);
+    el.miniTokensCache.textContent = formatNumber(meta.tokens.cacheRead || 0);
+    el.miniTokensTotal.textContent = formatNumber(meta.tokens.total || 0);
+  } else {
+    el.miniTokensInput.textContent = '-';
+    el.miniTokensOutput.textContent = '-';
+    el.miniTokensReasoning.textContent = '-';
+    el.miniTokensCache.textContent = '-';
+    el.miniTokensTotal.textContent = '-';
+  }
+  el.miniCost.textContent = meta.cost ? `$${meta.cost.toFixed(4)}` : '$0.00';
+
+  // Left Sidebar: Touched Files Chips
+  if (meta.filesModified && meta.filesModified.length > 0) {
+    el.modalFilesCount.textContent = meta.filesModified.length;
+    el.tabModalDiffsCount.style.display = 'inline-block';
+    el.tabModalDiffsCount.textContent = meta.filesModified.length;
+    el.modalFilesChips.innerHTML = meta.filesModified.map(f => `<span class="touched-file-chip">${escapeHtml(f)}</span>`).join('');
+  } else {
+    el.modalFilesCount.textContent = '0';
+    el.tabModalDiffsCount.style.display = 'none';
+    el.modalFilesChips.innerHTML = '<span style="color: var(--text-dim); font-size: 0.75rem;">No files modified</span>';
+  }
+
+  // Right Viewport: Tools & Commands
+  renderToolsTab();
+
+  // Right Viewport: Markdown Output
+  if (meta.markdownSummary) {
+    el.modalMarkdownContainer.innerHTML = renderMarkdownToHtml(meta.markdownSummary);
+  } else if (!meta.isAlive) {
+    el.modalMarkdownContainer.innerHTML = '<div class="markdown-empty">No structured markdown summary recorded for this run. Check the Live Terminal tab for full raw output.</div>';
+  }
+
+  // Right Viewport: Changed Files & Diffs
+  renderDiffsTab(meta);
+}
+
+async function refreshOpenModalData(filename) {
+  if (state.selectedRun !== filename) return;
+  try {
+    const res = await fetch(`/api/runs/${encodeURIComponent(filename)}`);
+    if (!res.ok) return;
+    const meta = await res.json();
+    if (state.selectedRun === filename) {
+      applyModalMetadata(meta);
+    }
+  } catch (err) {}
+}
+
 async function openWorkspaceModal(filename) {
   state.selectedRun = filename;
   state.rawLogLines = [];
@@ -559,86 +647,16 @@ async function openWorkspaceModal(filename) {
     if (!res.ok) return;
     const meta = await res.json();
 
-    // Header Meta
-    el.modalProvider.textContent = meta.provider;
-    el.modalProvider.className = `provider-tag provider-${meta.provider.toLowerCase()}`;
-    el.modalFilename.textContent = meta.filename;
-    el.modalStatusPill.textContent = meta.status;
-    el.modalStatusPill.className = `status-pill status-${meta.status.toLowerCase()}`;
-    el.modalWorkspace.textContent = `📁 ${meta.workspaceName || meta.workspace}`;
-    el.modalModel.textContent = `🤖 ${meta.model}`;
-    el.modalPid.textContent = `PID: ${meta.pid}`;
-    el.modalStartTime.textContent = `🕒 ${formatISTTime(meta.startTimeIST || meta.startTime)}`;
-    el.modalDuration.textContent = `⏱️ ${meta.durationHuman}`;
-    el.btnModalDownloadLog.href = `/api/logs/${encodeURIComponent(meta.filename)}`;
-
-    // Kill button
-    if (meta.isAlive) {
-      el.modalBtnKill.style.display = 'inline-flex';
-      el.modalBtnKill.onclick = () => killProcess(meta.pid, meta.filename);
-    } else {
-      el.modalBtnKill.style.display = 'none';
-    }
-
-    // Left Sidebar: Task Prompt
-    el.modalTaskContent.textContent = meta.fullTask || meta.task || 'No task prompt recorded';
-    el.btnTaskCopySmall.onclick = () => copyToClipboard(meta.fullTask || meta.task, 'Task prompt copied!');
-    el.btnModalCopyPrompt.onclick = () => copyToClipboard(meta.fullTask || meta.task, 'Task prompt copied!');
-
-    // Left Sidebar: CLI Command
-    el.modalCliCode.textContent = meta.cliCommand || 'No command available';
-    el.btnCliCopySmall.onclick = () => copyToClipboard(meta.cliCommand, 'CLI command copied!');
-    el.btnModalCopyCli.onclick = () => copyToClipboard(meta.cliCommand, 'CLI command copied!');
-
-    // Left Sidebar: Tokens & Cost Mini Stats
-    if (meta.tokens) {
-      el.miniTokensInput.textContent = formatNumber(meta.tokens.input || 0);
-      el.miniTokensOutput.textContent = formatNumber(meta.tokens.output || 0);
-      el.miniTokensReasoning.textContent = formatNumber(meta.tokens.reasoning || 0);
-      el.miniTokensCache.textContent = formatNumber(meta.tokens.cacheRead || 0);
-      el.miniTokensTotal.textContent = formatNumber(meta.tokens.total || 0);
-    } else {
-      el.miniTokensInput.textContent = '-';
-      el.miniTokensOutput.textContent = '-';
-      el.miniTokensReasoning.textContent = '-';
-      el.miniTokensCache.textContent = '-';
-      el.miniTokensTotal.textContent = '-';
-    }
-    el.miniCost.textContent = meta.cost ? `$${meta.cost.toFixed(4)}` : '$0.00';
-
-    // Left Sidebar: Touched Files Chips
-    if (meta.filesModified && meta.filesModified.length > 0) {
-      el.modalFilesCount.textContent = meta.filesModified.length;
-      el.tabModalDiffsCount.style.display = 'inline-block';
-      el.tabModalDiffsCount.textContent = meta.filesModified.length;
-      el.modalFilesChips.innerHTML = meta.filesModified.map(f => `<span class="touched-file-chip">${escapeHtml(f)}</span>`).join('');
-    } else {
-      el.modalFilesCount.textContent = '0';
-      el.tabModalDiffsCount.style.display = 'none';
-      el.modalFilesChips.innerHTML = '<span style="color: var(--text-dim); font-size: 0.75rem;">No files modified</span>';
-    }
-
-    // Right Viewport: Tools & Commands
-    state.activeRunData = meta;
     state.toolFilterType = 'all';
     state.toolFilterQuery = '';
     if (el.toolSearchInput) el.toolSearchInput.value = '';
     if (el.toolsFilterPills) {
       el.toolsFilterPills.querySelectorAll('.tool-pill').forEach(p => p.classList.toggle('active', p.dataset.toolType === 'all'));
     }
-    renderToolsTab();
 
-    // Right Viewport: Markdown Output
-    if (meta.markdownSummary) {
-      el.modalMarkdownContainer.innerHTML = renderMarkdownToHtml(meta.markdownSummary);
-    } else {
-      el.modalMarkdownContainer.innerHTML = '<div class="markdown-empty">No structured markdown summary recorded for this run. Check the Live Terminal tab for full raw output.</div>';
-    }
+    applyModalMetadata(meta);
 
-    // Right Viewport: Changed Files & Diffs
-    renderDiffsTab(meta);
-
-    // Start Log Streaming
+    // Start Log Streaming & Live Polling
     startLogStream(meta.filename);
   } catch (err) {
     console.error('Error opening workspace modal:', err);
@@ -744,6 +762,11 @@ function renderToolsTab() {
 }
 
 function closeWorkspaceModal() {
+  state.selectedRun = null;
+  if (state.modalPollInterval) {
+    clearInterval(state.modalPollInterval);
+    state.modalPollInterval = null;
+  }
   el.workspaceModalOverlay.classList.remove('open');
   el.workspaceModal.classList.remove('open');
   if (state.activeLogStream) {
@@ -769,6 +792,10 @@ async function startLogStream(filename) {
   if (state.activeLogStream) {
     state.activeLogStream.close();
   }
+  if (state.modalPollInterval) {
+    clearInterval(state.modalPollInterval);
+    state.modalPollInterval = null;
+  }
 
   state.rawLogLines = [];
   el.modalTerminalContent.innerHTML = 'Connecting to log stream...';
@@ -786,6 +813,16 @@ async function startLogStream(filename) {
   } catch (e) {
     console.warn('Initial log fetch failed:', e);
   }
+
+  // Periodic metadata poller so Tools, Diffs, Summary, and Tokens update live without reopening modal
+  state.modalPollInterval = setInterval(() => {
+    if (state.selectedRun === filename) {
+      refreshOpenModalData(filename);
+    } else {
+      clearInterval(state.modalPollInterval);
+      state.modalPollInterval = null;
+    }
+  }, 3000);
 
   const sse = new EventSource(`/api/logs/${encodeURIComponent(filename)}/stream`);
   state.activeLogStream = sse;
@@ -806,6 +843,13 @@ async function startLogStream(filename) {
       } else if (data.type === 'eof') {
         el.streamStatusBadge.innerHTML = '<span>●</span> Stream Finished';
         el.streamStatusBadge.style.color = 'var(--text-dim)';
+        if (state.modalPollInterval) {
+          clearInterval(state.modalPollInterval);
+          state.modalPollInterval = null;
+        }
+        refreshOpenModalData(filename);
+        fetchStats();
+        fetchRuns();
       }
     } catch {}
   };
