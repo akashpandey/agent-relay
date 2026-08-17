@@ -5,7 +5,7 @@ description: Delegate a bounded coding, investigation, review, or parallel imple
 
 # Local Subagents
 
-Execute delegated tasks across 4 local coding harnesses (`opencode-subagent`, `antigravity-subagent`, `claude-subagent`, `codex-subagent`). Each wrapper runs non-interactively in the target workspace, logs output, captures diffs and telemetry, and integrates with the local Visualizer Dashboard at `http://localhost:4242`.
+Execute delegated tasks across 5 local coding harnesses (`opencode-subagent`, `opencode-subagent-fallback`, `antigravity-subagent`, `claude-subagent`, `codex-subagent`). Each wrapper runs non-interactively in the target workspace, logs output, captures diffs and telemetry, and integrates with the local Visualizer Dashboard at `http://localhost:4242`.
 
 ## Available Harnesses & Invocation
 
@@ -16,6 +16,9 @@ cd /path/to/workspace
 
 # OpenCode (GLM / multi-provider)
 opencode-subagent "Task prompt..."
+
+# OpenCode with Automatic Model Fallback Chain (Quota/Rate-Limit Failover)
+OPENCODE_MODEL_CHAIN='zai-coding-plan/glm-5.2,openai/gpt-5.4-mini' opencode-subagent-fallback "Task prompt..."
 
 # Antigravity (Gemini / Claude Sonnet via AGY)
 antigravity-subagent "Task prompt..."
@@ -112,6 +115,14 @@ Specify a non-default model via environment variables:
 - `AGY_MODEL='Claude Sonnet 4.6 (Thinking)' antigravity-subagent "..."`
 - `CLAUDE_MODEL='opus' claude-subagent "..."`
 - `CODEX_MODEL='gpt-5.5' codex-subagent "..."`
+
+### Automatic Model Failover Chains (opencode-subagent-fallback)
+To prevent jobs from failing when a model hits monthly quota exhaustion or rate limits, define an `OPENCODE_MODEL_CHAIN`:
+```sh
+OPENCODE_MODEL_CHAIN='zai-coding-plan/glm-5.2,openai/gpt-5.4-mini,opencode-go/qwen3.7-plus' \
+  opencode-subagent-fallback "Implement feature X..."
+```
+*Sends a cheap pre-flight probe to verify provider quota before committing the full task prompt.*
 
 ---
 
