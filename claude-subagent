@@ -114,7 +114,9 @@ stop_subagent() {
 trap 'stop_subagent' EXIT
 trap 'stop_subagent; exit 143' HUP INT TERM
 
-set -- --print --output-format stream-json --add-dir "$workspace" --dangerously-skip-permissions
+cd "$workspace"
+
+set -- --print --output-format stream-json --dangerously-skip-permissions
 if [ "$resume_session" = "--last" ] || [ "$resume_session" = "last" ]; then
   set -- "$@" --resume
 elif [ -n "$resume_session" ] && [ "$resume_session" != "new" ]; then
@@ -135,7 +137,7 @@ printf 'subagent: provider=claude workspace=%s model=%s session=%s\nTask:\n%s\n\
   "$workspace" "${CLAUDE_MODEL:-default}" "${resume_session:-new}" "$user_prompt" > "$log_file"
 
 if [ "$use_systemd" -eq 1 ]; then
-  systemd-run --user --pipe --same-dir --setenv=PATH="$PATH" --wait --collect --quiet --unit="$unit" --property=KillMode=control-group --property=RuntimeMaxSec="${timeout_seconds}s" "$HOME/.local/bin/claude" "$@" >>"$log_file" 2>&1 &
+  systemd-run --user --pipe --working-directory="$workspace" --setenv=PATH="$PATH" --wait --collect --quiet --unit="$unit" --property=KillMode=control-group --property=RuntimeMaxSec="${timeout_seconds}s" "$HOME/.local/bin/claude" "$@" >>"$log_file" 2>&1 &
 elif [ "$timeout_seconds" -gt 0 ] 2>/dev/null && command -v timeout >/dev/null 2>&1; then
   setsid timeout --foreground "${timeout_seconds}s" "$HOME/.local/bin/claude" "$@" >>"$log_file" 2>&1 &
 else

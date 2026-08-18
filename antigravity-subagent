@@ -131,7 +131,10 @@ stop_subagent() {
 trap 'stop_subagent' EXIT
 trap 'stop_subagent; exit 143' HUP INT TERM
 
-set -- --print "$prompt" --output-format stream-json --add-dir "$workspace" --dangerously-skip-permissions --print-timeout "$timeout"
+cd "$workspace"
+project_id="${AGY_PROJECT:-subagent-$(basename "$workspace")}"
+
+set -- --print "$prompt" --output-format stream-json --project "$project_id" --dangerously-skip-permissions --print-timeout "$timeout"
 
 if [ "${AGY_MODEL:-}" ]; then
   set -- --model "$AGY_MODEL" "$@"
@@ -148,7 +151,7 @@ elif [ -n "$resume_session" ] && [ "$resume_session" != "new" ]; then
 fi
 
 if [ "$log_flag" = "1" ]; then
-  echo "antigravity-subagent: workspace=$workspace model=${AGY_MODEL:-default} session=${resume_session:-new} timeout=$timeout log_file=${AGY_LOG_FILE:-default} run_log=$log_file" >&2
+  echo "antigravity-subagent: workspace=$workspace project=$project_id model=${AGY_MODEL:-default} session=${resume_session:-new} timeout=$timeout log_file=${AGY_LOG_FILE:-default} run_log=$log_file" >&2
 fi
 
 # ponytail: snapshot every pid that exists before this run starts (space-
@@ -164,7 +167,7 @@ printf 'subagent: provider=antigravity workspace=%s model=%s session=%s\nTask:\n
   "$workspace" "${AGY_MODEL:-default}" "${resume_session:-new}" "$user_prompt" > "$log_file"
 
 if [ "$use_systemd" -eq 1 ]; then
-  systemd-run --user --pipe --same-dir --setenv=PATH="$PATH" --wait --collect --quiet --unit="$unit" --property=KillMode=control-group --property=RuntimeMaxSec="$timeout" "$HOME/.local/bin/agy" "$@" >>"$log_file" 2>&1 &
+  systemd-run --user --pipe --working-directory="$workspace" --setenv=PATH="$PATH" --wait --collect --quiet --unit="$unit" --property=KillMode=control-group --property=RuntimeMaxSec="$timeout" "$HOME/.local/bin/agy" "$@" >>"$log_file" 2>&1 &
 elif command -v timeout >/dev/null 2>&1; then
   setsid timeout --foreground "$timeout" "$HOME/.local/bin/agy" "$@" >>"$log_file" 2>&1 &
 else
@@ -221,6 +224,12 @@ for sig in TERM KILL; do
     fi
     case "$pid_cwd" in
       "$workspace_real"|"$workspace_real"/*)
+        kill "-$sig" "$pid" >/dev/null 2>&1 || true
+        ;;
+    esac
+  done
+done
+
 # Write completion sentinel file (.done)
 done_file="${log_file%.log}.done"
 conv_id="$(grep -oE '"conversation_id":"[^"]+"' "$log_file" 2>/dev/null | head -n 1 | cut -d'"' -f4 || echo "${resume_session:-new}")"

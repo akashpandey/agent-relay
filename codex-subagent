@@ -125,6 +125,8 @@ stop_subagent() {
 trap 'stop_subagent' EXIT
 trap 'stop_subagent; exit 143' HUP INT TERM
 
+cd "$workspace"
+
 set -- --ask-for-approval never exec --cd "$workspace" --sandbox "$sandbox" --skip-git-repo-check
 if [ "$resume_session" = "--last" ] || [ "$resume_session" = "last" ]; then
   set -- "$@" resume --last
@@ -145,7 +147,7 @@ printf 'subagent: provider=codex workspace=%s model=%s session=%s\nTask:\n%s\n\n
   "$workspace" "${CODEX_MODEL:-default}" "${resume_session:-new}" "$user_prompt" > "$log_file"
 
 if [ "$use_systemd" -eq 1 ]; then
-  systemd-run --user --pipe --same-dir --setenv=PATH="$PATH" --wait --collect --quiet --unit="$unit" --property=KillMode=control-group --property=RuntimeMaxSec="${timeout_seconds}s" "$codex_bin" "$@" >>"$log_file" 2>&1 &
+  systemd-run --user --pipe --working-directory="$workspace" --setenv=PATH="$PATH" --wait --collect --quiet --unit="$unit" --property=KillMode=control-group --property=RuntimeMaxSec="${timeout_seconds}s" "$codex_bin" "$@" >>"$log_file" 2>&1 &
 elif [ "$timeout_seconds" -gt 0 ] 2>/dev/null && command -v timeout >/dev/null 2>&1; then
   setsid timeout --foreground "${timeout_seconds}s" codex "$@" >>"$log_file" 2>&1 &
 else

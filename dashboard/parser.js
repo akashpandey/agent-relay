@@ -959,17 +959,28 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
     }
   }
 
+  // Load .done metadata if available
+  let doneMeta = null;
+  const donePath = logFilePath.replace(/\.log$/, '.done');
+  if (fs.existsSync(donePath)) {
+    try {
+      doneMeta = JSON.parse(fs.readFileSync(donePath, 'utf8'));
+    } catch {}
+  }
+
   // Extract Session ID
-  let session = null;
-  const sessionMatch = combinedSample.match(/session\.id=([^\s]+)/i) ||
-                        combinedSample.match(/"conversation_id":"([^"]+)"/i) ||
-                        combinedSample.match(/session id:\s*([^\r\n]+)/i) ||
-                        combinedSample.match(/created id=([^\s]+)/i) ||
-                        combinedSample.match(/thread_id=([^\s,]+)/i) ||
-                        combinedSample.match(/session=(?!new\b)([^\s,]+)/i);
-  if (sessionMatch) {
-    session = sessionMatch[1].trim();
-    if (session === 'new') session = null;
+  let session = (doneMeta && doneMeta.sessionId && doneMeta.sessionId !== 'new') ? doneMeta.sessionId : null;
+  if (!session) {
+    const sessionMatch = combinedSample.match(/session\.id=([^\s]+)/i) ||
+                          combinedSample.match(/"conversation_id":"([^"]+)"/i) ||
+                          combinedSample.match(/session id:\s*([^\r\n]+)/i) ||
+                          combinedSample.match(/created id=([^\s]+)/i) ||
+                          combinedSample.match(/thread_id=([^\s,]+)/i) ||
+                          combinedSample.match(/session=(?!new\b)([^\s,]+)/i);
+    if (sessionMatch) {
+      session = sessionMatch[1].trim();
+      if (session === 'new') session = null;
+    }
   }
 
   // Extract Task / Prompt
@@ -1221,6 +1232,7 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
     workspaceName: workspace ? path.basename(workspace) : 'workspace',
     model: formatModelName(model, parsedName.provider),
     session,
+    sessionId: session,
     task: task ? (task.length > 300 ? task.slice(0, 300) + '...' : task) : 'No task prompt specified',
     fullTask: task || '',
     markdownSummary: markdownSummary || null,
