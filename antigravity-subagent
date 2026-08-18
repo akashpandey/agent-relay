@@ -246,6 +246,11 @@ cat <<DONE_JSON > "$done_file"
 }
 DONE_JSON
 
+# Automatically ingest subagent session to claude-mem (non-blocking)
+if [ -f "$done_file" ] && command -v bun >/dev/null 2>&1; then
+  bun "$HOME/local-subagents/scripts/ingest-to-claude-mem.js" "$done_file" >/dev/null 2>&1 &
+fi
+
 if [ "$log_flag" = "1" ]; then
   echo "antigravity-subagent: finished status=$status ($([ "$status" -eq 0 ] && echo "completed" || echo "failed")) session=$conv_id" >&2
 fi
