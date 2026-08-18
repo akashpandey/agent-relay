@@ -141,8 +141,9 @@ curl -X POST "http://localhost:4242/api/dangling/kill-all"
 
 ## Rules & Best Practices
 
-1. **Reuse sessions for multi-step tasks**: Always use `--continue` or `--resume <id>` for follow-up prompts to save context and tokens.
-2. **Never poll in busy loops**: Use native reactive agent wake-up or `subagent-wait` instead of `sleep` polling.
-3. **Keep tasks bounded**: One bug trace, one refactor, one test implementation, or one code review per turn.
-4. **Parallel execution safety**: When running multiple write-capable subagents simultaneously, execute them in separate `git worktree` directories to prevent file write collisions.
-5. **Verify deliverables**: Inspect the generated git diff or test results locally after a subagent reports completion before accepting changes.
+1. **Always anchor to target workspace**: Always `cd /path/to/target/repo` before running a subagent. Each harness automatically sets strict process and workspace scoping so background runs never leak into your interactive `/resume` lists.
+2. **Reuse sessions for multi-step tasks**: Use `--continue` (or `-c`) / `--resume <id>` for follow-up prompts to save context, cache, and token budget.
+3. **Never poll in busy loops**: Use native reactive agent wake-up or `subagent-wait` instead of `sleep` polling loops.
+4. **Keep tasks bounded**: One bug trace, one refactor, one test implementation, or one code review per turn.
+5. **Parallel execution safety**: When running multiple write-capable subagents simultaneously, execute them in separate `git worktree` directories to prevent file write collisions.
+6. **Verify deliverables**: Inspect the generated git diff or test results locally after a subagent reports completion before accepting changes.
