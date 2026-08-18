@@ -191,7 +191,10 @@ done
 
 # Write completion sentinel file (.done)
 done_file="${log_file%.log}.done"
-sess_id="$(grep -oE '"session_id":"[^"]+"' "$log_file" 2>/dev/null | head -n 1 | cut -d'"' -f4 || echo "${resume_session:-new}")"
+sess_id="$(grep -oE '"session_id":"[^"]+"' "$log_file" 2>/dev/null | head -n 1 | cut -d'"' -f4 || grep -iE '^session id:' "$log_file" 2>/dev/null | head -n 1 | awk '{print $3}' || echo "${resume_session:-new}")"
+if [ -z "$sess_id" ]; then
+  sess_id="$(grep -iE '^session id:' "$log_file" 2>/dev/null | head -n 1 | awk '{print $3}' || echo "${resume_session:-new}")"
+fi
 cat <<DONE_JSON > "$done_file"
 {
   "status": "$([ "$status" -eq 0 ] && echo "completed" || echo "failed")",

@@ -116,7 +116,7 @@ trap 'stop_subagent; exit 143' HUP INT TERM
 
 cd "$workspace"
 
-set -- --print --output-format stream-json --dangerously-skip-permissions
+set -- --print --verbose --output-format stream-json --dangerously-skip-permissions
 if [ "$resume_session" = "--last" ] || [ "$resume_session" = "last" ]; then
   set -- "$@" --resume
 elif [ -n "$resume_session" ] && [ "$resume_session" != "new" ]; then

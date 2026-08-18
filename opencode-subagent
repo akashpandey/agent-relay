@@ -242,6 +242,12 @@ for sig in TERM KILL; do
     fi
     case "$pid_cwd" in
       "$workspace_real"|"$workspace_real"/*)
+        kill "-$sig" "$pid" >/dev/null 2>&1 || true
+        ;;
+    esac
+  done
+done
+
 # Write completion sentinel file (.done)
 done_file="${log_file%.log}.done"
 sess_id="$(grep -oE 'session\.id=[^ ]+' "$log_file" 2>/dev/null | head -n 1 | cut -d'=' -f2 || grep -oE '"session_id":"[^"]+"' "$log_file" 2>/dev/null | head -n 1 | cut -d'"' -f4 || echo "${resume_session:-new}")"
