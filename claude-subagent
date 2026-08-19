@@ -136,6 +136,11 @@ before_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
 printf 'subagent: provider=claude workspace=%s model=%s session=%s\nTask:\n%s\n\n---\n\n' \
   "$workspace" "${CLAUDE_MODEL:-default}" "${resume_session:-new}" "$user_prompt" > "$log_file"
 
+# Register run start in SQLite database immediately
+if command -v node >/dev/null 2>&1; then
+  node "$HOME/local-subagents/scripts/subagent-tracker.js" start "$(basename "$log_file")" "$$" "claude" "${CLAUDE_MODEL:-default}" "$workspace" "${resume_session:-new}" "$user_prompt" >/dev/null 2>&1 || true
+fi
+
 if [ "$use_systemd" -eq 1 ]; then
   systemd-run --user --pipe --working-directory="$workspace" --setenv=PATH="$PATH" --wait --collect --quiet --unit="$unit" --property=KillMode=control-group --property=RuntimeMaxSec="${timeout_seconds}s" "$HOME/.local/bin/claude" "$@" >>"$log_file" 2>&1 &
 elif [ "$timeout_seconds" -gt 0 ] 2>/dev/null && command -v timeout >/dev/null 2>&1; then
@@ -198,6 +203,11 @@ DONE_JSON
 # Automatically ingest subagent session to claude-mem (non-blocking)
 if [ -f "$done_file" ] && command -v bun >/dev/null 2>&1; then
   bun "$HOME/local-subagents/scripts/ingest-to-claude-mem.js" "$done_file" >/dev/null 2>&1 &
+fi
+
+# Register run completion in SQLite database
+if command -v node >/dev/null 2>&1; then
+  node "$HOME/local-subagents/scripts/subagent-tracker.js" complete "$(basename "$log_file")" "$status" "$sess_id" >/dev/null 2>&1 || true
 fi
 
 if [ "$log_flag" = "1" ]; then

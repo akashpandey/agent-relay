@@ -1,2 +1,6 @@
 .DS_Store
 logs/
+data/
+*.db
+*.db-wal
+*.db-shm

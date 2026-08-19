@@ -1,9 +1,18 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { exec, execSync } from 'node:child_process';
+import { exec } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parseLogFilename, isProcessRunning, parseLogMetadata } from './parser.js';
+import {
+  getStatsFromDb,
+  getFilteredRuns,
+  getAnalyticsFromDb,
+  getWorkspacesFromDb,
+  getRun,
+  upsertRun,
+  registerRunComplete
+} from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,59 +28,42 @@ if (!fs.existsSync(LOGS_DIR)) {
   fs.mkdirSync(LOGS_DIR, { recursive: true });
 }
 
-console.log(`[Dashboard] Initializing subagent visualizer...`);
+console.log(`[Dashboard] Initializing SQLite-backed subagent visualizer...`);
 console.log(`[Dashboard] Logs Directory: ${LOGS_DIR}`);
 console.log(`[Dashboard] Proc Directory: ${PROC_DIR}`);
 
 /**
- * In-memory cache for parsed metadata of completed runs to eliminate DB and disk load
+ * Reconcile active runs with real process table to catch dead / completed jobs
  */
-const parsedRunsCache = new Map();
-
-/**
- * Returns all log entries sorted newest first with high-performance caching
- */
-function getAllRuns() {
-  if (!fs.existsSync(LOGS_DIR)) return [];
-  const files = fs.readdirSync(LOGS_DIR).filter(f => f.endsWith('.log'));
-  files.sort((a, b) => b.localeCompare(a));
-  
-  const runs = [];
-  for (const file of files) {
-    const filePath = path.join(LOGS_DIR, file);
-    try {
-      const stats = fs.statSync(filePath);
-      const cacheKey = `${file}:${stats.size}:${stats.mtimeMs}`;
-      
-      let meta = parsedRunsCache.get(cacheKey);
-      if (!meta) {
-        meta = parseLogMetadata(file, filePath, PROC_DIR);
-        if (meta) {
-          // If run is completed, cache it permanently by mtime:size
-          if (!meta.isAlive) {
-            parsedRunsCache.set(cacheKey, meta);
+function reconcileActiveRuns(activeRuns) {
+  for (const r of activeRuns) {
+    if (r.pid) {
+      const proc = isProcessRunning(r.pid, PROC_DIR);
+      if (!proc.isAlive) {
+        // Process is dead, parse full log to finalize tokens, diffs, and summary
+        const filePath = path.join(LOGS_DIR, r.filename);
+        if (fs.existsSync(filePath)) {
+          const meta = parseLogMetadata(r.filename, filePath, PROC_DIR);
+          if (meta) {
+            upsertRun(meta);
+          } else {
+            registerRunComplete({ filename: r.filename, exitCode: 0, status: 'completed' });
           }
+        } else {
+          registerRunComplete({ filename: r.filename, exitCode: 0, status: 'completed' });
         }
       }
-      
-      if (meta) {
-        runs.push(meta);
-      }
-    } catch {}
+    }
   }
-  return runs;
 }
 
 /**
  * Find all dangling (orphaned) subagent processes on the system
- * Strictly scoped to local-subagent wrapper scripts and local-subagent systemd units
- * that DO NOT belong to any currently active run.
  */
 function findDanglingSubagentProcesses(activeRuns = []) {
   const dangling = [];
   if (!fs.existsSync(PROC_DIR)) return dangling;
 
-  // Collect active wrapper PIDs and active cgroup units
   const activePids = new Set();
   const activeUnits = new Set();
 
@@ -96,7 +88,6 @@ function findDanglingSubagentProcesses(activeRuns = []) {
         let isPartOfActiveRun = false;
         let cmd = '';
 
-        // Check if part of local-subagent systemd unit
         if (fs.existsSync(cgroupPath)) {
           const cgroupContent = fs.readFileSync(cgroupPath, 'utf8');
           if (cgroupContent.includes('local-subagent-')) {
@@ -110,7 +101,6 @@ function findDanglingSubagentProcesses(activeRuns = []) {
           }
         }
 
-        // Check cmdline
         if (fs.existsSync(cmdlinePath)) {
           const raw = fs.readFileSync(cmdlinePath, 'utf8');
           cmd = raw.replace(/\0/g, ' ').trim();
@@ -128,7 +118,6 @@ function findDanglingSubagentProcesses(activeRuns = []) {
           }
         }
 
-        // Exclude the visualizer dashboard server itself
         if (cmd.includes('server.js') || cmd.includes('local-subagents-dashboard')) {
           isSubagent = false;
         }
@@ -153,7 +142,6 @@ function findDanglingSubagentProcesses(activeRuns = []) {
 function terminateProcessTree(pid) {
   return new Promise((resolve) => {
     try {
-      // Try kill process group and children via pkill/kill
       exec(`pkill -TERM -P ${pid} 2>/dev/null; kill -TERM ${pid} 2>/dev/null`, () => {
         setTimeout(() => {
           exec(`pkill -KILL -P ${pid} 2>/dev/null; kill -KILL ${pid} 2>/dev/null`, () => {
@@ -175,9 +163,6 @@ function terminateProcessTree(pid) {
   });
 }
 
-/**
- * MIME type helper
- */
 function getMimeType(filePath) {
   const ext = path.extname(filePath).toLowerCase();
   const map = {
@@ -200,23 +185,16 @@ const sseClients = new Set();
 
 function broadcastDashboardUpdate() {
   if (sseClients.size === 0) return;
-  const runs = getAllRuns();
-  const activeRuns = runs.filter(r => r.isAlive);
-  const todayPrefix = new Date().toISOString().slice(0, 10);
-  const todayRuns = runs.filter(r => r.startTime.startsWith(todayPrefix));
-  
-  const byProvider = {};
-  for (const r of runs) {
-    byProvider[r.provider] = (byProvider[r.provider] || 0) + 1;
-  }
+  const stats = getStatsFromDb();
+  reconcileActiveRuns(stats.activeRuns);
 
   const payload = JSON.stringify({
     type: 'stats_update',
-    activeCount: activeRuns.length,
-    totalCount: runs.length,
-    todayCount: todayRuns.length,
-    byProvider,
-    activeRuns,
+    activeCount: stats.activeCount,
+    totalCount: stats.totalCount,
+    todayCount: stats.todayCount,
+    byProvider: stats.byProvider,
+    activeRuns: stats.activeRuns,
     timestamp: new Date().toISOString(),
   });
 
@@ -225,20 +203,28 @@ function broadcastDashboardUpdate() {
   }
 }
 
-// Watch directory for changes and broadcast
+// Watch directory for changes and update SQLite
 let debounceTimer = null;
 try {
   fs.watch(LOGS_DIR, (eventType, filename) => {
+    if (!filename || !filename.endsWith('.log')) return;
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
+      const filePath = path.join(LOGS_DIR, filename);
+      if (fs.existsSync(filePath)) {
+        try {
+          const meta = parseLogMetadata(filename, filePath, PROC_DIR);
+          if (meta) upsertRun(meta);
+        } catch {}
+      }
       broadcastDashboardUpdate();
-    }, 400);
+    }, 200);
   });
 } catch (e) {
   console.warn('[Dashboard] Could not attach fs.watch to logs dir:', e.message);
 }
 
-// Interval broadcast every 2s for elapsed time & alive status changes
+// Interval broadcast every 2s
 setInterval(() => {
   broadcastDashboardUpdate();
 }, 2000);
@@ -262,51 +248,22 @@ const server = http.createServer(async (req, res) => {
 
   // GET /api/stats
   if (pathname === '/api/stats' && req.method === 'GET') {
-    const runs = getAllRuns();
-    const activeRuns = runs.filter(r => r.isAlive);
-    const todayPrefix = new Date().toISOString().slice(0, 10);
-    const todayRuns = runs.filter(r => r.startTime.startsWith(todayPrefix));
-    
-    const byProvider = {};
-    for (const r of runs) {
-      byProvider[r.provider] = (byProvider[r.provider] || 0) + 1;
-    }
-
-    const dangling = findDanglingSubagentProcesses(activeRuns);
+    const stats = getStatsFromDb();
+    reconcileActiveRuns(stats.activeRuns);
+    const dangling = findDanglingSubagentProcesses(stats.activeRuns);
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
-      activeCount: activeRuns.length,
+      ...stats,
       danglingCount: dangling.length,
-      totalCount: runs.length,
-      todayCount: todayRuns.length,
-      byProvider,
-      activeRuns,
       danglingProcesses: dangling,
-      recentRuns: runs.slice(0, 50),
     }));
     return;
   }
 
   // GET /api/workspaces
   if (pathname === '/api/workspaces' && req.method === 'GET') {
-    const runs = getAllRuns();
-    const map = {};
-    for (const r of runs) {
-      const ws = r.workspace || 'Unknown';
-      if (!map[ws]) {
-        map[ws] = {
-          path: ws,
-          name: r.workspaceName || path.basename(ws),
-          totalRuns: 0,
-          activeRuns: 0,
-          lastRun: r.startTime,
-        };
-      }
-      map[ws].totalRuns++;
-      if (r.isAlive) map[ws].activeRuns++;
-    }
-    const workspaces = Object.values(map).sort((a, b) => b.totalRuns - a.totalRuns);
+    const workspaces = getWorkspacesFromDb();
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ workspaces }));
     return;
@@ -314,84 +271,25 @@ const server = http.createServer(async (req, res) => {
 
   // GET /api/analytics
   if (pathname === '/api/analytics' && req.method === 'GET') {
-    const runs = getAllRuns();
-    const activeCount = runs.filter(r => r.isAlive).length;
-    let totalTokens = 0;
-    let totalCost = 0;
-    let totalDurationSec = 0;
-    let completedCount = 0;
-    let failedCount = 0;
-    const modelDistribution = {};
-    const providerDistribution = {};
-
-    for (const r of runs) {
-      if (r.tokens && r.tokens.total) totalTokens += r.tokens.total;
-      if (r.cost) totalCost += r.cost;
-      if (r.durationSec) totalDurationSec += r.durationSec;
-      if (r.status === 'completed') completedCount++;
-      if (r.status === 'failed') failedCount++;
-      if (r.model) modelDistribution[r.model] = (modelDistribution[r.model] || 0) + 1;
-      if (r.provider) providerDistribution[r.provider] = (providerDistribution[r.provider] || 0) + 1;
-    }
-
-    const avgDurationSec = runs.length > 0 ? Math.round(totalDurationSec / runs.length) : 0;
-    const successRate = (completedCount + failedCount) > 0 ? Math.round((completedCount / (completedCount + failedCount)) * 100) : 100;
-
+    const analytics = getAnalyticsFromDb();
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      totalRuns: runs.length,
-      activeCount,
-      totalTokens,
-      totalCost,
-      avgDurationSec,
-      successRate,
-      completedCount,
-      failedCount,
-      modelDistribution,
-      providerDistribution,
-    }));
+    res.end(JSON.stringify(analytics));
     return;
   }
 
   // GET /api/runs
   if (pathname === '/api/runs' && req.method === 'GET') {
-    let runs = getAllRuns();
     const provider = parsedUrl.searchParams.get('provider');
     const status = parsedUrl.searchParams.get('status');
     const workspace = parsedUrl.searchParams.get('workspace');
-    const q = (parsedUrl.searchParams.get('q') || '').toLowerCase();
+    const q = (parsedUrl.searchParams.get('q') || '').trim();
     const limit = parseInt(parsedUrl.searchParams.get('limit') || '50', 10);
     const offset = parseInt(parsedUrl.searchParams.get('offset') || '0', 10);
 
-    if (provider && provider !== 'all') {
-      runs = runs.filter(r => r.provider.toLowerCase() === provider.toLowerCase());
-    }
-    if (status && status !== 'all') {
-      runs = runs.filter(r => r.status.toLowerCase() === status.toLowerCase());
-    }
-    if (workspace && workspace !== 'all') {
-      runs = runs.filter(r => (r.workspace || '').includes(workspace) || (r.workspaceName || '').toLowerCase() === workspace.toLowerCase());
-    }
-    if (q) {
-      runs = runs.filter(r => 
-        r.filename.toLowerCase().includes(q) ||
-        r.workspace.toLowerCase().includes(q) ||
-        r.model.toLowerCase().includes(q) ||
-        r.task.toLowerCase().includes(q) ||
-        String(r.pid).includes(q)
-      );
-    }
-
-    const total = runs.length;
-    const paginated = runs.slice(offset, offset + limit);
+    const result = getFilteredRuns({ provider, status, workspace, q, limit, offset });
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      total,
-      limit,
-      offset,
-      runs: paginated,
-    }));
+    res.end(JSON.stringify(result));
     return;
   }
 
@@ -401,46 +299,46 @@ const server = http.createServer(async (req, res) => {
     const safeFile = path.basename(filename);
     const filePath = path.join(LOGS_DIR, safeFile);
 
-    if (!fs.existsSync(filePath)) {
+    // Try SQLite first
+    let meta = getRun(safeFile);
+    if (!meta && fs.existsSync(filePath)) {
+      meta = parseLogMetadata(safeFile, filePath, PROC_DIR);
+      if (meta) upsertRun(meta);
+    }
+
+    if (!meta) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Log file not found' }));
       return;
     }
 
-    const meta = parseLogMetadata(safeFile, filePath, PROC_DIR);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(meta));
     return;
   }
 
-  // POST /api/runs/:filename/kill (Gracefully stop / cancel an active subagent run)
+  // POST /api/runs/:filename/kill
   if (pathname.startsWith('/api/runs/') && pathname.endsWith('/kill') && req.method === 'POST') {
     const filename = decodeURIComponent(pathname.replace('/api/runs/', '').replace('/kill', ''));
     const safeFile = path.basename(filename);
-    const filePath = path.join(LOGS_DIR, safeFile);
+    const run = getRun(safeFile);
 
-    if (!fs.existsSync(filePath)) {
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Log file not found' }));
-      return;
-    }
-
-    const meta = parseLogMetadata(safeFile, filePath, PROC_DIR);
-    if (!meta.pid) {
+    if (!run || !run.pid) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'No PID associated with this run' }));
+      res.end(JSON.stringify({ error: 'No active PID associated with this run' }));
       return;
     }
 
-    const unit = `local-subagent-${meta.provider}-${meta.pid}`;
+    const unit = `local-subagent-${run.provider}-${run.pid}`;
     exec(`systemctl --user stop ${unit} 2>/dev/null`, () => {});
-    const result = await terminateProcessTree(meta.pid);
-    setTimeout(broadcastDashboardUpdate, 500);
+    const result = await terminateProcessTree(run.pid);
+    registerRunComplete({ filename: safeFile, exitCode: 143, status: 'failed' });
+    setTimeout(broadcastDashboardUpdate, 300);
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       success: true,
-      message: `Subagent run ${safeFile} (PID ${meta.pid}) stopped`,
+      message: `Subagent run ${safeFile} (PID ${run.pid}) stopped`,
       details: result,
     }));
     return;
@@ -453,32 +351,27 @@ const server = http.createServer(async (req, res) => {
     const filePath = path.join(LOGS_DIR, safeFile);
 
     if (!fs.existsSync(filePath)) {
-      res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.end('Log file not found');
-      return;
-    }
-
-    const stat = fs.statSync(filePath);
-    res.writeHead(200, {
-      'Content-Type': 'text/plain; charset=utf-8',
-      'Content-Length': stat.size,
-    });
-    const stream = fs.createReadStream(filePath);
-    stream.pipe(res);
-    return;
-  }
-
-  // GET /api/logs/:filename/stream (SSE real-time streaming)
-  if (pathname.startsWith('/api/logs/') && pathname.endsWith('/stream') && req.method === 'GET') {
-    const filename = decodeURIComponent(pathname.replace('/api/logs/', '').replace('/stream', ''));
-    const safeFile = path.basename(filename);
-    const filePath = path.join(LOGS_DIR, safeFile);
-
-    if (!fs.existsSync(filePath)) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Log file not found' }));
       return;
     }
+
+    try {
+      const content = fs.readFileSync(filePath, 'utf8');
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end(content);
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    }
+    return;
+  }
+
+  // GET /api/logs/:filename/stream
+  if (pathname.startsWith('/api/logs/') && pathname.endsWith('/stream') && req.method === 'GET') {
+    const filename = decodeURIComponent(pathname.replace('/api/logs/', '').replace('/stream', ''));
+    const safeFile = path.basename(filename);
+    const filePath = path.join(LOGS_DIR, safeFile);
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -486,16 +379,21 @@ const server = http.createServer(async (req, res) => {
       'Connection': 'keep-alive',
     });
 
+    if (!fs.existsSync(filePath)) {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: 'File does not exist' })}\n\n`);
+      res.end();
+      return;
+    }
+
     let currentPos = 0;
     const sendNewData = () => {
       try {
         if (!fs.existsSync(filePath)) return;
         const stat = fs.statSync(filePath);
         if (stat.size > currentPos) {
-          const len = stat.size - currentPos;
-          const buf = Buffer.alloc(len);
+          const buf = Buffer.alloc(stat.size - currentPos);
           const fd = fs.openSync(filePath, 'r');
-          fs.readSync(fd, buf, 0, len, currentPos);
+          fs.readSync(fd, buf, 0, buf.length, currentPos);
           fs.closeSync(fd);
           currentPos = stat.size;
 
@@ -505,10 +403,7 @@ const server = http.createServer(async (req, res) => {
       } catch (err) {}
     };
 
-    // Initial send
     sendNewData();
-
-    // Polling file interval for active streaming
     const streamInterval = setInterval(sendNewData, 500);
 
     req.on('close', () => {
@@ -517,7 +412,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // GET /api/events (SSE for global dashboard updates)
+  // GET /api/events
   if (pathname === '/api/events' && req.method === 'GET') {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -534,42 +429,10 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // POST /api/runs/:id/kill or /api/dangling/:id/kill (supports PID or filename)
-  if ((pathname.startsWith('/api/runs/') || pathname.startsWith('/api/dangling/')) && pathname.endsWith('/kill') && req.method === 'POST') {
-    const rawParam = pathname.replace(/^\/api\/(?:runs|dangling)\//, '').replace(/\/kill$/, '');
-    let pid = parseInt(rawParam, 10);
-    if (isNaN(pid)) {
-      const parsed = parseLogFilename(rawParam);
-      if (parsed && parsed.pid) {
-        pid = parsed.pid;
-      }
-    }
-
-    if (!pid || isNaN(pid)) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Invalid PID or filename' }));
-      return;
-    }
-
-    const result = await terminateProcessTree(pid);
-    
-    // Broadcast update immediately
-    setTimeout(broadcastDashboardUpdate, 500);
-
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      success: true,
-      message: `Process tree termination signal sent to PID ${pid}`,
-      details: result,
-    }));
-    return;
-  }
-
-  // POST /api/dangling/kill-all or /api/kill-dangling (Kill all dangling subagent processes)
+  // POST /api/dangling/kill-all
   if ((pathname === '/api/dangling/kill-all' || pathname === '/api/kill-dangling') && req.method === 'POST') {
-    const runs = getAllRuns();
-    const activeRuns = runs.filter(r => r.isAlive);
-    const dangling = findDanglingSubagentProcesses(activeRuns);
+    const stats = getStatsFromDb();
+    const dangling = findDanglingSubagentProcesses(stats.activeRuns);
     const results = [];
     for (const proc of dangling) {
       await terminateProcessTree(proc.pid);
@@ -587,7 +450,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Return 404 JSON for unmatched API endpoints (prevents returning index.html)
+  // 404 for unmatched API
   if (pathname.startsWith('/api/')) {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'API endpoint not found', path: pathname }));
@@ -598,7 +461,6 @@ const server = http.createServer(async (req, res) => {
   let reqPath = pathname === '/' ? '/index.html' : pathname;
   const staticFilePath = path.join(PUBLIC_DIR, reqPath);
 
-  // Prevent directory traversal
   if (!staticFilePath.startsWith(PUBLIC_DIR)) {
     res.writeHead(403, { 'Content-Type': 'text/plain' });
     res.end('Forbidden');
@@ -612,7 +474,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Fallback to index.html for single page app routes
   const fallbackIndex = path.join(PUBLIC_DIR, 'index.html');
   if (fs.existsSync(fallbackIndex)) {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -625,5 +486,5 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`[Dashboard] Local Subagents Visualizer running at: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+  console.log(`[Dashboard] Local Subagents Visualizer running with SQLite engine at: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
 });
