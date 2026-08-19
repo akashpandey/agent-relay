@@ -343,8 +343,6 @@ function renderActiveCards(activeRuns) {
     sendDesktopNotification('Subagent Completed', 'A local LLM subagent run finished execution.');
   }
 
-  el.activeContainer.innerHTML = '';
-
   if (activeRuns.length === 0) {
     el.activeContainer.innerHTML = `
       <div class="empty-active-state">
@@ -396,55 +394,91 @@ function renderActiveCards(activeRuns) {
     return;
   }
 
-  for (const run of activeRuns) {
-    const card = document.createElement('div');
-    card.className = 'active-card';
+  // Remove empty active state if present
+  const emptyState = el.activeContainer.querySelector('.empty-active-state');
+  if (emptyState) {
+    el.activeContainer.innerHTML = '';
+  }
 
+  const existingCards = new Map();
+  el.activeContainer.querySelectorAll('.active-card').forEach(c => {
+    if (c.dataset.filename) existingCards.set(c.dataset.filename, c);
+  });
+
+  const activeFilenames = new Set(activeRuns.map(r => r.filename));
+
+  // Remove stale cards
+  for (const [fname, cardEl] of existingCards.entries()) {
+    if (!activeFilenames.has(fname)) {
+      cardEl.remove();
+    }
+  }
+
+  // Insert or update cards in-place without destroying DOM
+  for (const run of activeRuns) {
+    let card = existingCards.get(run.filename);
     const providerClass = `provider-${run.provider.toLowerCase()}`;
     const workspaceName = run.workspaceName || run.workspace || 'workspace';
 
-    card.innerHTML = `
-      <div class="active-card-top">
-        <div class="card-provider-group">
-          <span class="provider-pill ${providerClass}">${escapeHtml(run.provider)}</span>
-          <span class="model-badge">${escapeHtml(run.model)}</span>
+    if (card) {
+      // Update in-place to prevent flicker
+      const clock = card.querySelector('.active-clock');
+      if (clock) {
+        clock.dataset.start = run.startTime || '';
+        clock.textContent = `⏱️ ${run.durationHuman || '0s'}`;
+      }
+      const actionText = card.querySelector('.active-action-text');
+      if (actionText) {
+        actionText.textContent = run.currentAction || 'Running...';
+      }
+    } else {
+      card = document.createElement('div');
+      card.className = 'active-card';
+      card.dataset.filename = run.filename;
+
+      card.innerHTML = `
+        <div class="active-card-top">
+          <div class="card-provider-group">
+            <span class="provider-pill ${providerClass}">${escapeHtml(run.provider)}</span>
+            <span class="model-badge">${escapeHtml(run.model)}</span>
+          </div>
+          <span class="active-clock" data-start="${run.startTime || ''}">⏱️ ${run.durationHuman || '0s'}</span>
         </div>
-        <span class="active-clock" data-start="${run.startTime}">⏱️ ${run.durationHuman}</span>
-      </div>
 
-      <div class="active-workspace">
-        <span>📁</span>
-        <strong>${escapeHtml(workspaceName)}</strong>
-        <span style="color: var(--text-dim); font-size: 0.75rem;">(PID: ${run.pid})</span>
-      </div>
+        <div class="active-workspace">
+          <span>📁</span>
+          <strong>${escapeHtml(workspaceName)}</strong>
+          <span style="color: var(--text-dim); font-size: 0.75rem;">(PID: ${run.pid})</span>
+        </div>
 
-      <div class="active-prompt-preview">
-        ${escapeHtml(run.task || 'Executing subagent instructions...')}
-      </div>
+        <div class="active-prompt-preview">
+          ${escapeHtml(run.task || 'Executing subagent instructions...')}
+        </div>
 
-      <div class="active-action-row">
-        <span>⚡</span>
-        <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(run.currentAction || 'Running...')}</span>
-      </div>
+        <div class="active-action-row">
+          <span>⚡</span>
+          <span class="active-action-text" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(run.currentAction || 'Running...')}</span>
+        </div>
 
-      <div class="active-card-actions">
-        <button class="btn btn-sm btn-secondary btn-card-cli" title="Copy CLI Command">Copy CLI</button>
-        <button class="btn btn-sm btn-danger btn-card-kill">Stop</button>
-        <button class="btn btn-sm btn-secondary btn-card-view">Inspect Run</button>
-      </div>
-    `;
+        <div class="active-card-actions">
+          <button class="btn btn-sm btn-secondary btn-card-cli" title="Copy CLI Command">Copy CLI</button>
+          <button class="btn btn-sm btn-danger btn-card-kill">Stop</button>
+          <button class="btn btn-sm btn-secondary btn-card-view">Inspect Run</button>
+        </div>
+      `;
 
-    card.querySelector('.btn-card-view').addEventListener('click', () => openWorkspaceModal(run.filename));
-    card.querySelector('.btn-card-cli').addEventListener('click', (e) => {
-      e.stopPropagation();
-      copyToClipboard(run.cliCommand || `opencode-subagent "${run.task || ''}"`, 'CLI command copied!');
-    });
-    card.querySelector('.btn-card-kill').addEventListener('click', (e) => {
-      e.stopPropagation();
-      killProcess(run.pid, run.filename);
-    });
+      card.querySelector('.btn-card-view').addEventListener('click', () => openWorkspaceModal(run.filename));
+      card.querySelector('.btn-card-cli').addEventListener('click', (e) => {
+        e.stopPropagation();
+        copyToClipboard(run.cliCommand || `opencode-subagent "${run.task || ''}"`, 'CLI command copied!');
+      });
+      card.querySelector('.btn-card-kill').addEventListener('click', (e) => {
+        e.stopPropagation();
+        killProcess(run.pid, run.filename);
+      });
 
-    el.activeContainer.appendChild(card);
+      el.activeContainer.appendChild(card);
+    }
   }
 }
 

@@ -69,11 +69,27 @@ export function getDatabase() {
   return dbInstance;
 }
 
+function formatDuration(seconds) {
+  if (!seconds || seconds <= 0) return '< 1s';
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m < 60) return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  const h = Math.floor(seconds / 3600);
+  const remM = Math.floor((seconds % 3600) / 60);
+  return remM > 0 ? `${h}h ${remM}m` : `${h}h`;
+}
+
 /**
  * Format DB row back into dashboard run metadata object
  */
 export function rowToRunMeta(row, isAlive = false) {
   if (!row) return null;
+  const startMs = row.start_time ? new Date(row.start_time).getTime() : 0;
+  const durationSec = isAlive && startMs > 0
+    ? Math.max(0, Math.round((Date.now() - startMs) / 1000))
+    : (row.duration_sec || 0);
+
   return {
     filename: row.filename,
     provider: row.provider,
@@ -88,7 +104,8 @@ export function rowToRunMeta(row, isAlive = false) {
     isAlive: isAlive,
     startTime: row.start_time,
     endTime: row.end_time,
-    durationSec: row.duration_sec || 0,
+    durationSec: durationSec,
+    durationHuman: formatDuration(durationSec),
     currentAction: row.current_action || (isAlive ? 'Running...' : 'Finished'),
     tokens: row.tokens_total > 0 ? {
       total: row.tokens_total,
