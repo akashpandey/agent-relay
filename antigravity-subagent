@@ -38,10 +38,13 @@ tailed live instead of waiting for --print to return.
 
 Examples:
   AGY_MODEL='Gemini 3.6 Flash (Medium)' antigravity-subagent "Fix the bug"
-  AGY_MODEL='Claude Sonnet 4.6 (Thinking)' antigravity-subagent "Review this repo"
+  AGY_MODEL='Gemini 3.7 Flash (High)' antigravity-subagent "Review this repo"
   AGY_MODEL='GPT-OSS 120B (Medium)' antigravity-subagent "Implement TASK.md"
 
 Antigravity models:
+  Gemini 3.7 Flash (High)
+  Gemini 3.7 Flash (Medium)
+  Gemini 3.7 Flash (Low)
   Gemini 3.6 Flash (High)
   Gemini 3.6 Flash (Medium)
   Gemini 3.6 Flash (Low)
@@ -50,7 +53,6 @@ Antigravity models:
   Gemini 3.5 Flash (Low)
   Gemini 3.1 Pro (High)
   Gemini 3.1 Pro (Low)
-  Claude Sonnet 4.6 (Thinking)
   Claude Opus 4.6 (Thinking)
   GPT-OSS 120B (Medium)
 

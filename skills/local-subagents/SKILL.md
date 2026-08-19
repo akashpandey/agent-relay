@@ -20,7 +20,7 @@ opencode-subagent "Task prompt..."
 # OpenCode with Automatic Model Fallback Chain (Quota/Rate-Limit Failover)
 OPENCODE_MODEL_CHAIN='zai-coding-plan/glm-5.3,openai/gpt-5.4-mini' opencode-subagent-fallback "Task prompt..."
 
-# Antigravity (Gemini / Claude Sonnet via AGY)
+# Antigravity (Gemini / AGY)
 antigravity-subagent "Task prompt..."
 
 # Claude Code (Sonnet / Opus / Haiku)
@@ -112,7 +112,7 @@ codex-subagent --models
 
 Specify a non-default model via environment variables:
 - `OPENCODE_MODEL='zai-coding-plan/glm-5.3' opencode-subagent "..."`
-- `AGY_MODEL='Claude Sonnet 4.6 (Thinking)' antigravity-subagent "..."`
+- `AGY_MODEL='Gemini 3.7 Flash (High)' antigravity-subagent "..."`
 - `CLAUDE_MODEL='opus' claude-subagent "..."`
 - `CODEX_MODEL='gpt-5.5' codex-subagent "..."`
 
