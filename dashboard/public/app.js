@@ -1470,6 +1470,12 @@ function initSSE() {
         el.totalCount.textContent = data.totalCount || 0;
         el.activeBadge.textContent = `${data.activeCount || 0} Running`;
         renderActiveCards(data.activeRuns || []);
+
+        if (data.analytics) {
+          if (el.kpiTokensVal) el.kpiTokensVal.textContent = formatNumber(data.analytics.totalTokens || 0);
+          if (el.kpiDurationVal) el.kpiDurationVal.textContent = `${data.analytics.avgDurationSec || 0}s`;
+          if (el.kpiSuccessVal) el.kpiSuccessVal.textContent = `${data.analytics.successRate || 100}%`;
+        }
       }
     } catch {}
   };

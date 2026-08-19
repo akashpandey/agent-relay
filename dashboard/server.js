@@ -36,22 +36,37 @@ console.log(`[Dashboard] Proc Directory: ${PROC_DIR}`);
  * Reconcile active runs with real process table to catch dead / completed jobs
  */
 function reconcileActiveRuns(activeRuns) {
+  if (!activeRuns || activeRuns.length === 0) return;
   for (const r of activeRuns) {
     if (r.pid) {
       const proc = isProcessRunning(r.pid, PROC_DIR);
       if (!proc.isAlive) {
         // Process is dead, parse full log to finalize tokens, diffs, and summary
         const filePath = path.join(LOGS_DIR, r.filename);
-        if (fs.existsSync(filePath)) {
-          const meta = parseLogMetadata(r.filename, filePath, PROC_DIR);
-          if (meta) {
-            upsertRun(meta);
-          } else {
-            registerRunComplete({ filename: r.filename, exitCode: 0, status: 'completed' });
-          }
-        } else {
-          registerRunComplete({ filename: r.filename, exitCode: 0, status: 'completed' });
+        const doneFile = filePath.replace(/\.log$/, '.done');
+        let exitCode = 0;
+        let finalStatus = 'completed';
+
+        if (fs.existsSync(doneFile)) {
+          try {
+            const doneData = JSON.parse(fs.readFileSync(doneFile, 'utf8'));
+            if (doneData.exitCode !== undefined) exitCode = doneData.exitCode;
+            if (doneData.status) finalStatus = doneData.status;
+          } catch {}
         }
+
+        if (fs.existsSync(filePath)) {
+          try {
+            const meta = parseLogMetadata(r.filename, filePath, PROC_DIR);
+            if (meta) {
+              meta.status = finalStatus;
+              meta.exitCode = exitCode;
+              upsertRun(meta);
+              continue;
+            }
+          } catch {}
+        }
+        registerRunComplete({ filename: r.filename, exitCode, status: finalStatus });
       }
     }
   }
@@ -187,6 +202,7 @@ function broadcastDashboardUpdate() {
   if (sseClients.size === 0) return;
   const stats = getStatsFromDb();
   reconcileActiveRuns(stats.activeRuns);
+  const analytics = getAnalyticsFromDb();
 
   const payload = JSON.stringify({
     type: 'stats_update',
@@ -195,6 +211,12 @@ function broadcastDashboardUpdate() {
     todayCount: stats.todayCount,
     byProvider: stats.byProvider,
     activeRuns: stats.activeRuns,
+    analytics: {
+      totalTokens: analytics.totalTokens,
+      avgDurationSec: analytics.avgDurationSec,
+      successRate: analytics.successRate,
+      totalCost: analytics.totalCost,
+    },
     timestamp: new Date().toISOString(),
   });
 
