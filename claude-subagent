@@ -170,22 +170,42 @@ elif command -v pkill >/dev/null 2>&1; then
   pkill -KILL -g "$cmd_pid" >/dev/null 2>&1 || true
 fi
 
-# ponytail: detached children that chdir away can escape this workspace check.
-workspace_real="$(cd "$workspace" && pwd -P)"
-after_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
-new_pids=""
-for pid in $after_pids; do
-  case " $before_pids " in *" $pid "*) ;; *) new_pids="$new_pids $pid" ;; esac
-done
-for sig in TERM KILL; do
-  [ "$sig" != "KILL" ] || sleep 1
-  for pid in $new_pids; do
-    pid_cwd="$(readlink "/proc/$pid/cwd" 2>/dev/null || true)"
-    case "$pid_cwd" in
-      "$workspace_real"|"$workspace_real"/*) kill "-$sig" "$pid" >/dev/null 2>&1 || true ;;
+# Clean up orphaned processes in the workspace (only in non-systemd fallback mode)
+if [ "$use_systemd" -eq 0 ]; then
+  workspace_real="$(cd "$workspace" && pwd -P)"
+  after_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
+  new_pids=""
+  for pid in $after_pids; do
+    case " $before_pids " in
+      *" $pid "*) ;;
+      *) new_pids="$new_pids $pid" ;;
     esac
   done
-done
+
+  for sig in TERM KILL; do
+    if [ "$sig" = "KILL" ]; then
+      sleep 1
+    fi
+    for pid in $new_pids; do
+      [ "$pid" = "$$" ] && continue
+      pid_cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+      case "$pid_cmd" in
+        *-subagent*|*systemd-run*|*claude*|*codex*|*opencode*|*antigravity*|*agy*)
+          continue
+          ;;
+      esac
+      pid_cwd="$(readlink "/proc/$pid/cwd" 2>/dev/null || true)"
+      if [ -z "$pid_cwd" ]; then
+        continue
+      fi
+      case "$pid_cwd" in
+        "$workspace_real"|"$workspace_real"/*)
+          kill "-$sig" "$pid" >/dev/null 2>&1 || true
+          ;;
+      esac
+    done
+  done
+fi
 
 # Write completion sentinel file (.done)
 done_file="${log_file%.log}.done"
