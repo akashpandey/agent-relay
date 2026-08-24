@@ -1121,10 +1121,7 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
   // Fallback markdown summary from assistant response in log if available
   if (!markdownSummary) {
     const cleanSample = tailContent.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').trim();
-    const dividerIdx = cleanSample.lastIndexOf('\n---\n');
-    if (dividerIdx !== -1 && dividerIdx < cleanSample.length - 10) {
-      markdownSummary = cleanSample.slice(dividerIdx + 5).trim();
-    } else if (cleanSample.includes('## Diff Summary') || cleanSample.includes('Files touched:') || cleanSample.includes('### Summary')) {
+    if (cleanSample.includes('## Diff Summary') || cleanSample.includes('Files touched:') || cleanSample.includes('### Summary')) {
       const summaryStart = cleanSample.search(/(?:## Diff Summary|### Summary|Both files look correct|Files touched:)/i);
       if (summaryStart !== -1) {
         markdownSummary = cleanSample.slice(summaryStart).trim();

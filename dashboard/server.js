@@ -246,11 +246,6 @@ try {
   console.warn('[Dashboard] Could not attach fs.watch to logs dir:', e.message);
 }
 
-// Interval broadcast every 2s
-setInterval(() => {
-  broadcastDashboardUpdate();
-}, 2000);
-
 const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = parsedUrl.pathname;
@@ -379,9 +374,18 @@ const server = http.createServer(async (req, res) => {
     }
 
     try {
-      const content = fs.readFileSync(filePath, 'utf8');
-      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end(content);
+      const stat = fs.statSync(filePath);
+      const tailBytes = parseInt(parsedUrl.searchParams.get('tailBytes') || '0', 10);
+      const start = Number.isFinite(tailBytes) && tailBytes > 0
+        ? Math.max(0, stat.size - tailBytes)
+        : 0;
+
+      res.writeHead(200, {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'X-Log-Offset': String(start),
+        'X-Log-Size': String(stat.size),
+      });
+      fs.createReadStream(filePath, { start }).pipe(res);
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: err.message }));
@@ -407,7 +411,11 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    let currentPos = 0;
+    const initialSize = fs.statSync(filePath).size;
+    const requestedOffset = parseInt(parsedUrl.searchParams.get('offset') || '0', 10);
+    let currentPos = Number.isFinite(requestedOffset) && requestedOffset > 0
+      ? Math.min(requestedOffset, initialSize)
+      : 0;
     const sendNewData = () => {
       try {
         if (!fs.existsSync(filePath)) return;
@@ -426,10 +434,21 @@ const server = http.createServer(async (req, res) => {
     };
 
     sendNewData();
-    const streamInterval = setInterval(sendNewData, 500);
+
+    let watcher = null;
+    try {
+      watcher = fs.watch(filePath, sendNewData);
+    } catch {}
+
+    const fallbackInterval = watcher ? null : setInterval(sendNewData, 2000);
+    const keepAliveInterval = setInterval(() => {
+      res.write(`data: ${JSON.stringify({ type: 'ping' })}\n\n`);
+    }, 15000);
 
     req.on('close', () => {
-      clearInterval(streamInterval);
+      if (watcher) watcher.close();
+      if (fallbackInterval) clearInterval(fallbackInterval);
+      clearInterval(keepAliveInterval);
     });
     return;
   }

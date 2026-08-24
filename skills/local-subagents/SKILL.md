@@ -98,6 +98,8 @@ Once notified of completion:
 curl -s "http://localhost:4242/api/runs/<log-filename>" | jq '{status, filesModified, cost, markdownSummary, toolCalls}'
 ```
 
+Dashboard note: Live Terminal is optimized for large logs. It initially shows the latest log tail and keeps a bounded rendered window while continuing to stream new output; use the log download or `/api/logs/<log-filename>` when the exact full raw log is required.
+
 ---
 
 ## Model Selection

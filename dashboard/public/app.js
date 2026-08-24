@@ -5,6 +5,9 @@
  */
 
 // --- Application State ---
+const INITIAL_LOG_TAIL_BYTES = 1024 * 1024;
+const MAX_TERMINAL_LINES = 5000;
+
 const state = {
   activeRuns: [],
   historyRuns: [],
@@ -13,6 +16,8 @@ const state = {
   danglingProcesses: [],
   selectedRun: null,
   selectedRowIndex: -1,
+  dashboardRefreshTimer: null,
+  modalRefreshTimer: null,
   
   // Filters & Pagination
   filterProvider: 'all',
@@ -33,6 +38,10 @@ const state = {
   // Terminal
   activeLogStream: null,
   rawLogLines: [],
+  logPartialLine: '',
+  logStartOffset: 0,
+  logTotalBytes: 0,
+  logTruncatedLines: 0,
   filterLogQuery: '',
   autoscroll: true,
   wordWrap: true,
@@ -642,7 +651,7 @@ function applyModalMetadata(meta) {
   renderToolsTab();
 
   // Right Viewport: Markdown Output
-  if (meta.markdownSummary) {
+  if (meta.markdownSummary && !looksLikeRawLog(meta.markdownSummary)) {
     el.modalMarkdownContainer.innerHTML = renderMarkdownToHtml(meta.markdownSummary);
   } else if (!meta.isAlive) {
     el.modalMarkdownContainer.innerHTML = '<div class="markdown-empty">No structured markdown summary recorded for this run. Check the Live Terminal tab for full raw output.</div>';
@@ -667,6 +676,10 @@ async function refreshOpenModalData(filename) {
 async function openWorkspaceModal(filename) {
   state.selectedRun = filename;
   state.rawLogLines = [];
+  state.logPartialLine = '';
+  state.logStartOffset = 0;
+  state.logTotalBytes = 0;
+  state.logTruncatedLines = 0;
   el.modalTerminalContent.textContent = 'Loading log stream...';
   el.modalMarkdownContainer.innerHTML = '<div class="markdown-empty">Loading markdown summary...</div>';
   el.modalDiffContainer.innerHTML = '<div class="diff-empty">Loading diffs...</div>';
@@ -801,6 +814,10 @@ function closeWorkspaceModal() {
     clearInterval(state.modalPollInterval);
     state.modalPollInterval = null;
   }
+  if (state.modalRefreshTimer) {
+    clearTimeout(state.modalRefreshTimer);
+    state.modalRefreshTimer = null;
+  }
   el.workspaceModalOverlay.classList.remove('open');
   el.workspaceModal.classList.remove('open');
   if (state.activeLogStream) {
@@ -832,23 +849,29 @@ async function startLogStream(filename) {
   }
 
   state.rawLogLines = [];
+  state.logPartialLine = '';
+  state.logTruncatedLines = 0;
   el.modalTerminalContent.innerHTML = 'Connecting to log stream...';
   el.streamStatusBadge.innerHTML = '<span class="stream-dot"></span> Live Streaming';
   el.streamStatusBadge.style.color = 'var(--accent)';
 
   // Initial immediate fetch for instant rendering of completed/existing logs
+  let streamOffset = 0;
   try {
-    const res = await fetch(`/api/logs/${encodeURIComponent(filename)}`);
+    const res = await fetch(`/api/logs/${encodeURIComponent(filename)}?tailBytes=${INITIAL_LOG_TAIL_BYTES}`);
     if (res.ok) {
       const fullText = await res.text();
-      state.rawLogLines = fullText.split('\n');
+      state.logStartOffset = Number(res.headers.get('X-Log-Offset') || 0);
+      state.logTotalBytes = Number(res.headers.get('X-Log-Size') || 0);
+      streamOffset = state.logTotalBytes || (state.logStartOffset + new TextEncoder().encode(fullText).length);
+      appendLogChunk(fullText, true);
       renderTerminalLines();
     }
   } catch (e) {
     console.warn('Initial log fetch failed:', e);
   }
 
-  // Periodic metadata poller so Tools, Diffs, Summary, and Tokens update live without reopening modal
+  // Safety fallback; normal metadata updates come from /api/events.
   state.modalPollInterval = setInterval(() => {
     if (state.selectedRun === filename) {
       refreshOpenModalData(filename);
@@ -856,23 +879,17 @@ async function startLogStream(filename) {
       clearInterval(state.modalPollInterval);
       state.modalPollInterval = null;
     }
-  }, 3000);
+  }, 10000);
 
-  const sse = new EventSource(`/api/logs/${encodeURIComponent(filename)}/stream`);
+  const sse = new EventSource(`/api/logs/${encodeURIComponent(filename)}/stream?offset=${streamOffset}`);
   state.activeLogStream = sse;
 
   sse.onmessage = (e) => {
     try {
       const data = JSON.parse(e.data);
       if (data.chunk) {
-        const lines = data.chunk.split('\n');
-        if (state.rawLogLines.length === 0) {
-          state.rawLogLines = lines;
-        } else {
-          for (const line of lines) {
-            state.rawLogLines.push(line);
-          }
-        }
+        if (data.size) state.logTotalBytes = data.size;
+        appendLogChunk(data.chunk);
         renderTerminalLines();
       } else if (data.type === 'eof') {
         el.streamStatusBadge.innerHTML = '<span>●</span> Stream Finished';
@@ -946,18 +963,46 @@ function formatLogLine(rawLine) {
 
 function renderTerminalLines() {
   const query = state.filterLogQuery.toLowerCase();
-  let filtered = state.rawLogLines;
+  let filtered = state.logPartialLine
+    ? [...state.rawLogLines, state.logPartialLine]
+    : state.rawLogLines;
   if (query) {
     filtered = filtered.filter(l => l.toLowerCase().includes(query));
   }
 
-  el.logLinesCount.textContent = `${filtered.length} lines`;
+  const hiddenText = state.logTruncatedLines > 0 ? ` · ${formatNumber(state.logTruncatedLines)} older hidden` : '';
+  el.logLinesCount.textContent = `${filtered.length} lines${hiddenText}`;
   const rendered = filtered.map(l => formatLogLine(l)).join('\n');
   el.modalTerminalContent.innerHTML = rendered || '<span style="color: var(--text-dim);">No output lines recorded.</span>';
 
   if (state.autoscroll) {
     el.modalTerminalBox.scrollTop = el.modalTerminalBox.scrollHeight;
   }
+}
+
+function appendLogChunk(chunk, reset = false) {
+  if (reset) {
+    state.rawLogLines = [];
+    state.logPartialLine = '';
+  }
+
+  const parts = (state.logPartialLine + chunk).split('\n');
+  state.logPartialLine = parts.pop() || '';
+  state.rawLogLines.push(...parts);
+
+  if (state.rawLogLines.length > MAX_TERMINAL_LINES) {
+    const removeCount = state.rawLogLines.length - MAX_TERMINAL_LINES;
+    state.rawLogLines.splice(0, removeCount);
+    state.logTruncatedLines += removeCount;
+  }
+}
+
+function looksLikeRawLog(text) {
+  const sample = String(text || '').slice(0, 2000);
+  return (
+    sample.startsWith('subagent: provider=') ||
+    /timestamp=\S+\s+level=(?:INFO|WARN|ERROR)\s+run=/.test(sample)
+  );
 }
 
 // --- Process Management ---
@@ -1476,6 +1521,8 @@ function initSSE() {
           if (el.kpiDurationVal) el.kpiDurationVal.textContent = `${data.analytics.avgDurationSec || 0}s`;
           if (el.kpiSuccessVal) el.kpiSuccessVal.textContent = `${data.analytics.successRate || 100}%`;
         }
+        scheduleDashboardRefresh();
+        scheduleModalMetadataRefresh();
       }
     } catch {}
   };
@@ -1487,6 +1534,24 @@ function initSSE() {
   evtSource.onopen = () => {
     el.liveIndicator.innerHTML = '<span class="indicator-dot"></span> Live Sync';
   };
+}
+
+function scheduleDashboardRefresh() {
+  if (state.dashboardRefreshTimer) return;
+  state.dashboardRefreshTimer = setTimeout(() => {
+    state.dashboardRefreshTimer = null;
+    fetchRuns();
+    fetchWorkspaces();
+  }, 500);
+}
+
+function scheduleModalMetadataRefresh() {
+  if (!state.selectedRun || state.modalRefreshTimer) return;
+  state.modalRefreshTimer = setTimeout(() => {
+    const filename = state.selectedRun;
+    state.modalRefreshTimer = null;
+    if (filename) refreshOpenModalData(filename);
+  }, 500);
 }
 
 // --- App Initialization ---
