@@ -423,3 +423,13 @@ export function getRun(filename) {
   const row = stmt.get(filename);
   return row ? rowToRunMeta(row, row.status === 'running') : null;
 }
+
+export function getRunLogFingerprint(filename) {
+  const db = getDatabase();
+  const stmt = db.prepare('SELECT log_size, log_mtime FROM runs WHERE filename = ? LIMIT 1');
+  return stmt.get(filename) || null;
+}
+
+export function resetRuns() {
+  getDatabase().exec('DELETE FROM runs');
+}

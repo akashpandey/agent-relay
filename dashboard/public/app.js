@@ -42,6 +42,7 @@ const state = {
   logStartOffset: 0,
   logTotalBytes: 0,
   logTruncatedLines: 0,
+  logViewMode: 'live',
   filterLogQuery: '',
   autoscroll: true,
   wordWrap: true,
@@ -133,6 +134,8 @@ const el = {
   chkWrap: document.getElementById('chk-wrap'),
   logSearchInput: document.getElementById('log-search-input'),
   logLinesCount: document.getElementById('log-lines-count'),
+  btnLoadOlderLog: document.getElementById('btn-load-older-log'),
+  btnSearchFullLog: document.getElementById('btn-search-full-log'),
   modalTerminalBox: document.getElementById('modal-terminal-box'),
   modalTerminalContent: document.getElementById('modal-terminal-content'),
   modalToolsContainer: document.getElementById('modal-tools-container'),
@@ -680,6 +683,7 @@ async function openWorkspaceModal(filename) {
   state.logStartOffset = 0;
   state.logTotalBytes = 0;
   state.logTruncatedLines = 0;
+  state.logViewMode = 'live';
   el.modalTerminalContent.textContent = 'Loading log stream...';
   el.modalMarkdownContainer.innerHTML = '<div class="markdown-empty">Loading markdown summary...</div>';
   el.modalDiffContainer.innerHTML = '<div class="diff-empty">Loading diffs...</div>';
@@ -851,6 +855,7 @@ async function startLogStream(filename) {
   state.rawLogLines = [];
   state.logPartialLine = '';
   state.logTruncatedLines = 0;
+  state.logViewMode = 'live';
   el.modalTerminalContent.innerHTML = 'Connecting to log stream...';
   el.streamStatusBadge.innerHTML = '<span class="stream-dot"></span> Live Streaming';
   el.streamStatusBadge.style.color = 'var(--accent)';
@@ -963,15 +968,14 @@ function formatLogLine(rawLine) {
 
 function renderTerminalLines() {
   const query = state.filterLogQuery.toLowerCase();
-  let filtered = state.logPartialLine
-    ? [...state.rawLogLines, state.logPartialLine]
-    : state.rawLogLines;
+  let filtered = getRenderedLogLines();
   if (query) {
     filtered = filtered.filter(l => l.toLowerCase().includes(query));
   }
 
   const hiddenText = state.logTruncatedLines > 0 ? ` · ${formatNumber(state.logTruncatedLines)} older hidden` : '';
   el.logLinesCount.textContent = `${filtered.length} lines${hiddenText}`;
+  el.btnLoadOlderLog.disabled = state.logViewMode !== 'live' || !state.selectedRun || state.logStartOffset <= 0;
   const rendered = filtered.map(l => formatLogLine(l)).join('\n');
   el.modalTerminalContent.innerHTML = rendered || '<span style="color: var(--text-dim);">No output lines recorded.</span>';
 
@@ -980,7 +984,14 @@ function renderTerminalLines() {
   }
 }
 
+function getRenderedLogLines() {
+  return state.logPartialLine
+    ? [...state.rawLogLines, state.logPartialLine]
+    : state.rawLogLines;
+}
+
 function appendLogChunk(chunk, reset = false) {
+  if (state.logViewMode !== 'live') return;
   if (reset) {
     state.rawLogLines = [];
     state.logPartialLine = '';
@@ -994,6 +1005,74 @@ function appendLogChunk(chunk, reset = false) {
     const removeCount = state.rawLogLines.length - MAX_TERMINAL_LINES;
     state.rawLogLines.splice(0, removeCount);
     state.logTruncatedLines += removeCount;
+  }
+}
+
+function prependLogChunk(chunk, nextOffset) {
+  const lines = chunk.split('\n');
+  if (nextOffset > 0 && lines.length > 0) lines.shift();
+  state.rawLogLines.unshift(...lines.filter(Boolean));
+  state.logStartOffset = nextOffset;
+
+  if (state.rawLogLines.length > MAX_TERMINAL_LINES) {
+    const removeCount = state.rawLogLines.length - MAX_TERMINAL_LINES;
+    state.rawLogLines.splice(-removeCount, removeCount);
+    state.logTruncatedLines += removeCount;
+  }
+}
+
+async function loadOlderLogWindow() {
+  if (!state.selectedRun || state.logStartOffset <= 0) return;
+  const nextOffset = Math.max(0, state.logStartOffset - INITIAL_LOG_TAIL_BYTES);
+  const limit = state.logStartOffset - nextOffset;
+  const previousLabel = el.btnLoadOlderLog.textContent;
+  el.btnLoadOlderLog.disabled = true;
+  el.btnLoadOlderLog.textContent = 'Loading...';
+
+  try {
+    const res = await fetch(`/api/logs/${encodeURIComponent(state.selectedRun)}?offset=${nextOffset}&limit=${limit}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    prependLogChunk(await res.text(), nextOffset);
+    renderTerminalLines();
+  } catch (err) {
+    showToast(`Failed to load older log: ${err.message}`);
+  } finally {
+    el.btnLoadOlderLog.disabled = state.logStartOffset <= 0;
+    el.btnLoadOlderLog.textContent = previousLabel;
+  }
+}
+
+async function searchFullLog() {
+  if (state.logViewMode === 'search') {
+    state.logViewMode = 'live';
+    el.btnSearchFullLog.textContent = 'Search Full Log';
+    if (state.selectedRun) startLogStream(state.selectedRun);
+    return;
+  }
+
+  const q = state.filterLogQuery || el.logSearchInput.value.trim();
+  if (!state.selectedRun || !q) return;
+
+  const previousLabel = el.btnSearchFullLog.textContent;
+  el.btnSearchFullLog.disabled = true;
+  el.btnSearchFullLog.textContent = 'Searching...';
+
+  try {
+    const res = await fetch(`/api/logs/${encodeURIComponent(state.selectedRun)}/search?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    const lines = (data.matches || []).map(m => `line ${m.line}: ${m.text}`);
+    state.logViewMode = 'search';
+    state.rawLogLines = lines.length > 0 ? lines : [`No full-log matches for "${q}".`];
+    state.logPartialLine = '';
+    state.logTruncatedLines = 0;
+    el.btnSearchFullLog.textContent = 'Back to Live';
+    renderTerminalLines();
+  } catch (err) {
+    showToast(`Full-log search failed: ${err.message}`);
+  } finally {
+    el.btnSearchFullLog.disabled = false;
+    if (state.logViewMode !== 'search') el.btnSearchFullLog.textContent = previousLabel;
   }
 }
 
@@ -1380,7 +1459,7 @@ function initEventListeners() {
   el.workspaceModalOverlay.addEventListener('click', closeWorkspaceModal);
   el.btnToggleFullscreen.addEventListener('click', toggleFullscreenModal);
   el.btnModalCopyLog.addEventListener('click', () => {
-    copyToClipboard(state.rawLogLines.join('\n'), 'Full log copied to clipboard!');
+    copyToClipboard(getRenderedLogLines().join('\n'), 'Visible log window copied to clipboard!');
   });
 
   el.fsTabs.forEach(tab => {
@@ -1398,6 +1477,8 @@ function initEventListeners() {
     state.filterLogQuery = e.target.value.trim();
     renderTerminalLines();
   });
+  el.btnLoadOlderLog.addEventListener('click', loadOlderLogWindow);
+  el.btnSearchFullLog.addEventListener('click', searchFullLog);
 
   // Tools & Commands Tab Controls
   if (el.toolsFilterPills) {

@@ -1241,6 +1241,8 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
     cost: cost || 0,
     cliCommand,
     currentAction,
+    size: fileSize,
+    mtime: Math.floor(stats.mtimeMs),
     fileSize,
     fileSizeHuman: formatBytes(fileSize),
     startTime: parsedName.startTime,

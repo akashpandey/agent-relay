@@ -10,6 +10,7 @@ import {
   getAnalyticsFromDb,
   getWorkspacesFromDb,
   getRun,
+  getRunLogFingerprint,
   upsertRun,
   registerRunComplete
 } from './db.js';
@@ -22,6 +23,8 @@ const HOST = process.env.HOST || '0.0.0.0';
 const LOGS_DIR = process.env.LOGS_DIR || path.resolve(__dirname, '../logs');
 const PROC_DIR = process.env.PROC_DIR || '/proc';
 const PUBLIC_DIR = path.resolve(__dirname, 'public');
+const LOG_STREAM_CHUNK_BYTES = 256 * 1024;
+const LOG_SEARCH_MAX_RESULTS = 200;
 
 // Ensure logs directory exists
 if (!fs.existsSync(LOGS_DIR)) {
@@ -198,6 +201,75 @@ function getMimeType(filePath) {
  */
 const sseClients = new Set();
 
+function getSafeLogPath(filename) {
+  const safeFile = path.basename(filename);
+  return { safeFile, filePath: path.join(LOGS_DIR, safeFile) };
+}
+
+function syncLogFile(filename, { force = false } = {}) {
+  const { safeFile, filePath } = getSafeLogPath(filename);
+  if (!safeFile.endsWith('.log') || !fs.existsSync(filePath)) return false;
+
+  const stat = fs.statSync(filePath);
+  const cached = getRunLogFingerprint(safeFile);
+  if (!force && cached && cached.log_size === stat.size && cached.log_mtime === Math.floor(stat.mtimeMs)) {
+    return false;
+  }
+
+  const meta = parseLogMetadata(safeFile, filePath, PROC_DIR);
+  if (meta) {
+    upsertRun(meta);
+    return true;
+  }
+  return false;
+}
+
+function searchLogFile(filePath, query, limit = LOG_SEARCH_MAX_RESULTS) {
+  return new Promise((resolve, reject) => {
+    const needle = query.toLowerCase();
+    const matches = [];
+    let carry = '';
+    let lineNo = 0;
+    let byteOffset = 0;
+    let settled = false;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve(matches);
+    };
+
+    const stream = fs.createReadStream(filePath, { encoding: 'utf8', highWaterMark: 64 * 1024 });
+    stream.on('data', (chunk) => {
+      const lines = (carry + chunk).split('\n');
+      carry = lines.pop() || '';
+
+      for (const line of lines) {
+        lineNo++;
+        if (line.toLowerCase().includes(needle)) {
+          matches.push({ line: lineNo, offset: byteOffset, text: line.slice(0, 1000) });
+          if (matches.length >= limit) {
+            stream.destroy();
+            break;
+          }
+        }
+        byteOffset += Buffer.byteLength(line + '\n');
+      }
+    });
+    stream.on('close', finish);
+    stream.on('error', reject);
+    stream.on('end', () => {
+      if (carry) {
+        lineNo++;
+        if (carry.toLowerCase().includes(needle) && matches.length < limit) {
+          matches.push({ line: lineNo, offset: byteOffset, text: carry.slice(0, 1000) });
+        }
+      }
+      finish();
+    });
+  });
+}
+
 function broadcastDashboardUpdate() {
   if (sseClients.size === 0) return;
   const stats = getStatsFromDb();
@@ -232,19 +304,27 @@ try {
     if (!filename || !filename.endsWith('.log')) return;
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-      const filePath = path.join(LOGS_DIR, filename);
-      if (fs.existsSync(filePath)) {
-        try {
-          const meta = parseLogMetadata(filename, filePath, PROC_DIR);
-          if (meta) upsertRun(meta);
-        } catch {}
-      }
+      try { syncLogFile(filename); } catch {}
       broadcastDashboardUpdate();
     }, 200);
   });
 } catch (e) {
   console.warn('[Dashboard] Could not attach fs.watch to logs dir:', e.message);
 }
+
+setTimeout(() => {
+  try {
+    let changed = false;
+    for (const filename of fs.readdirSync(LOGS_DIR)) {
+      if (filename.endsWith('.log')) {
+        changed = syncLogFile(filename) || changed;
+      }
+    }
+    if (changed) broadcastDashboardUpdate();
+  } catch (err) {
+    console.warn('[Dashboard] Initial log sync failed:', err.message);
+  }
+}, 100);
 
 const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -361,11 +441,40 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // GET /api/logs/:filename/search
+  if (pathname.startsWith('/api/logs/') && pathname.endsWith('/search') && req.method === 'GET') {
+    const filename = decodeURIComponent(pathname.replace('/api/logs/', '').replace('/search', ''));
+    const { safeFile, filePath } = getSafeLogPath(filename);
+    const q = (parsedUrl.searchParams.get('q') || '').trim();
+    const limit = Math.min(parseInt(parsedUrl.searchParams.get('limit') || String(LOG_SEARCH_MAX_RESULTS), 10) || LOG_SEARCH_MAX_RESULTS, LOG_SEARCH_MAX_RESULTS);
+
+    if (!q) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Missing q search parameter' }));
+      return;
+    }
+    if (!fs.existsSync(filePath)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Log file not found' }));
+      return;
+    }
+
+    try {
+      const stat = fs.statSync(filePath);
+      const matches = await searchLogFile(filePath, q, limit);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ filename: safeFile, q, count: matches.length, limit, logSize: stat.size, matches }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    }
+    return;
+  }
+
   // GET /api/logs/:filename
   if (pathname.startsWith('/api/logs/') && !pathname.endsWith('/stream') && req.method === 'GET') {
     const filename = decodeURIComponent(pathname.replace('/api/logs/', ''));
-    const safeFile = path.basename(filename);
-    const filePath = path.join(LOGS_DIR, safeFile);
+    const { filePath } = getSafeLogPath(filename);
 
     if (!fs.existsSync(filePath)) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -375,17 +484,29 @@ const server = http.createServer(async (req, res) => {
 
     try {
       const stat = fs.statSync(filePath);
+      const requestedOffset = parseInt(parsedUrl.searchParams.get('offset') || '', 10);
+      const requestedLimit = parseInt(parsedUrl.searchParams.get('limit') || '', 10);
       const tailBytes = parseInt(parsedUrl.searchParams.get('tailBytes') || '0', 10);
-      const start = Number.isFinite(tailBytes) && tailBytes > 0
+      const start = Number.isFinite(requestedOffset) && requestedOffset >= 0
+        ? Math.min(requestedOffset, stat.size)
+        : Number.isFinite(tailBytes) && tailBytes > 0
         ? Math.max(0, stat.size - tailBytes)
         : 0;
+      const streamOptions = { start };
+      if (Number.isFinite(requestedLimit) && requestedLimit > 0) {
+        streamOptions.end = Math.min(stat.size - 1, start + requestedLimit - 1);
+      }
 
       res.writeHead(200, {
         'Content-Type': 'text/plain; charset=utf-8',
         'X-Log-Offset': String(start),
         'X-Log-Size': String(stat.size),
       });
-      fs.createReadStream(filePath, { start }).pipe(res);
+      if (start >= stat.size) {
+        res.end('');
+        return;
+      }
+      fs.createReadStream(filePath, streamOptions).pipe(res);
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: err.message }));
@@ -396,8 +517,7 @@ const server = http.createServer(async (req, res) => {
   // GET /api/logs/:filename/stream
   if (pathname.startsWith('/api/logs/') && pathname.endsWith('/stream') && req.method === 'GET') {
     const filename = decodeURIComponent(pathname.replace('/api/logs/', '').replace('/stream', ''));
-    const safeFile = path.basename(filename);
-    const filePath = path.join(LOGS_DIR, safeFile);
+    const { filePath } = getSafeLogPath(filename);
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -421,14 +541,16 @@ const server = http.createServer(async (req, res) => {
         if (!fs.existsSync(filePath)) return;
         const stat = fs.statSync(filePath);
         if (stat.size > currentPos) {
-          const buf = Buffer.alloc(stat.size - currentPos);
+          const toRead = Math.min(stat.size - currentPos, LOG_STREAM_CHUNK_BYTES);
+          const buf = Buffer.alloc(toRead);
           const fd = fs.openSync(filePath, 'r');
           fs.readSync(fd, buf, 0, buf.length, currentPos);
           fs.closeSync(fd);
-          currentPos = stat.size;
+          currentPos += toRead;
 
           const chunk = buf.toString('utf8');
           res.write(`data: ${JSON.stringify({ type: 'data', chunk, size: stat.size })}\n\n`);
+          if (stat.size > currentPos) setImmediate(sendNewData);
         }
       } catch (err) {}
     };
