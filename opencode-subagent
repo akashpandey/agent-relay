@@ -1,6 +1,9 @@
 #!/usr/bin/env sh
 set -eu
 
+script_path="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
+repo_dir="$(cd "$(dirname "$script_path")" && pwd -P)"
+
 workspace="$(pwd -P)"
 
 # Prevent hanging network commands from blocking subprocess cleanup
@@ -116,7 +119,7 @@ elif [ "${OPENCODE_MODEL:-}" = "opencode-go/glm-5.2" ]; then
   OPENCODE_MODEL="zai-coding-plan/glm-5.2"
 fi
 
-log_dir="${SUBAGENT_LOG_DIR:-$HOME/local-subagents/logs}"
+log_dir="${SUBAGENT_LOG_DIR:-$repo_dir/logs}"
 mkdir -p "$log_dir"
 log_file="$log_dir/$(date +%Y%m%dT%H%M%S)-opencode-$$.log"
 done_file="$log_file.done"
@@ -186,7 +189,7 @@ printf 'subagent: provider=opencode workspace=%s model=%s session=%s\nTask:\n%s\
 
 # Register run start in SQLite database immediately
 if command -v node >/dev/null 2>&1; then
-  node "$HOME/local-subagents/scripts/subagent-tracker.js" start "$(basename "$log_file")" "$$" "opencode" "${OPENCODE_MODEL:-default}" "$workspace" "${resume_session:-new}" "$user_prompt" >/dev/null 2>&1 || true
+  node "$repo_dir/scripts/subagent-tracker.js" start "$(basename "$log_file")" "$$" "opencode" "${OPENCODE_MODEL:-default}" "$workspace" "${resume_session:-new}" "$user_prompt" >/dev/null 2>&1 || true
 fi
 
 if [ "$use_systemd" -eq 1 ]; then
@@ -271,12 +274,12 @@ DONE_JSON
 
 # Automatically ingest subagent session to claude-mem (non-blocking)
 if [ -f "$done_file" ] && command -v bun >/dev/null 2>&1; then
-  bun "$HOME/local-subagents/scripts/ingest-to-claude-mem.js" "$done_file" >/dev/null 2>&1 &
+  bun "$repo_dir/scripts/ingest-to-claude-mem.js" "$done_file" >/dev/null 2>&1 &
 fi
 
 # Register run completion in SQLite database
 if command -v node >/dev/null 2>&1; then
-  node "$HOME/local-subagents/scripts/subagent-tracker.js" complete "$(basename "$log_file")" "$status" "$sess_id" >/dev/null 2>&1 || true
+  node "$repo_dir/scripts/subagent-tracker.js" complete "$(basename "$log_file")" "$status" "$sess_id" >/dev/null 2>&1 || true
 fi
 
 if [ "$log_flag" = "1" ]; then

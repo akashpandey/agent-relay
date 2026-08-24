@@ -1,9 +1,11 @@
 #!/usr/bin/env sh
 set -eu
 
-repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+script_path="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
+repo_dir=$(CDPATH= cd -- "$(dirname -- "$script_path")" && pwd -P)
 source_dir="$repo_dir/skills/local-subagents"
 
+# 1. Install skills
 for target in \
   "$HOME/.agents/skills/local-subagents" \
   "$HOME/.claude/skills/local-subagents" \
@@ -16,5 +18,21 @@ for target in \
   fi
   mkdir -p "$(dirname -- "$target")"
   ln -sfnT "$source_dir" "$target"
-  echo "Installed: $target -> $source_dir"
+  echo "Installed skill: $target -> $source_dir"
+done
+
+# 2. Install CLI binaries into ~/.local/bin
+mkdir -p "$HOME/.local/bin"
+for bin in \
+  antigravity-subagent \
+  claude-subagent \
+  codex-subagent \
+  opencode-subagent \
+  opencode-subagent-fallback \
+  subagent-wait \
+  subagent-dashboard; do
+  if [ -f "$repo_dir/$bin" ]; then
+    ln -sf "$repo_dir/$bin" "$HOME/.local/bin/$bin"
+    echo "Installed CLI: $HOME/.local/bin/$bin -> $repo_dir/$bin"
+  fi
 done

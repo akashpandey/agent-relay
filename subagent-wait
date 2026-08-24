@@ -1,7 +1,10 @@
 #!/usr/bin/env sh
 set -eu
 
-LOGS_DIR="${SUBAGENT_LOG_DIR:-$HOME/local-subagents/logs}"
+script_path="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
+repo_dir="$(cd "$(dirname "$script_path")" && pwd -P)"
+
+LOGS_DIR="${SUBAGENT_LOG_DIR:-$repo_dir/logs}"
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   cat <<'HELP'

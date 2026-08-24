@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
 set -eu
 
-DIR="$(cd "$(dirname "$0")" && pwd -P)"
+script_path="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
+DIR="$(cd "$(dirname "$script_path")" && pwd -P)"
 export LOGS_DIR="${SUBAGENT_LOG_DIR:-$DIR/logs}"
 export PROC_DIR="/proc"
 export PORT="${PORT:-4242}"
