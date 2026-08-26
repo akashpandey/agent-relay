@@ -324,6 +324,7 @@ The JSON object must be the final non-whitespace output.
 `status=completed` only means the wrapper process finished. Automation should accept delegated work only when `outcome=done` and `attentionRequired=false` from `subagent-wait` or `/api/runs/<log>/result`.
 
 Do not tail logs to determine task completeness. Logs are diagnostic output; `subagent-wait` and `/api/runs/<log>/result` are the machine-readable acceptance surfaces.
+`subagent-wait` exits nonzero when any structured result has `accepted=false`.
 
 Behavior:
 

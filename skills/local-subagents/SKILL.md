@@ -100,7 +100,7 @@ Once notified of completion:
 subagent-wait <log-filename>
 ```
 
-`subagent-wait` returns the caller contract as JSON. Treat `processStatus=completed` as wrapper success only. Treat the delegated task as accepted only when `accepted=true`. Always surface `blockers`, `incomplete`, and failed/skipped `verification` to the user instead of hiding them in a summary.
+`subagent-wait` returns the caller contract as JSON and exits nonzero when any result has `accepted=false`. Treat `processStatus=completed` as wrapper success only. Treat the delegated task as accepted only when `accepted=true`. Always surface `blockers`, `incomplete`, and failed/skipped `verification` to the user instead of hiding them in a summary.
 
 Caller contract:
 ```json

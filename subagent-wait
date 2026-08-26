@@ -17,7 +17,8 @@ Description:
   OS process monitors. Unblocks immediately upon process exit and outputs the
   structured task result JSON. Use this for completeness checks instead of
   tailing logs. If session reuse is possible, the JSON includes continuation
-  commands for follow-up fixes.
+  commands for follow-up fixes. Exits nonzero when any structured result is not
+  accepted.
 
 Examples:
   subagent-wait --last
@@ -67,9 +68,21 @@ for target in "$@"; do
 
   # Check for .done sentinel or log metadata
   done_file="${log_path%.log}.done"
-  if command -v node >/dev/null 2>&1 && node "$repo_dir/scripts/subagent-result.js" "$log_path"; then
-    :
-  elif [ -f "$done_file" ]; then
+  if command -v node >/dev/null 2>&1; then
+    set +e
+    result_json="$(node "$repo_dir/scripts/subagent-result.js" "$log_path" 2>/dev/null)"
+    result_status=$?
+    set -e
+    if [ "$result_status" -eq 0 ] && [ -n "$result_json" ]; then
+      printf '%s\n' "$result_json"
+      if ! printf '%s' "$result_json" | node -e 'let s=""; process.stdin.on("data", d => s += d).on("end", () => { try { process.exit(JSON.parse(s).accepted === true ? 0 : 1); } catch { process.exit(1); } });'; then
+        overall_status=1
+      fi
+      continue
+    fi
+  fi
+
+  if [ -f "$done_file" ]; then
     sed -n '1,200p' "$done_file"
   elif [ -n "$log_path" ] && [ -f "$log_path" ]; then
     echo "=== Subagent Run Finished: $(basename "$log_path") ==="
