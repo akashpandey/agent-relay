@@ -49,13 +49,18 @@ function reconcileActiveRuns(activeRuns) {
         const doneFile = filePath.replace(/\.log$/, '.done');
         let exitCode = 0;
         let finalStatus = 'completed';
+        let hasDone = false;
 
         if (fs.existsSync(doneFile)) {
           try {
             const doneData = JSON.parse(fs.readFileSync(doneFile, 'utf8'));
             if (doneData.exitCode !== undefined) exitCode = doneData.exitCode;
             if (doneData.status) finalStatus = doneData.status;
+            hasDone = true;
           } catch {}
+        } else {
+          exitCode = 1;
+          finalStatus = 'failed';
         }
 
         if (fs.existsSync(filePath)) {
@@ -64,6 +69,20 @@ function reconcileActiveRuns(activeRuns) {
             if (meta) {
               meta.status = finalStatus;
               meta.exitCode = exitCode;
+              if (!hasDone) {
+                meta.outcome = 'unknown';
+                meta.attentionRequired = true;
+                meta.result = {
+                  outcome: 'unknown',
+                  summary: 'Process exited before writing a .done sentinel.',
+                  changedFiles: [],
+                  verification: [],
+                  blockers: ['Missing .done sentinel; task completion could not be verified.'],
+                  incomplete: [],
+                  nextSteps: [],
+                  attentionRequired: true,
+                };
+              }
               upsertRun(meta);
               continue;
             }
@@ -378,12 +397,13 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/runs' && req.method === 'GET') {
     const provider = parsedUrl.searchParams.get('provider');
     const status = parsedUrl.searchParams.get('status');
+    const outcome = parsedUrl.searchParams.get('outcome');
     const workspace = parsedUrl.searchParams.get('workspace');
     const q = (parsedUrl.searchParams.get('q') || '').trim();
     const limit = parseInt(parsedUrl.searchParams.get('limit') || '50', 10);
     const offset = parseInt(parsedUrl.searchParams.get('offset') || '0', 10);
 
-    const result = getFilteredRuns({ provider, status, workspace, q, limit, offset });
+    const result = getFilteredRuns({ provider, status, outcome, workspace, q, limit, offset });
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(result));
@@ -405,6 +425,8 @@ const server = http.createServer(async (req, res) => {
 
     const result = run.result || null;
     const sessionId = run.sessionId || run.session || null;
+    const outcome = run.outcome || result?.outcome || 'unknown';
+    const attentionRequired = Boolean(run.attentionRequired || result?.attentionRequired);
     const bin = `${run.provider}-subagent`;
     const continuation = sessionId && sessionId !== 'new' ? {
       sessionId,
@@ -417,8 +439,9 @@ const server = http.createServer(async (req, res) => {
       filename: run.filename,
       processStatus: run.status,
       exitCode: run.exitCode,
-      outcome: run.outcome || result?.outcome || 'unknown',
-      attentionRequired: Boolean(run.attentionRequired || result?.attentionRequired),
+      outcome,
+      attentionRequired,
+      accepted: outcome === 'done' && !attentionRequired,
       blockers: result?.blockers || [],
       incomplete: result?.incomplete || [],
       verification: result?.verification || [],

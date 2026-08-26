@@ -22,6 +22,7 @@ const state = {
   // Filters & Pagination
   filterProvider: 'all',
   filterStatus: 'all',
+  filterOutcome: 'all',
   filterWorkspace: 'all',
   filterSearch: '',
   pageLimit: 30,
@@ -82,6 +83,7 @@ const el = {
   filterSearch: document.getElementById('filter-search'),
   providerFilters: document.getElementById('provider-filters'),
   statusFilters: document.getElementById('status-filters'),
+  outcomeFilters: document.getElementById('outcome-filters'),
   workspaceChipsContainer: document.getElementById('workspace-chips-container'),
   btnDensityComfortable: document.getElementById('btn-density-comfortable'),
   btnDensityCompact: document.getElementById('btn-density-compact'),
@@ -286,6 +288,7 @@ async function fetchRuns() {
     const params = new URLSearchParams({
       provider: state.filterProvider,
       status: state.filterStatus,
+      outcome: state.filterOutcome,
       workspace: state.filterWorkspace,
       q: state.filterSearch,
       limit: state.pageLimit,
@@ -1431,6 +1434,17 @@ function initEventListeners() {
       el.statusFilters.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       state.filterStatus = btn.dataset.status;
+      state.pageOffset = 0;
+      fetchRuns();
+    });
+  });
+
+  // Outcome Filter Buttons
+  el.outcomeFilters.querySelectorAll('.seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      el.outcomeFilters.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.filterOutcome = btn.dataset.outcome;
       state.pageOffset = 0;
       fetchRuns();
     });

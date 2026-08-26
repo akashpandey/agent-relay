@@ -1287,7 +1287,20 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
     status = 'completed';
   }
 
-  const result = extractStructuredOutcome(markdownSummary, tailContent, status);
+  let result = extractStructuredOutcome(markdownSummary, tailContent, status);
+  if (!isAlive && !doneMeta) {
+    status = 'failed';
+    result = {
+      outcome: 'unknown',
+      summary: 'Process exited before writing a .done sentinel.',
+      changedFiles: [],
+      verification: [],
+      blockers: ['Missing .done sentinel; task completion could not be verified.'],
+      incomplete: [],
+      nextSteps: [],
+      attentionRequired: true,
+    };
+  }
 
   // Accurate Duration Calculation (IST epoch vs mtime epoch)
   const startTimeMs = new Date(parsedName.startTime).getTime();

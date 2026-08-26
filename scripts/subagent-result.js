@@ -36,6 +36,8 @@ if (!run) {
 
 const result = run.result || null;
 const sessionId = run.sessionId || run.session || null;
+const outcome = run.outcome || result?.outcome || 'unknown';
+const attentionRequired = Boolean(run.attentionRequired || result?.attentionRequired);
 const bin = `${run.provider}-subagent`;
 const continuation = sessionId && sessionId !== 'new' ? {
   sessionId,
@@ -47,8 +49,9 @@ console.log(JSON.stringify({
   filename: run.filename,
   processStatus: run.status,
   exitCode: run.exitCode ?? null,
-  outcome: run.outcome || result?.outcome || 'unknown',
-  attentionRequired: Boolean(run.attentionRequired || result?.attentionRequired),
+  outcome,
+  attentionRequired,
+  accepted: outcome === 'done' && !attentionRequired,
   blockers: result?.blockers || [],
   incomplete: result?.incomplete || [],
   verification: result?.verification || [],

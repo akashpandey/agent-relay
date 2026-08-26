@@ -100,7 +100,7 @@ Once notified of completion:
 subagent-wait <log-filename>
 ```
 
-`subagent-wait` returns the caller contract as JSON. Treat `processStatus=completed` as wrapper success only. Treat the delegated task as accepted only when `outcome=done` and `attentionRequired=false`. Always surface `blockers`, `incomplete`, and failed/skipped `verification` to the user instead of hiding them in a summary.
+`subagent-wait` returns the caller contract as JSON. Treat `processStatus=completed` as wrapper success only. Treat the delegated task as accepted only when `accepted=true`. Always surface `blockers`, `incomplete`, and failed/skipped `verification` to the user instead of hiding them in a summary.
 
 Caller contract:
 ```json
@@ -108,6 +108,7 @@ Caller contract:
   "processStatus": "running|completed|failed|empty",
   "outcome": "done|partial|blocked|failed|unknown",
   "attentionRequired": true,
+  "accepted": false,
   "blockers": [],
   "incomplete": [],
   "verification": [
@@ -127,11 +128,11 @@ Caller contract:
 }
 ```
 
-If `outcome` is `partial`, `blocked`, `failed`, or `unknown`, do not mark the parent task complete. Continue with a follow-up subagent prompt, fix the issue directly, or report the blocker to the user.
+If `accepted=false` or `outcome` is `partial`, `blocked`, `failed`, or `unknown`, do not mark the parent task complete. Continue with a follow-up subagent prompt, fix the issue directly, or report the blocker to the user. `outcome=unknown` can mean the process exited without writing a `.done` sentinel, so completion could not be verified.
 
 If the original subagent caused a defect and the compact result includes `continuation`, prefer `continuation.sameSessionCommand` so the same agent can repair its own work with full context. Include the exact issue, failing check, and acceptance condition in the follow-up prompt.
 
-For direct dashboard access, use `GET /api/runs/<log-filename>/result` for the compact result contract or `GET /api/runs/<log-filename>` for full metadata.
+For direct dashboard access, use `GET /api/runs/<log-filename>/result` for the compact result contract or `GET /api/runs/<log-filename>` for full metadata. The dashboard history has an Outcome filter for `done`, `partial`, `blocked`, and `unknown` task results.
 
 Dashboard note: Live Terminal is optimized for large logs. It initially shows the latest log tail and keeps a bounded rendered window while continuing to stream new output; use `Load Older`, full-log search, the log download, or `/api/logs/<log-filename>` when more history or the exact full raw log is required. Rebuild the derived SQLite cache with `npm --prefix dashboard run rebuild` if it gets stale.
 
@@ -147,7 +148,10 @@ opencode-subagent --models --refresh
 antigravity-subagent --models
 claude-subagent --models
 codex-subagent --models
+subagent-doctor
 ```
+
+Use `subagent-doctor` when local-subagents behavior looks stale, Docker restart automation seems broken, or the dashboard/API is unreachable.
 
 Specify a non-default model via environment variables:
 - `OPENCODE_MODEL='zai-coding-plan/glm-5.3' opencode-subagent "..."`
@@ -184,6 +188,6 @@ http://localhost:4242/api/dangling/kill-all
 4. **Keep tasks bounded**: One bug trace, one refactor, one test implementation, or one code review per turn.
 5. **Parallel execution safety**: When running multiple write-capable subagents simultaneously, execute them in separate `git worktree` directories to prevent file write collisions.
 6. **Verify deliverables**: Inspect the generated git diff or test results locally after a subagent reports completion before accepting changes.
-7. **Never trust process status alone**: `status` / `processStatus` says whether the wrapper exited. `outcome` says whether the task is actually done.
+7. **Never trust process status alone**: `status` / `processStatus` says whether the wrapper exited. `accepted` says whether the task result is safe to accept.
 8. **Never tail logs for acceptance**: Call `subagent-wait` or `/api/runs/<log>/result`; only inspect logs when debugging a failed, blocked, partial, or unknown outcome.
 9. **Reuse sessions deliberately**: Use `continuation.sameSessionCommand` for fixes to the same task or closely related follow-ups. Do not reuse one session across unrelated tasks or parallel workers.

@@ -130,6 +130,7 @@ export function rowToRunMeta(row, isAlive = false) {
     markdownSummary: row.markdown_summary || null,
     outcome: row.outcome || 'unknown',
     attentionRequired: Boolean(row.attention_required),
+    accepted: row.outcome === 'done' && !row.attention_required,
     result: row.result_json ? JSON.parse(row.result_json) : null,
     filesModified: row.files_modified ? JSON.parse(row.files_modified) : [],
     diffs: row.diffs || null,
@@ -307,7 +308,7 @@ export function getAllRunsFromDb(limit = 1000, offset = 0) {
   return rows.map(r => rowToRunMeta(r, r.status === 'running'));
 }
 
-export function getFilteredRuns({ provider, status, workspace, q, limit = 50, offset = 0 }) {
+export function getFilteredRuns({ provider, status, outcome, workspace, q, limit = 50, offset = 0 }) {
   const db = getDatabase();
   let whereClauses = [];
   let params = [];
@@ -319,6 +320,10 @@ export function getFilteredRuns({ provider, status, workspace, q, limit = 50, of
   if (status && status !== 'all') {
     whereClauses.push('LOWER(status) = LOWER(?)');
     params.push(status);
+  }
+  if (outcome && outcome !== 'all') {
+    whereClauses.push('LOWER(outcome) = LOWER(?)');
+    params.push(outcome);
   }
   if (workspace && workspace !== 'all') {
     whereClauses.push('(workspace LIKE ? OR LOWER(workspace_name) = LOWER(?))');

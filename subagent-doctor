@@ -1,0 +1,45 @@
+#!/usr/bin/env sh
+set -u
+
+script_path="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
+repo_dir="$(cd "$(dirname "$script_path")" && pwd -P)"
+compose_link="$HOME/docker/local-subagents/docker-compose.yml"
+hook="$repo_dir/.git/hooks/post-commit"
+ok=0
+
+check() {
+  label="$1"
+  shift
+  if "$@" >/dev/null 2>&1; then
+    printf '[OK] %s\n' "$label"
+  else
+    printf '[FAIL] %s\n' "$label"
+    ok=1
+  fi
+}
+
+check "docker CLI available" command -v docker
+check "docker daemon reachable" docker info
+check "compose symlink points to repo" test "$(readlink "$compose_link" 2>/dev/null)" = "$repo_dir/docker-compose.yml"
+check "post-commit hook installed" test -x "$hook"
+check "restart script executable" test -x "$repo_dir/scripts/restart-dashboard"
+if docker ps --filter name=local-subagents-dashboard --format '{{.Names}}' | grep -qx local-subagents-dashboard; then
+  printf '[OK] dashboard container running\n'
+else
+  printf '[FAIL] dashboard container running\n'
+  ok=1
+fi
+
+if command -v node >/dev/null 2>&1; then
+  if DASHBOARD_URL="${DASHBOARD_URL:-http://localhost:4242/api/stats}" node -e 'fetch(process.env.DASHBOARD_URL).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))' >/dev/null 2>&1; then
+    printf '[OK] dashboard HTTP reachable\n'
+  else
+    printf '[FAIL] dashboard HTTP reachable\n'
+    ok=1
+  fi
+else
+  printf '[FAIL] node available for HTTP check\n'
+  ok=1
+fi
+
+exit "$ok"

@@ -120,9 +120,12 @@ printf '%s\n' "Review this repo" | ./claude-subagent
 ./codex-subagent "Review this repo"
 printf '%s\n' "Review this repo" | ./codex-subagent
 ./codex-subagent --models
+./subagent-doctor
 ```
 
 Both wrappers use the current working directory as the workspace root and inject a short non-interactive system prompt around the task.
+
+Run `./subagent-doctor` to check Docker, the dashboard container, the compose symlink, and the post-commit restart hook.
 
 ## Session reuse
 
