@@ -13,6 +13,9 @@ services:
     image: local-subagents-dashboard:latest
     logging: *default-logging
     pid: "host"
+    mem_limit: 256m
+    pids_limit: 128
+    cpus: 0.5
     environment:
       - PORT=4242
       - HOST=0.0.0.0

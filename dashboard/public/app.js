@@ -515,6 +515,8 @@ function renderHistoryTable() {
 
     const providerClass = `provider-${run.provider.toLowerCase()}`;
     const statusClass = `status-${run.status.toLowerCase()}`;
+    const outcome = run.outcome || run.result?.outcome || 'unknown';
+    const outcomeClass = `status-${outcome.toLowerCase()}`;
     const workspaceName = run.workspaceName || run.workspace || 'workspace';
 
     const tokenDisplay = run.tokens && run.tokens.total ? `${formatNumber(run.tokens.total)} tok` : run.fileSizeHuman;
@@ -523,7 +525,10 @@ function renderHistoryTable() {
       <td>
         <div style="display: flex; flex-direction: column; gap: 0.2rem;">
           <span style="font-family: var(--font-mono); font-size: 0.75rem;">${formatISTTime(run.startTimeIST || run.startTime)}</span>
-          <div><span class="status-pill ${statusClass}">${escapeHtml(run.status)}</span></div>
+          <div style="display: flex; gap: 0.25rem; flex-wrap: wrap;">
+            <span class="status-pill ${statusClass}">${escapeHtml(run.status)}</span>
+            ${run.status === 'completed' ? `<span class="status-pill ${outcomeClass}">${escapeHtml(outcome)}</span>` : ''}
+          </div>
         </div>
       </td>
       <td>
@@ -595,8 +600,9 @@ function applyModalMetadata(meta) {
   el.modalProvider.textContent = meta.provider;
   el.modalProvider.className = `provider-tag provider-${meta.provider.toLowerCase()}`;
   el.modalFilename.textContent = meta.filename;
-  el.modalStatusPill.textContent = meta.status;
-  el.modalStatusPill.className = `status-pill status-${meta.status.toLowerCase()}`;
+  const modalOutcome = meta.outcome || meta.result?.outcome || 'unknown';
+  el.modalStatusPill.textContent = meta.status === 'completed' ? `${meta.status} / ${modalOutcome}` : meta.status;
+  el.modalStatusPill.className = `status-pill status-${(meta.attentionRequired ? modalOutcome : meta.status).toLowerCase()}`;
   el.modalWorkspace.textContent = `📁 ${meta.workspaceName || meta.workspace}`;
   el.modalModel.textContent = `🤖 ${meta.model}`;
   el.modalPid.textContent = `PID: ${meta.pid}`;

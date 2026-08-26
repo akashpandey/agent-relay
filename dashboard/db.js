@@ -48,6 +48,9 @@ export function getDatabase() {
         tokens_cache_write INTEGER DEFAULT 0,
         cost REAL DEFAULT 0,
         markdown_summary TEXT,
+        outcome TEXT DEFAULT 'unknown',
+        attention_required INTEGER DEFAULT 0,
+        result_json TEXT,
         files_modified TEXT, -- JSON array
         diffs TEXT,
         tool_calls TEXT, -- JSON array
@@ -65,6 +68,14 @@ export function getDatabase() {
       CREATE INDEX IF NOT EXISTS idx_runs_workspace ON runs(workspace);
       CREATE INDEX IF NOT EXISTS idx_runs_pid ON runs(pid);
     `);
+
+    for (const sql of [
+      "ALTER TABLE runs ADD COLUMN outcome TEXT DEFAULT 'unknown'",
+      "ALTER TABLE runs ADD COLUMN attention_required INTEGER DEFAULT 0",
+      "ALTER TABLE runs ADD COLUMN result_json TEXT",
+    ]) {
+      try { dbInstance.exec(sql); } catch {}
+    }
   }
   return dbInstance;
 }
@@ -117,6 +128,9 @@ export function rowToRunMeta(row, isAlive = false) {
     } : null,
     cost: row.cost || 0,
     markdownSummary: row.markdown_summary || null,
+    outcome: row.outcome || 'unknown',
+    attentionRequired: Boolean(row.attention_required),
+    result: row.result_json ? JSON.parse(row.result_json) : null,
     filesModified: row.files_modified ? JSON.parse(row.files_modified) : [],
     diffs: row.diffs || null,
     toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : [],
@@ -137,13 +151,13 @@ export function upsertRun(run) {
       filename, pid, provider, model, workspace, workspace_name, session_id,
       task, status, start_time, end_time, duration_sec, current_action,
       tokens_total, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write,
-      cost, markdown_summary, files_modified, diffs, tool_calls, cli_command,
+      cost, markdown_summary, outcome, attention_required, result_json, files_modified, diffs, tool_calls, cli_command,
       exit_code, log_size, log_mtime, updated_at
     ) VALUES (
       ?, ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?, ?,
-      ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?, ?, ?, ?,
       ?, ?, ?, datetime('now')
     )
     ON CONFLICT(filename) DO UPDATE SET
@@ -166,6 +180,9 @@ export function upsertRun(run) {
       tokens_cache_write = excluded.tokens_cache_write,
       cost = excluded.cost,
       markdown_summary = CASE WHEN excluded.markdown_summary IS NOT NULL THEN excluded.markdown_summary ELSE runs.markdown_summary END,
+      outcome = excluded.outcome,
+      attention_required = excluded.attention_required,
+      result_json = excluded.result_json,
       files_modified = excluded.files_modified,
       diffs = CASE WHEN excluded.diffs IS NOT NULL THEN excluded.diffs ELSE runs.diffs END,
       tool_calls = excluded.tool_calls,
@@ -178,6 +195,7 @@ export function upsertRun(run) {
 
   const filesJson = JSON.stringify(run.filesModified || []);
   const toolsJson = JSON.stringify(run.toolCalls || []);
+  const resultJson = run.result ? JSON.stringify(run.result) : null;
   const tokens = run.tokens || {};
 
   stmt.run(
@@ -202,6 +220,9 @@ export function upsertRun(run) {
     tokens.cacheWrite || 0,
     run.cost || 0,
     run.markdownSummary || null,
+    run.outcome || run.result?.outcome || 'unknown',
+    run.attentionRequired || run.result?.attentionRequired ? 1 : 0,
+    resultJson,
     filesJson,
     run.diffs || null,
     toolsJson,

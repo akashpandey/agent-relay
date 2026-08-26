@@ -1,0 +1,21 @@
+#!/usr/bin/env sh
+set -eu
+
+compose_dir="${SUBAGENT_DOCKER_DIR:-$HOME/docker/local-subagents}"
+service="${SUBAGENT_DOCKER_SERVICE:-subagent-dashboard}"
+log_file="$compose_dir/restart.log"
+lock_dir="$compose_dir/restart.lock"
+
+if ! mkdir "$lock_dir" 2>/dev/null; then
+  printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ) restart already running" >> "$log_file"
+  exit 0
+fi
+trap 'rmdir "$lock_dir" 2>/dev/null || true' EXIT HUP INT TERM
+
+{
+  printf '\n%s\n' "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) local-subagents dashboard restart ==="
+  cd "$compose_dir"
+  docker compose stop "$service" || true
+  docker compose build "$service"
+  docker compose up -d --force-recreate "$service"
+} >> "$log_file" 2>&1

@@ -107,6 +107,8 @@ Rules:
 - Run all commands in non-interactive batch mode (e.g. use 'npx -y', avoid interactive stdin/prompts).
 - Do not put deliverables in Antigravity scratch.
 - After editing, summarize changed files and verification commands.
+- End your final response with a JSON object containing: outcome (done|partial|blocked|failed), summary, changedFiles, verification, blockers, incomplete, nextSteps.
+- Use outcome=done only when the requested task is complete and verification passed or was explicitly unnecessary.
 
 Task:
 $user_prompt"

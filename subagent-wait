@@ -64,8 +64,10 @@ for target in "$@"; do
 
   # Check for .done sentinel or log metadata
   done_file="${log_path%.log}.done"
-  if [ -f "$done_file" ]; then
-    cat "$done_file"
+  if command -v node >/dev/null 2>&1 && node "$repo_dir/scripts/subagent-result.js" "$log_path"; then
+    :
+  elif [ -f "$done_file" ]; then
+    sed -n '1,200p' "$done_file"
   elif [ -n "$log_path" ] && [ -f "$log_path" ]; then
     echo "=== Subagent Run Finished: $(basename "$log_path") ==="
     tail -n 15 "$log_path"

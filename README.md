@@ -294,6 +294,22 @@ Environment variables:
 - `SUBAGENT_SESSION` - optional OpenCode session ID to resume
 - `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/local-subagents/logs`
 
+Every subagent final answer is asked to end with a JSON task outcome contract:
+
+```json
+{
+  "outcome": "done|partial|blocked|failed",
+  "summary": "...",
+  "changedFiles": [],
+  "verification": [],
+  "blockers": [],
+  "incomplete": [],
+  "nextSteps": []
+}
+```
+
+`status=completed` only means the wrapper process finished. Automation should accept delegated work only when `outcome=done` and `attentionRequired=false` from `subagent-wait` or `/api/runs/<log>/result`.
+
 Behavior:
 
 - runs `opencode run --dir "$PWD" --auto`

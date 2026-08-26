@@ -26,7 +26,7 @@ antigravity-subagent "Task prompt..."
 # Claude Code (Sonnet / Opus / Haiku)
 claude-subagent "Task prompt..."
 
-# OpenAI Codex (GPT-5.5 / GPT-4o)
+# OpenAI Codex (GPT-5.6 family)
 codex-subagent "Task prompt..."
 ```
 
@@ -82,21 +82,42 @@ When calling a subagent from an agentic runtime (Antigravity, Claude Code, Codex
 When orchestrating multi-agent parallel pipelines:
 ```sh
 # Launch multiple subagents in parallel
-log1=$(opencode-subagent "Refactor service A" &)
-log2=$(antigravity-subagent "Refactor service B" &)
+opencode-subagent "Refactor service A" &
+antigravity-subagent "Refactor service B" &
 
 # Block until all finish with ZERO CPU/network polling
 subagent-wait --last
-# or
-subagent-wait "$log1" "$log2"
 ```
 *Uses Linux kernel process monitors (`tail --pid` / `inotify`) and immediately outputs the structured JSON result upon completion.*
 
 ### Pattern C: Structured API Result Retrieval
 Once notified of completion:
 ```sh
-curl -s "http://localhost:4242/api/runs/<log-filename>" | jq '{status, filesModified, cost, markdownSummary, toolCalls}'
+subagent-wait <log-filename>
 ```
+
+`subagent-wait` returns the caller contract as JSON. Treat `processStatus=completed` as wrapper success only. Treat the delegated task as accepted only when `outcome=done` and `attentionRequired=false`. Always surface `blockers`, `incomplete`, and failed/skipped `verification` to the user instead of hiding them in a summary.
+
+Caller contract:
+```json
+{
+  "processStatus": "running|completed|failed|empty",
+  "outcome": "done|partial|blocked|failed|unknown",
+  "attentionRequired": true,
+  "blockers": [],
+  "incomplete": [],
+  "verification": [],
+  "changedFiles": [],
+  "nextSteps": [],
+  "summary": "",
+  "logFile": "",
+  "sessionId": ""
+}
+```
+
+If `outcome` is `partial`, `blocked`, `failed`, or `unknown`, do not mark the parent task complete. Continue with a follow-up subagent prompt, fix the issue directly, or report the blocker to the user.
+
+For direct dashboard access, use `GET /api/runs/<log-filename>/result` for the compact result contract or `GET /api/runs/<log-filename>` for full metadata.
 
 Dashboard note: Live Terminal is optimized for large logs. It initially shows the latest log tail and keeps a bounded rendered window while continuing to stream new output; use `Load Older`, full-log search, the log download, or `/api/logs/<log-filename>` when more history or the exact full raw log is required. Rebuild the derived SQLite cache with `npm --prefix dashboard run rebuild` if it gets stale.
 
@@ -132,11 +153,9 @@ OPENCODE_MODEL_CHAIN='zai-coding-plan/glm-5.3,openai/gpt-5.4-mini,opencode-go/qw
 
 If a subagent is runaway, stuck, or orphaned:
 ```sh
-# Kill a specific subagent process tree:
-curl -X POST "http://localhost:4242/api/runs/<log-filename>/kill"
-
-# Kill all orphaned/dangling subagents:
-curl -X POST "http://localhost:4242/api/dangling/kill-all"
+# Kill through the dashboard UI or POST these local API endpoints:
+http://localhost:4242/api/runs/<log-filename>/kill
+http://localhost:4242/api/dangling/kill-all
 ```
 
 ---
@@ -149,3 +168,4 @@ curl -X POST "http://localhost:4242/api/dangling/kill-all"
 4. **Keep tasks bounded**: One bug trace, one refactor, one test implementation, or one code review per turn.
 5. **Parallel execution safety**: When running multiple write-capable subagents simultaneously, execute them in separate `git worktree` directories to prevent file write collisions.
 6. **Verify deliverables**: Inspect the generated git diff or test results locally after a subagent reports completion before accepting changes.
+7. **Never trust process status alone**: `status` / `processStatus` says whether the wrapper exited. `outcome` says whether the task is actually done.

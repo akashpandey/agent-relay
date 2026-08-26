@@ -880,6 +880,81 @@ function extractFilesAndDiffs(rawContent) {
   };
 }
 
+function parseOutcomeJson(text) {
+  if (!text || !text.includes('outcome')) return null;
+  const candidates = [];
+  const fenced = text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi);
+  for (const m of fenced) candidates.push(m[1]);
+
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== '{') continue;
+    let depth = 0;
+    for (let j = i; j < text.length; j++) {
+      if (text[j] === '{') depth++;
+      if (text[j] === '}') depth--;
+      if (depth === 0) {
+        const chunk = text.slice(i, j + 1);
+        if (chunk.includes('outcome')) candidates.push(chunk);
+        break;
+      }
+    }
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate.trim());
+      if (parsed && typeof parsed === 'object' && parsed.outcome) return parsed;
+    } catch {}
+  }
+  return null;
+}
+
+function asStringArray(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.map(v => typeof v === 'string' ? v : JSON.stringify(v)).filter(Boolean);
+  return [String(value)];
+}
+
+export function extractStructuredOutcome(markdownSummary, tailContent = '', processStatus = 'completed') {
+  const text = [markdownSummary, tailContent].filter(Boolean).join('\n');
+  const lower = text.toLowerCase();
+  const explicit = parseOutcomeJson(text);
+  const allowed = new Set(['done', 'partial', 'blocked', 'failed', 'unknown']);
+
+  if (explicit) {
+    const outcome = allowed.has(String(explicit.outcome).toLowerCase()) ? String(explicit.outcome).toLowerCase() : 'unknown';
+    const blockers = asStringArray(explicit.blockers);
+    const incomplete = asStringArray(explicit.incomplete);
+    const verification = asStringArray(explicit.verification);
+    return {
+      outcome,
+      summary: explicit.summary || '',
+      changedFiles: asStringArray(explicit.changedFiles),
+      verification,
+      blockers,
+      incomplete,
+      nextSteps: asStringArray(explicit.nextSteps),
+      attentionRequired: outcome !== 'done' || blockers.length > 0 || incomplete.length > 0 || verification.some(v => /fail|skip|not run|unable/i.test(v)),
+    };
+  }
+
+  let outcome = processStatus === 'failed' ? 'failed' : 'unknown';
+  if (/\b(blocked|blocker|cannot proceed|can't proceed|unable to continue)\b/i.test(text)) outcome = 'blocked';
+  else if (/\b(partial|partially|not done|incomplete|remaining|todo|could not|unable to|skipped)\b/i.test(text)) outcome = 'partial';
+  else if (processStatus === 'completed' && lower && !/\b(error|failed|blocked|incomplete|not done|remaining|todo|skipped)\b/i.test(text)) outcome = 'done';
+
+  return {
+    outcome,
+    summary: markdownSummary || '',
+    changedFiles: [],
+    verification: [],
+    blockers: outcome === 'blocked' ? ['See markdownSummary/log for blocker details.'] : [],
+    incomplete: outcome === 'partial' ? ['See markdownSummary/log for incomplete items.'] : [],
+    nextSteps: [],
+    attentionRequired: outcome !== 'done',
+  };
+}
+
 /**
  * Parse metadata from a single log file
  */
@@ -1008,8 +1083,10 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
     if (!session && headerMatch[4].trim() !== 'new') session = headerMatch[4].trim();
   }
 
+  const canEnrich = !isAlive && doneMeta;
+
   // If Antigravity provider, resolve transcript for workspace, model, prompt, summary, and tool calls
-  if (parsedName.provider === 'antigravity') {
+  if (canEnrich && parsedName.provider === 'antigravity') {
     const agyMatch = findAntigravityTranscript(session, parsedName.startTime, workspace);
     if (agyMatch) {
       if (!workspace || workspace === 'Unknown') workspace = agyMatch.workspace;
@@ -1026,7 +1103,7 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
   }
 
   // If Claude provider, check Claude history, tokens, cost, summary, and tool calls
-  if (parsedName.provider === 'claude') {
+  if (canEnrich && parsedName.provider === 'claude') {
     const claudeMatch = getClaudeSessionDetails(session, parsedName.startTime, workspace);
     if (claudeMatch) {
       if (!workspace || workspace === 'Unknown') workspace = claudeMatch.workspace;
@@ -1042,7 +1119,7 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
   }
 
   // If OpenCode provider, query SQLite for tokens, cost, diffs, prompt, summary, files, and tool calls
-  if (parsedName.provider === 'opencode' && session) {
+  if (canEnrich && parsedName.provider === 'opencode' && session) {
     const opencodeDetails = getOpenCodeSessionDetails(session);
     if (opencodeDetails) {
       if (!task && opencodeDetails.task) task = opencodeDetails.task;
@@ -1056,7 +1133,7 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
   }
 
   // If Codex provider, query state_5.sqlite for tokens, cost, prompt, tool calls, and summary
-  if (parsedName.provider === 'codex') {
+  if (canEnrich && parsedName.provider === 'codex') {
     const codexDetails = getCodexSessionDetails(session, parsedName.startTime, workspace);
     if (codexDetails) {
       if (!workspace || workspace === 'Unknown') workspace = codexDetails.workspace;
@@ -1189,6 +1266,8 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
     status = 'completed';
   }
 
+  const result = extractStructuredOutcome(markdownSummary, tailContent, status);
+
   // Accurate Duration Calculation (IST epoch vs mtime epoch)
   const startTimeMs = new Date(parsedName.startTime).getTime();
   const endTimeMs = isAlive ? Date.now() : stats.mtimeMs;
@@ -1233,6 +1312,9 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
     task: task ? (task.length > 300 ? task.slice(0, 300) + '...' : task) : 'No task prompt specified',
     fullTask: task || '',
     markdownSummary: markdownSummary || null,
+    outcome: result.outcome,
+    attentionRequired: result.attentionRequired,
+    result,
     filesModified: filesModified || [],
     diffs: diffs || null,
     toolCalls: toolCalls || [],

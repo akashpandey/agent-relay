@@ -6,6 +6,7 @@ RUN apk add --no-cache tzdata procps sqlite
 ENV TZ=Asia/Kolkata
 ENV PORT=4242
 ENV HOST=0.0.0.0
+ENV NODE_ENV=production
 ENV LOGS_DIR=/app/logs
 ENV PROC_DIR=/proc
 ENV OPENCODE_DB=/opencode_data/opencode.db

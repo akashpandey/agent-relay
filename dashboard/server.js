@@ -390,6 +390,41 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // GET /api/runs/:filename/result
+  if (pathname.startsWith('/api/runs/') && pathname.endsWith('/result') && req.method === 'GET') {
+    const filename = decodeURIComponent(pathname.replace('/api/runs/', '').replace('/result', ''));
+    const safeFile = path.basename(filename);
+    syncLogFile(safeFile, { force: true });
+    const run = getRun(safeFile);
+
+    if (!run) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Log file not found' }));
+      return;
+    }
+
+    const result = run.result || null;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      filename: run.filename,
+      processStatus: run.status,
+      exitCode: run.exitCode,
+      outcome: run.outcome || result?.outcome || 'unknown',
+      attentionRequired: Boolean(run.attentionRequired || result?.attentionRequired),
+      blockers: result?.blockers || [],
+      incomplete: result?.incomplete || [],
+      verification: result?.verification || [],
+      changedFiles: result?.changedFiles?.length ? result.changedFiles : (run.filesModified || []),
+      nextSteps: result?.nextSteps || [],
+      summary: result?.summary || run.markdownSummary || '',
+      logFile: path.join(LOGS_DIR, safeFile),
+      sessionId: run.sessionId || run.session || null,
+      provider: run.provider,
+      model: run.model,
+    }));
+    return;
+  }
+
   // GET /api/runs/:filename
   if (pathname.startsWith('/api/runs/') && !pathname.endsWith('/kill') && req.method === 'GET') {
     const filename = decodeURIComponent(pathname.replace('/api/runs/', ''));

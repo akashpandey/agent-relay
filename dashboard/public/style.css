@@ -1158,6 +1158,10 @@ kbd {
 .status-running { background-color: var(--accent-glow); color: var(--accent); }
 .status-completed { background-color: var(--success-bg); color: var(--success); }
 .status-failed { background-color: var(--danger-bg); color: var(--danger); }
+.status-blocked { background-color: var(--danger-bg); color: var(--danger); }
+.status-partial { background-color: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.status-done { background-color: var(--success-bg); color: var(--success); }
+.status-unknown { background-color: var(--bg-muted); color: var(--text-dim); }
 .status-empty { background-color: var(--bg-muted); color: var(--text-dim); }
 
 .task-preview-cell {

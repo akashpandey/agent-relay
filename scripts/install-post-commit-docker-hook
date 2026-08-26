@@ -1,0 +1,20 @@
+#!/usr/bin/env sh
+set -eu
+
+repo_dir="$(git rev-parse --show-toplevel)"
+hook="$repo_dir/.git/hooks/post-commit"
+restart_script="$repo_dir/scripts/restart-dashboard"
+
+mkdir -p "$(dirname "$hook")"
+cat > "$hook" <<HOOK
+#!/usr/bin/env sh
+set -eu
+
+[ "\${SUBAGENT_DOCKER_AUTO_RESTART:-1}" = "1" ] || exit 0
+
+( "$restart_script" ) >/dev/null 2>&1 &
+echo "local-subagents dashboard restart queued"
+HOOK
+
+chmod +x "$hook"
+printf 'installed %s\n' "$hook"
