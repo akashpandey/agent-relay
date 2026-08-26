@@ -139,6 +139,12 @@ session across parallel workers or unrelated tasks; context and file intent
 will mix. Copy the provider ID from its run output or session list; every
 wrapper also keeps the full run log under `SUBAGENT_LOG_DIR`.
 
+The compact result from `subagent-wait` and `/api/runs/<log>/result` includes a
+`continuation` object when a session ID is available. Use
+`continuation.sameSessionCommand` when the same subagent should fix its own
+issue or continue a closely related task. Use a fresh session for unrelated work
+or parallel workers.
+
 ## Model catalogues
 
 These are the model IDs available on this host when checked on 2026-08-02.

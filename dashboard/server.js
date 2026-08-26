@@ -404,6 +404,14 @@ const server = http.createServer(async (req, res) => {
     }
 
     const result = run.result || null;
+    const sessionId = run.sessionId || run.session || null;
+    const bin = `${run.provider}-subagent`;
+    const continuation = sessionId && sessionId !== 'new' ? {
+      sessionId,
+      sameSessionCommand: `${bin} --resume ${JSON.stringify(sessionId)} "<follow-up task>"`,
+      continueLastCommand: `${bin} --continue "<follow-up task>"`,
+      env: { SUBAGENT_SESSION: sessionId },
+    } : null;
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       filename: run.filename,
@@ -418,7 +426,8 @@ const server = http.createServer(async (req, res) => {
       nextSteps: result?.nextSteps || [],
       summary: result?.summary || run.markdownSummary || '',
       logFile: path.join(LOGS_DIR, safeFile),
-      sessionId: run.sessionId || run.session || null,
+      sessionId,
+      continuation,
       provider: run.provider,
       model: run.model,
     }));

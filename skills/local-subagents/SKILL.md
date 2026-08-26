@@ -39,6 +39,8 @@ printf '%s\n' "$DETAILED_TASK" | opencode-subagent
 
 Avoid spawning a fresh session when a task is a continuation or follow-up. Reusing sessions preserves the conversation context, loaded files, and reasoning history:
 
+Use the same provider session when the previous subagent created an issue, returned `partial`/`blocked`, or the follow-up depends on files, reasoning, or decisions from that run. Prefer a fresh session for unrelated tasks, parallel workers, or when prior context could bias the answer.
+
 ### 1. Continue the Most Recent Session in Workspace
 Use the `--continue` (or `-c`) flag:
 ```sh
@@ -115,11 +117,19 @@ Caller contract:
   "nextSteps": [],
   "summary": "",
   "logFile": "",
-  "sessionId": ""
+  "sessionId": "",
+  "continuation": {
+    "sessionId": "",
+    "sameSessionCommand": "opencode-subagent --resume <session> \"<follow-up task>\"",
+    "continueLastCommand": "opencode-subagent --continue \"<follow-up task>\"",
+    "env": { "SUBAGENT_SESSION": "" }
+  }
 }
 ```
 
 If `outcome` is `partial`, `blocked`, `failed`, or `unknown`, do not mark the parent task complete. Continue with a follow-up subagent prompt, fix the issue directly, or report the blocker to the user.
+
+If the original subagent caused a defect and the compact result includes `continuation`, prefer `continuation.sameSessionCommand` so the same agent can repair its own work with full context. Include the exact issue, failing check, and acceptance condition in the follow-up prompt.
 
 For direct dashboard access, use `GET /api/runs/<log-filename>/result` for the compact result contract or `GET /api/runs/<log-filename>` for full metadata.
 
@@ -176,3 +186,4 @@ http://localhost:4242/api/dangling/kill-all
 6. **Verify deliverables**: Inspect the generated git diff or test results locally after a subagent reports completion before accepting changes.
 7. **Never trust process status alone**: `status` / `processStatus` says whether the wrapper exited. `outcome` says whether the task is actually done.
 8. **Never tail logs for acceptance**: Call `subagent-wait` or `/api/runs/<log>/result`; only inspect logs when debugging a failed, blocked, partial, or unknown outcome.
+9. **Reuse sessions deliberately**: Use `continuation.sameSessionCommand` for fixes to the same task or closely related follow-ups. Do not reuse one session across unrelated tasks or parallel workers.

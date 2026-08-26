@@ -35,6 +35,14 @@ if (!run) {
 }
 
 const result = run.result || null;
+const sessionId = run.sessionId || run.session || null;
+const bin = `${run.provider}-subagent`;
+const continuation = sessionId && sessionId !== 'new' ? {
+  sessionId,
+  sameSessionCommand: `${bin} --resume ${JSON.stringify(sessionId)} "<follow-up task>"`,
+  continueLastCommand: `${bin} --continue "<follow-up task>"`,
+  env: { SUBAGENT_SESSION: sessionId },
+} : null;
 console.log(JSON.stringify({
   filename: run.filename,
   processStatus: run.status,
@@ -48,7 +56,8 @@ console.log(JSON.stringify({
   nextSteps: result?.nextSteps || [],
   summary: result?.summary || run.markdownSummary || '',
   logFile: logFile,
-  sessionId: run.sessionId || run.session || null,
+  sessionId,
+  continuation,
   provider: run.provider,
   model: run.model,
 }, null, 2));
