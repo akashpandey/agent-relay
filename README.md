@@ -301,14 +301,20 @@ Every subagent final answer is asked to end with a JSON task outcome contract:
   "outcome": "done|partial|blocked|failed",
   "summary": "...",
   "changedFiles": [],
-  "verification": [],
+  "verification": [
+    { "command": "pnpm test", "status": "passed|failed|skipped", "reason": "" }
+  ],
   "blockers": [],
   "incomplete": [],
   "nextSteps": []
 }
 ```
 
+The JSON object must be the final non-whitespace output.
+
 `status=completed` only means the wrapper process finished. Automation should accept delegated work only when `outcome=done` and `attentionRequired=false` from `subagent-wait` or `/api/runs/<log>/result`.
+
+Do not tail logs to determine task completeness. Logs are diagnostic output; `subagent-wait` and `/api/runs/<log>/result` are the machine-readable acceptance surfaces.
 
 Behavior:
 
@@ -316,8 +322,8 @@ Behavior:
 - enables `--print-logs` by default
 - prints a startup banner (including the run log path) so hung runs are easier to identify
 - tees combined stdout+stderr to a timestamped file under `SUBAGENT_LOG_DIR`
-  (default `~/local-subagents/logs/`), so `tail -f` on that path shows the run live
-  when it's backgrounded
+  (default `~/local-subagents/logs/`) for diagnostics when a structured result
+  reports a blocker or failure
 - preserves the underlying command's real exit code even though output goes
   through `tee`
 

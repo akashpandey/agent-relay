@@ -14,7 +14,9 @@ Usage:
 
 Description:
   Waits for one or more background local subagents to complete using zero-polling
-  OS process monitors. Unblocks immediately upon process exit and outputs summary.
+  OS process monitors. Unblocks immediately upon process exit and outputs the
+  structured task result JSON. Use this for completeness checks instead of
+  tailing logs.
 
 Examples:
   subagent-wait --last

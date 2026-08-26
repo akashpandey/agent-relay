@@ -70,6 +70,8 @@ SUBAGENT_SESSION="session-abc-123" antigravity-subagent "Next step prompt..."
 
 Avoid busy polling loops (`while sleep 5; check status`) which waste tokens, context window, and CPU. Use one of these **zero-polling** patterns:
 
+Completeness rule: Never tail or manually read run logs to decide whether delegated work is complete. Use `subagent-wait <log-filename>` or `GET /api/runs/<log-filename>/result`. Logs are for debugging only after the structured result says `attentionRequired=true` or the result API is unavailable.
+
 ### Pattern A: AI Agent Native Reactive Wake-Up (Recommended for AI Assistants)
 When calling a subagent from an agentic runtime (Antigravity, Claude Code, Codex):
 1. Launch the command directly (or as a background task):
@@ -106,7 +108,9 @@ Caller contract:
   "attentionRequired": true,
   "blockers": [],
   "incomplete": [],
-  "verification": [],
+  "verification": [
+    { "command": "pnpm test", "status": "passed|failed|skipped", "reason": "" }
+  ],
   "changedFiles": [],
   "nextSteps": [],
   "summary": "",
@@ -120,6 +124,8 @@ If `outcome` is `partial`, `blocked`, `failed`, or `unknown`, do not mark the pa
 For direct dashboard access, use `GET /api/runs/<log-filename>/result` for the compact result contract or `GET /api/runs/<log-filename>` for full metadata.
 
 Dashboard note: Live Terminal is optimized for large logs. It initially shows the latest log tail and keeps a bounded rendered window while continuing to stream new output; use `Load Older`, full-log search, the log download, or `/api/logs/<log-filename>` when more history or the exact full raw log is required. Rebuild the derived SQLite cache with `npm --prefix dashboard run rebuild` if it gets stale.
+
+Do not use `/api/logs/<log-filename>`, `tail`, or the Live Terminal as the normal completion check. They are diagnostic surfaces, not the task result contract.
 
 ---
 
@@ -169,3 +175,4 @@ http://localhost:4242/api/dangling/kill-all
 5. **Parallel execution safety**: When running multiple write-capable subagents simultaneously, execute them in separate `git worktree` directories to prevent file write collisions.
 6. **Verify deliverables**: Inspect the generated git diff or test results locally after a subagent reports completion before accepting changes.
 7. **Never trust process status alone**: `status` / `processStatus` says whether the wrapper exited. `outcome` says whether the task is actually done.
+8. **Never tail logs for acceptance**: Call `subagent-wait` or `/api/runs/<log>/result`; only inspect logs when debugging a failed, blocked, partial, or unknown outcome.

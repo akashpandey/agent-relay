@@ -915,6 +915,27 @@ function asStringArray(value) {
   return [String(value)];
 }
 
+function asVerificationArray(value) {
+  if (!value) return [];
+  const items = Array.isArray(value) ? value : [value];
+  return items.map(v => {
+    if (v && typeof v === 'object') {
+      return {
+        command: String(v.command || v.check || v.name || '').trim(),
+        status: String(v.status || 'unknown').toLowerCase(),
+        reason: v.reason ? String(v.reason) : '',
+      };
+    }
+    return { command: String(v), status: 'unknown', reason: '' };
+  }).filter(v => v.command || v.status !== 'unknown' || v.reason);
+}
+
+function verificationNeedsAttention(item) {
+  if (!item) return false;
+  if (typeof item === 'string') return /fail|skip|not run|unable/i.test(item);
+  return /failed|skipped|unknown/.test(String(item.status || '').toLowerCase());
+}
+
 export function extractStructuredOutcome(markdownSummary, tailContent = '', processStatus = 'completed') {
   const text = [markdownSummary, tailContent].filter(Boolean).join('\n');
   const lower = text.toLowerCase();
@@ -925,7 +946,7 @@ export function extractStructuredOutcome(markdownSummary, tailContent = '', proc
     const outcome = allowed.has(String(explicit.outcome).toLowerCase()) ? String(explicit.outcome).toLowerCase() : 'unknown';
     const blockers = asStringArray(explicit.blockers);
     const incomplete = asStringArray(explicit.incomplete);
-    const verification = asStringArray(explicit.verification);
+    const verification = asVerificationArray(explicit.verification);
     return {
       outcome,
       summary: explicit.summary || '',
@@ -934,7 +955,7 @@ export function extractStructuredOutcome(markdownSummary, tailContent = '', proc
       blockers,
       incomplete,
       nextSteps: asStringArray(explicit.nextSteps),
-      attentionRequired: outcome !== 'done' || blockers.length > 0 || incomplete.length > 0 || verification.some(v => /fail|skip|not run|unable/i.test(v)),
+      attentionRequired: outcome !== 'done' || blockers.length > 0 || incomplete.length > 0 || verification.some(verificationNeedsAttention),
     };
   }
 
