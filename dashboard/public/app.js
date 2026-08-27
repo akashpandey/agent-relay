@@ -522,28 +522,30 @@ function renderHistoryTable() {
     const outcomeClass = `status-${outcome.toLowerCase()}`;
     const workspaceName = run.workspaceName || run.workspace || 'workspace';
 
-    const tokenDisplay = run.tokens && run.tokens.total ? `${formatNumber(run.tokens.total)} tok` : run.fileSizeHuman;
+    const tokenDisplay = run.tokens && run.tokens.total ? `${formatNumber(run.tokens.total)} tok` : (run.fileSizeHuman || '0 B');
+    const timeObj = formatTableTime(run.startTimeIST || run.startTime);
 
     tr.innerHTML = `
       <td class="col-time">
-        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-          <span style="font-family: var(--font-mono); font-size: 0.75rem; white-space: nowrap;">${formatISTTime(run.startTimeIST || run.startTime)}</span>
-          <div style="display: flex; gap: 0.25rem; flex-wrap: wrap;">
+        <div style="display: flex; flex-direction: column; gap: 0.15rem;">
+          <span style="font-family: var(--font-mono); font-size: 0.75rem; font-weight: 600; color: var(--text-main); line-height: 1.2;">${escapeHtml(timeObj.time)}</span>
+          <span style="font-size: 0.675rem; color: var(--text-dim); line-height: 1.2;">${escapeHtml(timeObj.date)}</span>
+          <div style="display: flex; gap: 0.25rem; flex-wrap: wrap; margin-top: 0.15rem;">
             <span class="status-pill ${statusClass}">${escapeHtml(run.status)}</span>
             ${run.status === 'completed' ? `<span class="status-pill ${outcomeClass}">${escapeHtml(outcome)}</span>` : ''}
           </div>
         </div>
       </td>
       <td class="col-provider">
-        <div style="display: flex; flex-direction: column; gap: 0.25rem; align-items: flex-start;">
+        <div style="display: flex; flex-direction: column; gap: 0.25rem; align-items: flex-start; max-width: 100%;">
           <span class="provider-pill ${providerClass}">${escapeHtml(run.provider)}</span>
-          <span class="model-badge" style="font-size: 0.7rem; max-width: 125px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(run.model)}">${escapeHtml(run.model)}</span>
+          <span class="model-badge" style="font-size: 0.7rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(run.model)}">${escapeHtml(run.model)}</span>
         </div>
       </td>
       <td class="col-workspace">
-        <div style="display: flex; flex-direction: column; overflow: hidden; max-width: 125px;">
+        <div style="display: flex; flex-direction: column; overflow: hidden; max-width: 100%;">
           <strong style="color: var(--text-main); font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(workspaceName)}">📁 ${escapeHtml(workspaceName)}</strong>
-          <span style="color: var(--text-dim); font-size: 0.7rem;">PID: ${run.pid}</span>
+          <span style="color: var(--text-dim); font-size: 0.7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">PID: ${run.pid}</span>
         </div>
       </td>
       <td class="col-task">
@@ -557,7 +559,7 @@ function renderHistoryTable() {
       <td class="col-tokens">
         <span style="font-family: var(--font-mono); color: var(--text-dim); font-size: 0.75rem; white-space: nowrap;">${tokenDisplay}</span>
       </td>
-      <td class="col-action" style="text-align: right;">
+      <td class="col-action">
         <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.35rem; white-space: nowrap;">
           <button class="btn btn-sm btn-secondary btn-row-cli" title="Copy CLI Command">CLI</button>
           <button class="btn btn-sm btn-secondary btn-row-inspect">Inspect</button>
@@ -1172,6 +1174,35 @@ function closeShortcutsModal() {
 }
 
 // --- Formatters & Parsers ---
+
+function formatTableTime(isoOrStr) {
+  if (!isoOrStr) return { date: '-', time: '' };
+  try {
+    const d = new Date(isoOrStr);
+    if (isNaN(d.getTime())) {
+      if (isoOrStr.includes(', ')) {
+        const [dPart, tPart] = isoOrStr.split(', ');
+        return { date: dPart, time: tPart };
+      }
+      return { date: isoOrStr, time: '' };
+    }
+    const date = d.toLocaleDateString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: 'numeric',
+      month: 'short'
+    });
+    const time = d.toLocaleTimeString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
+    });
+    return { date, time };
+  } catch {
+    return { date: isoOrStr, time: '' };
+  }
+}
 
 function formatISTTime(isoOrStr) {
   if (!isoOrStr) return '-';

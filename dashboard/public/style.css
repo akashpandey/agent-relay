@@ -1099,7 +1099,7 @@ kbd {
 
 .history-table {
   width: 100%;
-  min-width: 820px;
+  min-width: 1050px;
   border-collapse: collapse;
   text-align: left;
   font-size: 0.825rem;
@@ -1112,16 +1112,17 @@ kbd {
   font-weight: 600;
   font-size: 0.75rem;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 0.75rem 0.75rem;
+  letter-spacing: 0.04em;
+  padding: 0.8rem 0.65rem;
   border-bottom: 1px solid var(--border-subtle);
   white-space: nowrap;
 }
 
 .history-table td {
-  padding: 0.75rem 0.75rem;
+  padding: 0.8rem 0.65rem;
   border-bottom: 1px solid var(--border-subtle);
   vertical-align: middle;
+  overflow: hidden;
 }
 
 .history-table tr {
@@ -1138,44 +1139,47 @@ kbd {
   outline: 1px solid var(--accent);
 }
 
-/* History Table Column Definitions */
+/* History Table Column Width Allocations */
 .history-table .col-time {
-  width: 150px;
+  width: 165px;
 }
 
 .history-table .col-provider {
-  width: 135px;
+  width: 165px;
 }
 
 .history-table .col-workspace {
-  width: 130px;
+  width: 155px;
 }
 
 .history-table .col-task {
   width: auto;
+  min-width: 250px;
 }
 
 .history-table .col-duration {
-  width: 80px;
+  width: 100px;
+  text-align: center;
 }
 
 .history-table .col-tokens {
-  width: 85px;
+  width: 110px;
+  text-align: right;
 }
 
 .history-table .col-action {
-  width: 115px;
+  width: 135px;
   text-align: right;
 }
 
 /* Compact Table Mode */
 .history-table.compact-mode td {
-  padding: 0.45rem 0.75rem;
+  padding: 0.5rem 0.85rem;
   font-size: 0.775rem;
 }
 
 .history-table.compact-mode th {
-  padding: 0.5rem 0.75rem;
+  padding: 0.55rem 0.85rem;
 }
 
 .status-pill {
