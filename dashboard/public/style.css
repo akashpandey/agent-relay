@@ -1093,14 +1093,17 @@ kbd {
   background-color: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
-  overflow: hidden;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .history-table {
   width: 100%;
+  min-width: 820px;
   border-collapse: collapse;
   text-align: left;
   font-size: 0.825rem;
+  table-layout: fixed;
 }
 
 .history-table th {
@@ -1110,12 +1113,13 @@ kbd {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  padding: 0.75rem 1rem;
+  padding: 0.75rem 0.75rem;
   border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
 }
 
 .history-table td {
-  padding: 0.85rem 1rem;
+  padding: 0.75rem 0.75rem;
   border-bottom: 1px solid var(--border-subtle);
   vertical-align: middle;
 }
@@ -1134,14 +1138,44 @@ kbd {
   outline: 1px solid var(--accent);
 }
 
+/* History Table Column Definitions */
+.history-table .col-time {
+  width: 150px;
+}
+
+.history-table .col-provider {
+  width: 135px;
+}
+
+.history-table .col-workspace {
+  width: 130px;
+}
+
+.history-table .col-task {
+  width: auto;
+}
+
+.history-table .col-duration {
+  width: 80px;
+}
+
+.history-table .col-tokens {
+  width: 85px;
+}
+
+.history-table .col-action {
+  width: 115px;
+  text-align: right;
+}
+
 /* Compact Table Mode */
 .history-table.compact-mode td {
-  padding: 0.45rem 0.85rem;
+  padding: 0.45rem 0.75rem;
   font-size: 0.775rem;
 }
 
 .history-table.compact-mode th {
-  padding: 0.5rem 0.85rem;
+  padding: 0.5rem 0.75rem;
 }
 
 .status-pill {
@@ -1165,11 +1199,21 @@ kbd {
 .status-empty { background-color: var(--bg-muted); color: var(--text-dim); }
 
 .task-preview-cell {
-  max-width: 420px;
+  max-width: 100%;
+  color: var(--text-main);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-main);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.history-table.compact-mode .task-preview-cell {
+  -webkit-line-clamp: 1;
 }
 
 .pagination-bar {

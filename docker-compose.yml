@@ -29,6 +29,7 @@ services:
     volumes:
       - /home/akey/Code/local-subagents/data:/app/data
       - /home/akey/Code/local-subagents/logs:/app/logs:ro
+      - /home/akey/Code/local-subagents/dashboard/public:/app/public:ro
       - /proc:/host_proc:ro
       - /home/akey/.local/share/opencode:/opencode_data:ro
       - /home/akey/.gemini/antigravity-cli/brain:/gemini_brain:ro

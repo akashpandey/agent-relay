@@ -525,40 +525,40 @@ function renderHistoryTable() {
     const tokenDisplay = run.tokens && run.tokens.total ? `${formatNumber(run.tokens.total)} tok` : run.fileSizeHuman;
 
     tr.innerHTML = `
-      <td>
-        <div style="display: flex; flex-direction: column; gap: 0.2rem;">
-          <span style="font-family: var(--font-mono); font-size: 0.75rem;">${formatISTTime(run.startTimeIST || run.startTime)}</span>
+      <td class="col-time">
+        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+          <span style="font-family: var(--font-mono); font-size: 0.75rem; white-space: nowrap;">${formatISTTime(run.startTimeIST || run.startTime)}</span>
           <div style="display: flex; gap: 0.25rem; flex-wrap: wrap;">
             <span class="status-pill ${statusClass}">${escapeHtml(run.status)}</span>
             ${run.status === 'completed' ? `<span class="status-pill ${outcomeClass}">${escapeHtml(outcome)}</span>` : ''}
           </div>
         </div>
       </td>
-      <td>
-        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-          <span class="provider-pill ${providerClass}" style="align-self: flex-start;">${escapeHtml(run.provider)}</span>
-          <span class="model-badge" style="font-size: 0.7rem;">${escapeHtml(run.model)}</span>
+      <td class="col-provider">
+        <div style="display: flex; flex-direction: column; gap: 0.25rem; align-items: flex-start;">
+          <span class="provider-pill ${providerClass}">${escapeHtml(run.provider)}</span>
+          <span class="model-badge" style="font-size: 0.7rem; max-width: 125px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(run.model)}">${escapeHtml(run.model)}</span>
         </div>
       </td>
-      <td>
-        <div style="display: flex; flex-direction: column;">
-          <strong style="color: var(--text-main); font-size: 0.8rem;">📁 ${escapeHtml(workspaceName)}</strong>
+      <td class="col-workspace">
+        <div style="display: flex; flex-direction: column; overflow: hidden; max-width: 125px;">
+          <strong style="color: var(--text-main); font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(workspaceName)}">📁 ${escapeHtml(workspaceName)}</strong>
           <span style="color: var(--text-dim); font-size: 0.7rem;">PID: ${run.pid}</span>
         </div>
       </td>
-      <td>
+      <td class="col-task">
         <div class="task-preview-cell" title="${escapeHtml(run.fullTask || run.task)}">
           ${escapeHtml(run.task || 'No task specified')}
         </div>
       </td>
-      <td>
-        <span style="font-family: var(--font-mono); font-weight: 600;">${run.durationHuman}</span>
+      <td class="col-duration">
+        <span style="font-family: var(--font-mono); font-weight: 600; white-space: nowrap;">${run.durationHuman}</span>
       </td>
-      <td>
-        <span style="font-family: var(--font-mono); color: var(--text-dim); font-size: 0.75rem;">${tokenDisplay}</span>
+      <td class="col-tokens">
+        <span style="font-family: var(--font-mono); color: var(--text-dim); font-size: 0.75rem; white-space: nowrap;">${tokenDisplay}</span>
       </td>
-      <td style="text-align: right;">
-        <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.35rem;">
+      <td class="col-action" style="text-align: right;">
+        <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.35rem; white-space: nowrap;">
           <button class="btn btn-sm btn-secondary btn-row-cli" title="Copy CLI Command">CLI</button>
           <button class="btn btn-sm btn-secondary btn-row-inspect">Inspect</button>
         </div>
