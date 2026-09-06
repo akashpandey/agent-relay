@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { registerRunStart, registerRunComplete } from '../dashboard/db.js';
 
-const action = process.argv[2];
+const [action, ...args] = process.argv.slice(2);
 
 if (action === 'start') {
-  const [,, filename, pid, provider, model, workspace, session, ...taskParts] = process.argv;
+  const [filename, pid, provider, model, workspace, session, ...taskParts] = args;
   registerRunStart({
     filename,
     pid: parseInt(pid, 10) || null,
@@ -15,7 +15,7 @@ if (action === 'start') {
     task: taskParts.join(' ')
   });
 } else if (action === 'complete') {
-  const [,, filename, exitCode, sessionId, durationSec] = process.argv;
+  const [filename, exitCode, sessionId, durationSec] = args;
   registerRunComplete({
     filename,
     exitCode: parseInt(exitCode, 10),

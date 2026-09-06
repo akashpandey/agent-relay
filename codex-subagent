@@ -29,7 +29,10 @@ Usage:
   codex-subagent --models
 
 Environment:
-  CODEX_MODEL      Optional model selector.
+  CODEX_MODEL      Model selector or family alias:
+                   - 'latest' / 'sol' / 'gpt-sol': newest GPT-5.6 Sol
+                   - 'terra' / 'gpt-terra': GPT-5.6 Terra
+                   - 'luna' / 'gpt-luna': GPT-5.6 Luna
   CODEX_EFFORT     Optional effort: low, medium, high, xhigh, max, or ultra.
   CODEX_SANDBOX    Sandbox mode. Default: workspace-write, or danger-full-access
                    when this host cannot create Bubblewrap user namespaces.
@@ -39,8 +42,8 @@ Environment:
   SUBAGENT_LOG_DIR Where wrapper run logs are written. Default: ~/local-subagents/logs.
 
 Examples:
-  CODEX_MODEL='gpt-5.6-luna' codex-subagent "Fix the bug"
-  CODEX_MODEL='gpt-5.6-terra' CODEX_EFFORT='high' codex-subagent "Review this repo"
+  CODEX_MODEL='latest' codex-subagent "Fix the bug"
+  CODEX_MODEL='terra' CODEX_EFFORT='high' codex-subagent "Review this repo"
   CODEX_MODEL='gpt-5.6-sol' CODEX_EFFORT='max' codex-subagent "Implement TASK.md"
 
 Codex has no live model-list command. `codex-subagent --models` prints the
@@ -116,8 +119,10 @@ if command -v systemd-run >/dev/null 2>&1 && systemctl --user show-environment >
   use_systemd=1
 fi
 tail_pid=""
+watchdog_pid=""
 
 stop_subagent() {
+  [ -z "$watchdog_pid" ] || kill "$watchdog_pid" >/dev/null 2>&1 || true
   [ -z "$tail_pid" ] || kill "$tail_pid" >/dev/null 2>&1 || true
   if [ "$use_systemd" -eq 1 ]; then
     systemctl --user stop "$unit" >/dev/null 2>&1 || true
@@ -130,7 +135,35 @@ stop_subagent() {
 trap 'stop_subagent' EXIT
 trap 'stop_subagent; exit 143' HUP INT TERM
 
+resolve_codex_model() {
+  raw_model="${1:-}"
+  [ -z "$raw_model" ] && return 0
+
+  case "$(echo "$raw_model" | tr '[:upper:]' '[:lower:]')" in
+    latest|sol|gpt-sol|openai/sol|gpt-5.6-sol)
+      echo "gpt-5.6-sol"
+      ;;
+    terra|gpt-terra|gpt-5.6-terra)
+      echo "gpt-5.6-terra"
+      ;;
+    luna|gpt-luna|gpt-5.6-luna)
+      echo "gpt-5.6-luna"
+      ;;
+    *)
+      echo "$raw_model"
+      ;;
+  esac
+}
+
 cd "$workspace"
+
+if [ -n "${CODEX_MODEL:-}" ]; then
+  resolved_codex_model="$(resolve_codex_model "$CODEX_MODEL")"
+  if [ "$resolved_codex_model" != "$CODEX_MODEL" ]; then
+    echo "codex-subagent: resolved alias '$CODEX_MODEL' -> '$resolved_codex_model'" >&2
+    CODEX_MODEL="$resolved_codex_model"
+  fi
+fi
 
 set -- --ask-for-approval never exec --cd "$workspace" --sandbox "$sandbox" --skip-git-repo-check
 if [ "$resume_session" = "--last" ] || [ "$resume_session" = "last" ]; then
@@ -167,13 +200,52 @@ cmd_pid=$!
 tail -f "$log_file" &
 tail_pid=$!
 
+# Background watchdog: reap hanging runtime if task completed but lingering event-loop handles prevent exit
+(
+  while kill -0 "$cmd_pid" 2>/dev/null; do
+    sleep 2
+    if grep -qE 'hook: Stop Completed' "$log_file" 2>/dev/null || \
+       awk '/^---$/{f=1; next} f' "$log_file" 2>/dev/null | grep -qE '(\\"|")outcome(\\"|"):[[:space:]]*(\\"|")(done|partial|blocked|failed)'; then
+      grace=6
+      while [ "$grace" -gt 0 ] && kill -0 "$cmd_pid" 2>/dev/null; do
+        sleep 1
+        grace=$((grace - 1))
+      done
+      if kill -0 "$cmd_pid" 2>/dev/null; then
+        touch "${log_file}.reaped"
+        if [ "$use_systemd" -eq 1 ]; then
+          systemctl --user stop "$unit" >/dev/null 2>&1 || true
+        elif command -v pkill >/dev/null 2>&1; then
+          pkill -TERM -g "$cmd_pid" >/dev/null 2>&1 || true
+          sleep 1
+          pkill -KILL -g "$cmd_pid" >/dev/null 2>&1 || true
+        fi
+      fi
+      break
+    fi
+  done
+) &
+watchdog_pid=$!
+
 set +e
 wait "$cmd_pid"
 status=$?
 set -e
 
+kill "$watchdog_pid" >/dev/null 2>&1 || true
+wait "$watchdog_pid" 2>/dev/null || true
 kill "$tail_pid" >/dev/null 2>&1 || true
 wait "$tail_pid" 2>/dev/null || true
+
+if [ -f "${log_file}.reaped" ]; then
+  rm -f "${log_file}.reaped"
+  if [ "$status" -ne 0 ]; then
+    if [ "$log_flag" = "1" ]; then
+      echo "codex-subagent: process reaped after task completion (lingering event-loop handles)" >&2
+    fi
+    status=0
+  fi
+fi
 if [ "$use_systemd" -eq 1 ]; then
   systemctl --user stop "$unit" >/dev/null 2>&1 || true
 elif command -v pkill >/dev/null 2>&1; then

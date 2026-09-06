@@ -28,7 +28,13 @@ Usage:
   antigravity-subagent --models
 
 Environment:
-  AGY_MODEL          Model label exactly as shown below.
+  AGY_MODEL          Model label (e.g. 'Gemini 3.8 Flash (High)') or family alias:
+                     - 'gemini-flash' / 'flash' / 'latest': dynamically resolves newest Gemini Flash (High)
+                     - 'gemini-flash-medium' / 'flash-med': dynamically resolves newest Gemini Flash (Medium)
+                     - 'gemini-flash-low' / 'flash-low': dynamically resolves newest Gemini Flash (Low)
+                     - 'gemini-pro' / 'pro': dynamically resolves newest Gemini Pro (High)
+                     - 'claude-opus' / 'opus': Claude Opus Thinking
+                     - 'gpt-oss' / 'gpt': GPT-OSS 120B
   AGY_PRINT_TIMEOUT  Print-mode timeout, default: 120m.
   AGY_LOG_FILE       Optional agy --log-file path (agy's own internal log).
   AGY_LOGS           Print wrapper banner to stderr. Default: 1.
@@ -40,24 +46,9 @@ SUBAGENT_LOG_DIR (printed in the startup banner) so a backgrounded run can be
 tailed live instead of waiting for --print to return.
 
 Examples:
-  AGY_MODEL='Gemini 3.6 Flash (Medium)' antigravity-subagent "Fix the bug"
-  AGY_MODEL='Gemini 3.7 Flash (High)' antigravity-subagent "Review this repo"
-  AGY_MODEL='GPT-OSS 120B (Medium)' antigravity-subagent "Implement TASK.md"
-
-Antigravity models:
-  Gemini 3.7 Flash (High)
-  Gemini 3.7 Flash (Medium)
-  Gemini 3.7 Flash (Low)
-  Gemini 3.6 Flash (High)
-  Gemini 3.6 Flash (Medium)
-  Gemini 3.6 Flash (Low)
-  Gemini 3.5 Flash (High)
-  Gemini 3.5 Flash (Medium)
-  Gemini 3.5 Flash (Low)
-  Gemini 3.1 Pro (High)
-  Gemini 3.1 Pro (Low)
-  Claude Opus 4.6 (Thinking)
-  GPT-OSS 120B (Medium)
+  AGY_MODEL='gemini-flash' antigravity-subagent "Fix the bug"
+  AGY_MODEL='gemini-pro' antigravity-subagent "Review this repo"
+  AGY_MODEL='Gemini 3.8 Flash (High)' antigravity-subagent "Implement TASK.md"
 
 Refresh live list:
   antigravity-subagent --models
@@ -124,8 +115,10 @@ if command -v systemd-run >/dev/null 2>&1 && systemctl --user show-environment >
   use_systemd=1
 fi
 tail_pid=""
+watchdog_pid=""
 
 stop_subagent() {
+  [ -z "$watchdog_pid" ] || kill "$watchdog_pid" >/dev/null 2>&1 || true
   [ -z "$tail_pid" ] || kill "$tail_pid" >/dev/null 2>&1 || true
   if [ "$use_systemd" -eq 1 ]; then
     systemctl --user stop "$unit" >/dev/null 2>&1 || true
@@ -138,8 +131,61 @@ stop_subagent() {
 trap 'stop_subagent' EXIT
 trap 'stop_subagent; exit 143' HUP INT TERM
 
+resolve_agy_model() {
+  raw_model="${1:-}"
+  [ -z "$raw_model" ] && return 0
+
+  case "$(echo "$raw_model" | tr '[:upper:]' '[:lower:]')" in
+    flash|gemini-flash|latest-flash|flash-high|latest)
+      resolved="$("$HOME/.local/bin/agy" models 2>/dev/null | grep -iE 'Gemini [0-9.]+ Flash \(High\)' | head -n 1 | sed -e 's/^[a-z0-9.-]*[[:space:]]*//' || true)"
+      if [ -n "$resolved" ]; then echo "$resolved"; return 0; fi
+      echo "Gemini 3.8 Flash (High)"
+      ;;
+    flash-medium|gemini-flash-medium|flash-med)
+      resolved="$("$HOME/.local/bin/agy" models 2>/dev/null | grep -iE 'Gemini [0-9.]+ Flash \(Medium\)' | head -n 1 | sed -e 's/^[a-z0-9.-]*[[:space:]]*//' || true)"
+      if [ -n "$resolved" ]; then echo "$resolved"; return 0; fi
+      echo "Gemini 3.8 Flash (Medium)"
+      ;;
+    flash-low|gemini-flash-low)
+      resolved="$("$HOME/.local/bin/agy" models 2>/dev/null | grep -iE 'Gemini [0-9.]+ Flash \(Low\)' | head -n 1 | sed -e 's/^[a-z0-9.-]*[[:space:]]*//' || true)"
+      if [ -n "$resolved" ]; then echo "$resolved"; return 0; fi
+      echo "Gemini 3.8 Flash (Low)"
+      ;;
+    pro|gemini-pro|latest-pro|pro-high)
+      resolved="$("$HOME/.local/bin/agy" models 2>/dev/null | grep -iE 'Gemini [0-9.]+ Pro \(High\)' | head -n 1 | sed -e 's/^[a-z0-9.-]*[[:space:]]*//' || true)"
+      if [ -n "$resolved" ]; then echo "$resolved"; return 0; fi
+      echo "Gemini 3.1 Pro (High)"
+      ;;
+    pro-low|gemini-pro-low)
+      resolved="$("$HOME/.local/bin/agy" models 2>/dev/null | grep -iE 'Gemini [0-9.]+ Pro \(Low\)' | head -n 1 | sed -e 's/^[a-z0-9.-]*[[:space:]]*//' || true)"
+      if [ -n "$resolved" ]; then echo "$resolved"; return 0; fi
+      echo "Gemini 3.1 Pro (Low)"
+      ;;
+    claude-opus|opus)
+      echo "Claude Opus 4.6 (Thinking)"
+      ;;
+    claude-sonnet|sonnet)
+      echo "Claude Sonnet 4.6 (Thinking)"
+      ;;
+    gpt-oss|gpt)
+      echo "GPT-OSS 120B (Medium)"
+      ;;
+    *)
+      echo "$raw_model"
+      ;;
+  esac
+}
+
 cd "$workspace"
 project_id="${AGY_PROJECT:-subagent-$(basename "$workspace")}"
+
+if [ -n "${AGY_MODEL:-}" ]; then
+  resolved_agy_model="$(resolve_agy_model "$AGY_MODEL")"
+  if [ "$resolved_agy_model" != "$AGY_MODEL" ]; then
+    echo "antigravity-subagent: resolved alias '$AGY_MODEL' -> '$resolved_agy_model'" >&2
+    AGY_MODEL="$resolved_agy_model"
+  fi
+fi
 
 set -- --print "$prompt" --output-format stream-json --project "$project_id" --dangerously-skip-permissions --print-timeout "$timeout"
 
@@ -189,6 +235,33 @@ cmd_pid=$!
 tail -f "$log_file" &
 tail_pid=$!
 
+# Background watchdog: reap hanging runtime if task completed but lingering event-loop handles prevent exit
+(
+  while kill -0 "$cmd_pid" 2>/dev/null; do
+    sleep 2
+    if grep -qE '"event":"result"' "$log_file" 2>/dev/null || \
+       awk '/^---$/{f=1; next} f' "$log_file" 2>/dev/null | grep -qE '(\\"|")outcome(\\"|"):[[:space:]]*(\\"|")(done|partial|blocked|failed)'; then
+      grace=6
+      while [ "$grace" -gt 0 ] && kill -0 "$cmd_pid" 2>/dev/null; do
+        sleep 1
+        grace=$((grace - 1))
+      done
+      if kill -0 "$cmd_pid" 2>/dev/null; then
+        touch "${log_file}.reaped"
+        if [ "$use_systemd" -eq 1 ]; then
+          systemctl --user stop "$unit" >/dev/null 2>&1 || true
+        elif command -v pkill >/dev/null 2>&1; then
+          pkill -TERM -g "$cmd_pid" >/dev/null 2>&1 || true
+          sleep 1
+          pkill -KILL -g "$cmd_pid" >/dev/null 2>&1 || true
+        fi
+      fi
+      break
+    fi
+  done
+) &
+watchdog_pid=$!
+
 # ponytail: `wait` returns the waited-on process's exit status, which is
 # routinely nonzero (timeouts, model errors). Under `set -e` a bare `wait`
 # call there aborts the script on the spot — every cleanup line below it
@@ -199,8 +272,20 @@ wait "$cmd_pid"
 status=$?
 set -e
 
+kill "$watchdog_pid" >/dev/null 2>&1 || true
+wait "$watchdog_pid" 2>/dev/null || true
 kill "$tail_pid" >/dev/null 2>&1 || true
 wait "$tail_pid" 2>/dev/null || true
+
+if [ -f "${log_file}.reaped" ]; then
+  rm -f "${log_file}.reaped"
+  if [ "$status" -ne 0 ]; then
+    if [ "$log_flag" = "1" ]; then
+      echo "antigravity-subagent: process reaped after task completion (lingering event-loop handles)" >&2
+    fi
+    status=0
+  fi
+fi
 
 if [ "$use_systemd" -eq 1 ]; then
   systemctl --user stop "$unit" >/dev/null 2>&1 || true

@@ -148,10 +148,23 @@ The compact result from `subagent-wait` and `/api/runs/<log>/result` includes a
 issue or continue a closely related task. Use a fresh session for unrelated work
 or parallel workers.
 
-## Model catalogues
+## Model catalogues & Dynamic Family Aliases
 
-These are the model IDs available on this host when checked on 2026-08-02.
-Refresh or re-list them before relying on the list for automation:
+All wrappers support **dynamic model family aliases** so you never have to hardcode stale version strings in automation or orchestrations (like Council of Experts):
+
+| Wrapper | Family Alias | Dynamically Resolves To |
+|---|---|---|
+| `antigravity-subagent` | `gemini-flash` / `flash` / `latest` | Newest Gemini Flash (High) (e.g. `Gemini 3.8 Flash (High)`) |
+| `antigravity-subagent` | `gemini-pro` / `pro` | Newest Gemini Pro (High) (e.g. `Gemini 3.1 Pro (High)`) |
+| `opencode-subagent` | `openai/latest` / `openai/sol` / `gpt-sol` | Newest OpenAI GPT Sol (e.g. `openai/gpt-5.6-sol`) |
+| `opencode-subagent` | `glm/latest` / `zai/latest` / `glm` | Newest Z.AI GLM (e.g. `zai-coding-plan/glm-5.3`) |
+| `opencode-subagent` | `glm/flash` / `zai/flash` | Newest Z.AI GLM Flash (e.g. `zai-coding-plan/glm-5.3-flash`) |
+| `opencode-subagent` | `opencode-go/qwen-latest` | Newest Qwen Max (e.g. `opencode-go/qwen3.8-max`) |
+| `opencode-subagent` | `opencode-go/deepseek-latest` | Newest DeepSeek Pro (e.g. `opencode-go/deepseek-v4-pro`) |
+| `codex-subagent` | `latest` / `sol` / `gpt-sol` | Newest GPT Sol (e.g. `gpt-5.6-sol`) |
+| `claude-subagent` | `opus` / `sonnet` / `latest` | Latest Anthropic model alias |
+
+Refresh or re-list available models before relying on snapshot lists:
 
 ```bash
 opencode-subagent --models --refresh
@@ -160,91 +173,48 @@ antigravity-subagent --models
 
 ### OpenCode
 
-`opencode-subagent --models` intentionally exposes only these providers:
+`opencode-subagent --models` exposes supported providers:
 
 ```text
 opencode-go/deepseek-v4-flash
 opencode-go/deepseek-v4-pro
-opencode-go/glm-5.1
-opencode-go/glm-5.2
+opencode-go/glm-5.3
 opencode-go/gpt-5.6-luna
-opencode-go/grok-4.5
-opencode-go/hy3
-opencode-go/kimi-k2.6
-opencode-go/kimi-k2.7-code
-opencode-go/kimi-k3
-opencode-go/mimo-v2.5
-opencode-go/mimo-v2.5-pro
-opencode-go/minimax-m2.7
-opencode-go/minimax-m3
-opencode-go/qwen3.6-plus
-opencode-go/qwen3.7-max
-opencode-go/qwen3.7-plus
-openai/gpt-5.3-codex-spark
-openai/gpt-5.4
-openai/gpt-5.4-fast
+opencode-go/qwen3.8-max
 openai/gpt-5.4-mini
-openai/gpt-5.4-mini-fast
-openai/gpt-5.5
-openai/gpt-5.5-fast
-openai/gpt-5.6
-openai/gpt-5.6-fast
-openai/gpt-5.6-luna
-openai/gpt-5.6-luna-fast
-openai/gpt-5.6-luna-pro
-openai/gpt-5.6-pro
 openai/gpt-5.6-sol
-openai/gpt-5.6-sol-fast
-openai/gpt-5.6-sol-pro
 openai/gpt-5.6-terra
-openai/gpt-5.6-terra-fast
-openai/gpt-5.6-terra-pro
-zai-coding-plan/glm-4.7
-zai-coding-plan/glm-5-turbo
+openai/gpt-5.6-luna
 zai-coding-plan/glm-5.2
-zai-coding-plan/glm-5.2-highspeed
+zai-coding-plan/glm-5.3
+zai-coding-plan/glm-5.3-flash
 ```
 
 ### Antigravity
 
-`antigravity-subagent --models` lists the models used by the wrapper.
+`antigravity-subagent --models` lists the models available via Antigravity CLI:
 
 ```text
+gemini-3.8-flash-high
+gemini-3.8-flash-medium
+gemini-3.8-flash-low
 gemini-3.7-flash-high
 gemini-3.7-flash-medium
 gemini-3.7-flash-low
 gemini-3.6-flash-high
-gemini-3.6-flash-medium
-gemini-3.6-flash-low
-gemini-3.5-flash-high
-gemini-3.5-flash-medium
-gemini-3.5-flash-low
 gemini-3.1-pro-high
-gemini-3.1-pro-low
 claude-opus-4-6-thinking
+claude-sonnet-4-6
 gpt-oss-120b-medium
 ```
 
 ### Claude Code
 
-Claude Code has no live model-catalogue command. `claude-subagent --models`
-prints the selectors documented by the installed CLI:
-
-```text
-opus
-sonnet
-```
+Claude Code supports native model selectors: `opus`, `sonnet` (and alias `latest`).
 
 ### Codex
 
-Codex has no live model-catalogue command. `codex-subagent --models` prints
-the selectors documented by the installed CLI:
-
-```text
-gpt-5.6-sol
-gpt-5.6-terra
-gpt-5.6-luna
-```
+Codex selectors: `latest` (`gpt-5.6-sol`), `terra` (`gpt-5.6-terra`), `luna` (`gpt-5.6-luna`).
 
 ## Typical scenarios
 

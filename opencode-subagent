@@ -34,7 +34,13 @@ Usage:
   opencode-subagent --models [--refresh]
 
 Environment:
-  OPENCODE_MODEL    Model in provider/model format.
+  OPENCODE_MODEL    Model in provider/model format or family alias:
+                    - 'openai/latest' / 'openai/sol' / 'gpt-sol': newest OpenAI GPT Sol (e.g. gpt-5.6-sol)
+                    - 'openai/terra' / 'openai/luna' / 'openai/mini': newest specific OpenAI tier
+                    - 'zai/latest' / 'glm/latest' / 'glm': newest Z.AI GLM (e.g. glm-5.3)
+                    - 'zai/flash' / 'glm/flash': newest Z.AI GLM Flash
+                    - 'opencode-go/qwen-latest': newest Qwen Max
+                    - 'opencode-go/deepseek-latest': newest DeepSeek Pro
   OPENCODE_VARIANT  Optional model variant, e.g. high.
   OPENCODE_AGENT    Optional opencode agent name.
   OPENCODE_TIMEOUT  Optional timeout in seconds. Default: 7200.
@@ -48,9 +54,9 @@ startup banner) so a backgrounded run can be tailed live instead of waiting
 for the final result.
 
 Examples:
-  OPENCODE_MODEL='openai/gpt-5.4-mini' opencode-subagent "Fix the bug"
-  OPENCODE_MODEL='opencode-go/qwen3.7-plus' opencode-subagent "Review this repo"
-  OPENCODE_MODEL='zai-coding-plan/glm-5.3' opencode-subagent "Implement TASK.md"
+  OPENCODE_MODEL='openai/latest' opencode-subagent "Fix the bug"
+  OPENCODE_MODEL='glm/latest' opencode-subagent "Review this repo"
+  OPENCODE_MODEL='openai/gpt-5.6-sol' opencode-subagent "Implement TASK.md"
 
 Supported model providers: opencode-go, openai, zai-coding-plan.
 Use `opencode-subagent --models` to list the currently available models, or
@@ -109,16 +115,77 @@ $user_prompt"
 timeout_seconds="${OPENCODE_TIMEOUT:-7200}"
 log_flag="${OPENCODE_LOGS:-1}"
 
-# ponytail: opencode-go/glm-5.3 (and 5.2) are token-heavy for the same work as the
-# zai-coding-plan route — reroute automatically instead of trusting every
-# caller to know that. Widen this if other opencode-go models get the same
-# recommendation.
-if [ "${OPENCODE_MODEL:-}" = "opencode-go/glm-5.3" ]; then
-  echo "opencode-subagent: rerouting opencode-go/glm-5.3 -> zai-coding-plan/glm-5.3 (token-heavy route)" >&2
-  OPENCODE_MODEL="zai-coding-plan/glm-5.3"
-elif [ "${OPENCODE_MODEL:-}" = "opencode-go/glm-5.2" ]; then
-  echo "opencode-subagent: rerouting opencode-go/glm-5.2 -> zai-coding-plan/glm-5.2 (token-heavy route)" >&2
-  OPENCODE_MODEL="zai-coding-plan/glm-5.2"
+resolve_opencode_model() {
+  raw_model="${1:-}"
+  [ -z "$raw_model" ] && return 0
+
+  # Automatic reroute for token-heavy routes
+  case "$raw_model" in
+    opencode-go/glm-5.3)
+      echo "opencode-subagent: rerouting opencode-go/glm-5.3 -> zai-coding-plan/glm-5.3 (token-heavy route)" >&2
+      echo "zai-coding-plan/glm-5.3"
+      return 0
+      ;;
+    opencode-go/glm-5.2)
+      echo "opencode-subagent: rerouting opencode-go/glm-5.2 -> zai-coding-plan/glm-5.2 (token-heavy route)" >&2
+      echo "zai-coding-plan/glm-5.2"
+      return 0
+      ;;
+  esac
+
+  case "$(echo "$raw_model" | tr '[:upper:]' '[:lower:]')" in
+    openai/latest|openai/gpt-latest|openai/sol|gpt-sol|openai/gpt|latest)
+      resolved="$("$HOME/.opencode/bin/opencode" models openai 2>/dev/null | grep -E '^openai/gpt-[0-9.]+-sol$' | tail -n 1 || true)"
+      if [ -n "$resolved" ]; then echo "$resolved"; return 0; fi
+      echo "openai/gpt-5.6-sol"
+      ;;
+    openai/terra|gpt-terra)
+      resolved="$("$HOME/.opencode/bin/opencode" models openai 2>/dev/null | grep -E '^openai/gpt-[0-9.]+-terra$' | tail -n 1 || true)"
+      if [ -n "$resolved" ]; then echo "$resolved"; return 0; fi
+      echo "openai/gpt-5.6-terra"
+      ;;
+    openai/luna|gpt-luna)
+      resolved="$("$HOME/.opencode/bin/opencode" models openai 2>/dev/null | grep -E '^openai/gpt-[0-9.]+-luna$' | tail -n 1 || true)"
+      if [ -n "$resolved" ]; then echo "$resolved"; return 0; fi
+      echo "openai/gpt-5.6-luna"
+      ;;
+    openai/mini|openai/gpt-mini|gpt-mini)
+      resolved="$("$HOME/.opencode/bin/opencode" models openai 2>/dev/null | grep -E '^openai/gpt-[0-9.]+-mini$' | tail -n 1 || true)"
+      if [ -n "$resolved" ]; then echo "$resolved"; return 0; fi
+      echo "openai/gpt-5.4-mini"
+      ;;
+    zai/latest|zai-coding-plan/latest|glm/latest|glm|zai/glm|zai-coding-plan/glm)
+      resolved="$("$HOME/.opencode/bin/opencode" models zai-coding-plan 2>/dev/null | grep -E '^zai-coding-plan/glm-[0-9.]+$' | tail -n 1 || true)"
+      if [ -n "$resolved" ]; then echo "$resolved"; return 0; fi
+      echo "zai-coding-plan/glm-5.3"
+      ;;
+    zai/flash|zai-coding-plan/flash|glm/flash|glm-flash)
+      resolved="$("$HOME/.opencode/bin/opencode" models zai-coding-plan 2>/dev/null | grep -E '^zai-coding-plan/glm-[0-9.]+-flash$' | tail -n 1 || true)"
+      if [ -n "$resolved" ]; then echo "$resolved"; return 0; fi
+      echo "zai-coding-plan/glm-5.3-flash"
+      ;;
+    opencode-go/qwen-latest|qwen-latest|qwen)
+      resolved="$("$HOME/.opencode/bin/opencode" models opencode-go 2>/dev/null | grep -E '^opencode-go/qwen[0-9.]+-max$' | tail -n 1 || true)"
+      if [ -n "$resolved" ]; then echo "$resolved"; return 0; fi
+      echo "opencode-go/qwen3.8-max"
+      ;;
+    opencode-go/deepseek-latest|deepseek-latest|deepseek)
+      resolved="$("$HOME/.opencode/bin/opencode" models opencode-go 2>/dev/null | grep -E '^opencode-go/deepseek-v[0-9.]+-pro$' | tail -n 1 || true)"
+      if [ -n "$resolved" ]; then echo "$resolved"; return 0; fi
+      echo "opencode-go/deepseek-v4-pro"
+      ;;
+    *)
+      echo "$raw_model"
+      ;;
+  esac
+}
+
+if [ -n "${OPENCODE_MODEL:-}" ]; then
+  resolved_opencode_model="$(resolve_opencode_model "$OPENCODE_MODEL")"
+  if [ "$resolved_opencode_model" != "$OPENCODE_MODEL" ]; then
+    echo "opencode-subagent: resolved alias '$OPENCODE_MODEL' -> '$resolved_opencode_model'" >&2
+    OPENCODE_MODEL="$resolved_opencode_model"
+  fi
 fi
 
 log_dir="${SUBAGENT_LOG_DIR:-$repo_dir/logs}"
@@ -131,8 +198,10 @@ if command -v systemd-run >/dev/null 2>&1 && systemctl --user show-environment >
   use_systemd=1
 fi
 tail_pid=""
+watchdog_pid=""
 
 stop_subagent() {
+  [ -z "$watchdog_pid" ] || kill "$watchdog_pid" >/dev/null 2>&1 || true
   [ -z "$tail_pid" ] || kill "$tail_pid" >/dev/null 2>&1 || true
   if [ "$use_systemd" -eq 1 ]; then
     systemctl --user stop "$unit" >/dev/null 2>&1 || true
@@ -205,6 +274,33 @@ cmd_pid=$!
 tail -f "$log_file" &
 tail_pid=$!
 
+# Background watchdog: reap hanging runtime if task completed but lingering event-loop handles prevent exit
+(
+  while kill -0 "$cmd_pid" 2>/dev/null; do
+    sleep 2
+    if grep -qE 'message="disposing instance"|message="exiting loop"' "$log_file" 2>/dev/null || \
+       awk '/^---$/{f=1; next} f' "$log_file" 2>/dev/null | grep -qE '(\\"|")outcome(\\"|"):[[:space:]]*(\\"|")(done|partial|blocked|failed)'; then
+      grace=6
+      while [ "$grace" -gt 0 ] && kill -0 "$cmd_pid" 2>/dev/null; do
+        sleep 1
+        grace=$((grace - 1))
+      done
+      if kill -0 "$cmd_pid" 2>/dev/null; then
+        touch "${log_file}.reaped"
+        if [ "$use_systemd" -eq 1 ]; then
+          systemctl --user stop "$unit" >/dev/null 2>&1 || true
+        elif command -v pkill >/dev/null 2>&1; then
+          pkill -TERM -g "$cmd_pid" >/dev/null 2>&1 || true
+          sleep 1
+          pkill -KILL -g "$cmd_pid" >/dev/null 2>&1 || true
+        fi
+      fi
+      break
+    fi
+  done
+) &
+watchdog_pid=$!
+
 # ponytail: `wait` returns the waited-on process's exit status, which is
 # routinely nonzero (timeouts, model errors). Under `set -e` a bare `wait`
 # call there aborts the script on the spot — every cleanup line below it
@@ -215,8 +311,20 @@ wait "$cmd_pid"
 status=$?
 set -e
 
+kill "$watchdog_pid" >/dev/null 2>&1 || true
+wait "$watchdog_pid" 2>/dev/null || true
 kill "$tail_pid" >/dev/null 2>&1 || true
 wait "$tail_pid" 2>/dev/null || true
+
+if [ -f "${log_file}.reaped" ]; then
+  rm -f "${log_file}.reaped"
+  if [ "$status" -ne 0 ]; then
+    if [ "$log_flag" = "1" ]; then
+      echo "opencode-subagent: process reaped after task completion (lingering event-loop handles)" >&2
+    fi
+    status=0
+  fi
+fi
 
 if [ "$use_systemd" -eq 1 ]; then
   systemctl --user stop "$unit" >/dev/null 2>&1 || true

@@ -14,26 +14,33 @@ Run from the target repository/workspace directory:
 ```sh
 cd /path/to/workspace
 
-# OpenCode (GLM / multi-provider)
-opencode-subagent "Task prompt..."
+# OpenCode (GLM / multi-provider) — supports OPENCODE_MODEL='openai/latest', 'glm/latest', etc.
+OPENCODE_MODEL='glm/latest' opencode-subagent "Task prompt..."
 
 # OpenCode with Automatic Model Fallback Chain (Quota/Rate-Limit Failover)
 OPENCODE_MODEL_CHAIN='zai-coding-plan/glm-5.3,openai/gpt-5.4-mini' opencode-subagent-fallback "Task prompt..."
 
-# Antigravity (Gemini / AGY)
-antigravity-subagent "Task prompt..."
+# Antigravity (Gemini / AGY) — supports AGY_MODEL='gemini-flash', 'gemini-pro', etc.
+AGY_MODEL='gemini-flash' antigravity-subagent "Task prompt..."
 
 # Claude Code (Sonnet / Opus / Haiku)
-claude-subagent "Task prompt..."
+CLAUDE_MODEL='opus' claude-subagent "Task prompt..."
 
-# OpenAI Codex (GPT-5.6 family)
-codex-subagent "Task prompt..."
+# OpenAI Codex (GPT-5.6 family) — supports CODEX_MODEL='latest', 'terra', etc.
+CODEX_MODEL='latest' codex-subagent "Task prompt..."
 ```
 
 Multi-line prompts can be piped via stdin:
 ```sh
 printf '%s\n' "$DETAILED_TASK" | opencode-subagent
 ```
+
+### Dynamic Model Family Aliases
+All wrappers dynamically resolve to the latest available model version for a given family:
+- **Antigravity**: `AGY_MODEL='gemini-flash'` (resolves latest Gemini Flash High), `AGY_MODEL='gemini-pro'` (resolves latest Gemini Pro High).
+- **OpenCode**: `OPENCODE_MODEL='openai/latest'` or `'openai/sol'`, `OPENCODE_MODEL='glm/latest'` (resolves latest Z.AI GLM), `OPENCODE_MODEL='opencode-go/qwen-latest'`.
+- **Codex**: `CODEX_MODEL='latest'` (resolves latest GPT Sol).
+- **Claude Code**: `CLAUDE_MODEL='opus'`, `CLAUDE_MODEL='sonnet'`.
 
 ## Session Reuse & Continuation (Save Context)
 
@@ -65,6 +72,9 @@ opencode-subagent --resume "session-abc-123" "Next step prompt..."
 SUBAGENT_SESSION="session-abc-123" antigravity-subagent "Next step prompt..."
 ```
 *(Every subagent run writes its persisted `sessionId` in `logs/<log>.done` and in the dashboard header).*
+
+> [!TIP]
+> **Always use wrappers for continuation, not raw CLIs:** Always execute continuation through the wrapper binaries (`*-subagent --continue` or `--resume <id>`) rather than raw provider CLIs (`claude -c`, `opencode attach`, etc.). Raw CLIs default to interactive REPL mode on resume, which stalls headless automation. Subagent wrappers enforce non-interactive batch flags and run an automatic completion watchdog that reaps lingering event-loop handles or background MCP connections after task completion, ensuring prompt exit and accurate `.done` recording.
 
 ---
 
@@ -190,4 +200,4 @@ http://localhost:4242/api/dangling/kill-all
 6. **Verify deliverables**: Inspect the generated git diff or test results locally after a subagent reports completion before accepting changes.
 7. **Never trust process status alone**: `status` / `processStatus` says whether the wrapper exited. `accepted` says whether the task result is safe to accept.
 8. **Never tail logs for acceptance**: Call `subagent-wait` or `/api/runs/<log>/result`; only inspect logs when debugging a failed, blocked, partial, or unknown outcome.
-9. **Reuse sessions deliberately**: Use `continuation.sameSessionCommand` for fixes to the same task or closely related follow-ups. Do not reuse one session across unrelated tasks or parallel workers.
+9. **Reuse sessions deliberately**: Use `continuation.sameSessionCommand` for fixes to the same task or closely related follow-ups. Do not reuse one session across unrelated tasks or parallel workers. Always invoke continuation through subagent wrappers rather than raw CLIs to benefit from non-interactive enforcement and lingering process reaping.

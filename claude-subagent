@@ -105,8 +105,10 @@ if command -v systemd-run >/dev/null 2>&1 && systemctl --user show-environment >
   use_systemd=1
 fi
 tail_pid=""
+watchdog_pid=""
 
 stop_subagent() {
+  [ -z "$watchdog_pid" ] || kill "$watchdog_pid" >/dev/null 2>&1 || true
   [ -z "$tail_pid" ] || kill "$tail_pid" >/dev/null 2>&1 || true
   if [ "$use_systemd" -eq 1 ]; then
     systemctl --user stop "$unit" >/dev/null 2>&1 || true
@@ -119,11 +121,33 @@ stop_subagent() {
 trap 'stop_subagent' EXIT
 trap 'stop_subagent; exit 143' HUP INT TERM
 
+resolve_claude_model() {
+  raw_model="${1:-}"
+  [ -z "$raw_model" ] && return 0
+
+  case "$(echo "$raw_model" | tr '[:upper:]' '[:lower:]')" in
+    latest|claude-latest)
+      echo "sonnet"
+      ;;
+    *)
+      echo "$raw_model"
+      ;;
+  esac
+}
+
 cd "$workspace"
+
+if [ -n "${CLAUDE_MODEL:-}" ]; then
+  resolved_claude_model="$(resolve_claude_model "$CLAUDE_MODEL")"
+  if [ "$resolved_claude_model" != "$CLAUDE_MODEL" ]; then
+    echo "claude-subagent: resolved alias '$CLAUDE_MODEL' -> '$resolved_claude_model'" >&2
+    CLAUDE_MODEL="$resolved_claude_model"
+  fi
+fi
 
 set -- --print --verbose --output-format stream-json --dangerously-skip-permissions
 if [ "$resume_session" = "--last" ] || [ "$resume_session" = "last" ]; then
-  set -- "$@" --resume
+  set -- "$@" --continue
 elif [ -n "$resume_session" ] && [ "$resume_session" != "new" ]; then
   set -- "$@" --resume "$resume_session"
 fi
@@ -157,13 +181,52 @@ cmd_pid=$!
 tail -f "$log_file" &
 tail_pid=$!
 
+# Background watchdog: reap hanging runtime if task completed but lingering event-loop handles prevent exit
+(
+  while kill -0 "$cmd_pid" 2>/dev/null; do
+    sleep 2
+    if grep -qE '"type":"result"' "$log_file" 2>/dev/null || \
+       awk '/^---$/{f=1; next} f' "$log_file" 2>/dev/null | grep -qE '(\\"|")outcome(\\"|"):[[:space:]]*(\\"|")(done|partial|blocked|failed)'; then
+      grace=6
+      while [ "$grace" -gt 0 ] && kill -0 "$cmd_pid" 2>/dev/null; do
+        sleep 1
+        grace=$((grace - 1))
+      done
+      if kill -0 "$cmd_pid" 2>/dev/null; then
+        touch "${log_file}.reaped"
+        if [ "$use_systemd" -eq 1 ]; then
+          systemctl --user stop "$unit" >/dev/null 2>&1 || true
+        elif command -v pkill >/dev/null 2>&1; then
+          pkill -TERM -g "$cmd_pid" >/dev/null 2>&1 || true
+          sleep 1
+          pkill -KILL -g "$cmd_pid" >/dev/null 2>&1 || true
+        fi
+      fi
+      break
+    fi
+  done
+) &
+watchdog_pid=$!
+
 set +e
 wait "$cmd_pid"
 status=$?
 set -e
 
+kill "$watchdog_pid" >/dev/null 2>&1 || true
+wait "$watchdog_pid" 2>/dev/null || true
 kill "$tail_pid" >/dev/null 2>&1 || true
 wait "$tail_pid" 2>/dev/null || true
+
+if [ -f "${log_file}.reaped" ]; then
+  rm -f "${log_file}.reaped"
+  if [ "$status" -ne 0 ]; then
+    if [ "$log_flag" = "1" ]; then
+      echo "claude-subagent: process reaped after task completion (lingering event-loop handles)" >&2
+    fi
+    status=0
+  fi
+fi
 if [ "$use_systemd" -eq 1 ]; then
   systemctl --user stop "$unit" >/dev/null 2>&1 || true
 elif command -v pkill >/dev/null 2>&1; then
