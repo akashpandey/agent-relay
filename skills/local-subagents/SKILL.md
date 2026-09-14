@@ -9,7 +9,17 @@ Execute delegated tasks across 5 local coding harnesses (`opencode-subagent`, `o
 
 ## Available Harnesses & Invocation
 
-Run from the target repository/workspace directory:
+Prefer the unified `subagent` front door when using canonical workspace names, finding recent sessions, or continuing prior work:
+
+```sh
+subagent workspaces
+subagent fitschool opencode "Task prompt..."
+subagent codex "Task prompt in the current directory..."
+subagent last fitschool
+subagent continue fitschool "Follow-up prompt..."
+```
+
+Run provider wrappers directly from the target repository/workspace directory when you need full wrapper-specific flags:
 
 ```sh
 cd /path/to/workspace
