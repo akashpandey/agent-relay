@@ -17,20 +17,23 @@ const providers = new Map([
   ['agy', 'antigravity-subagent'],
 ]);
 
+const cmdName = process.env.SUBAGENT_CLI_NAME || 'relay';
+
 function usage() {
   console.log(`Usage:
-  subagent <provider> [wrapper-args...] "task"
-  subagent <workspace> <provider> [wrapper-args...] "task"
-  subagent workspaces
-  subagent doctor
-  subagent dashboard [restart]
-  subagent attention [workspace]
-  subagent prune [--confirm] [--older-than 30d] [--workspace name] [--outcome outcome]
-  subagent result [--last | workspace | log-or-pid]
-  subagent open [--browser] [--last | workspace | log]
-  subagent last [workspace]
-  subagent continue [workspace] "task"
+  ${cmdName} <provider> [wrapper-args...] "task"
+  ${cmdName} <workspace> <provider> [wrapper-args...] "task"
+  ${cmdName} workspaces
+  ${cmdName} doctor
+  ${cmdName} dashboard [restart]
+  ${cmdName} attention [workspace]
+  ${cmdName} prune [--confirm] [--older-than 30d] [--workspace name] [--outcome outcome]
+  ${cmdName} result [--last | workspace | log-or-pid]
+  ${cmdName} open [--browser] [--last | workspace | log]
+  ${cmdName} last [workspace]
+  ${cmdName} continue [workspace] "task"
 
+Aliases: relay, subagent
 Providers: ${[...providers.keys()].join(', ')}`);
 }
 

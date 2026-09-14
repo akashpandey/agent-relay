@@ -1,12 +1,14 @@
-# subagents
+# agent-relay
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![CI](https://github.com/akashpandey/local-subagents/actions/workflows/ci.yml/badge.svg)](https://github.com/akashpandey/local-subagents/actions/workflows/ci.yml)
+[![CI](https://github.com/akashpandey/agent-relay/actions/workflows/ci.yml/badge.svg)](https://github.com/akashpandey/agent-relay/actions/workflows/ci.yml)
 
-Small shell wrappers for running local coding subagents in non-interactive mode.
+> **Pass the baton between Claude Code, Codex, Antigravity, and OpenCode with a single Unix command.**
+
+Small, harness-agnostic shell wrappers and local-first orchestration for running coding subagents in non-interactive mode.
 
 <p align="center">
-  <img src="docs/assets/demo.gif" alt="subagents demo" width="800" />
+  <img src="docs/assets/demo.gif" alt="agent-relay demo" width="800" />
 </p>
 
 ## Why these wrappers exist
@@ -130,21 +132,21 @@ printf '%s\n' "Review this repo" | ./codex-subagent
 ./subagent-doctor
 ```
 
-`./subagent` is the preferred front door when you want workspace aliases or quick continuation:
+`./relay` (or `./subagent`) is the preferred front door when you want workspace aliases or quick continuation:
 
 ```bash
-./subagent workspaces
-./subagent doctor
-./subagent dashboard
-./subagent dashboard restart
-./subagent fitschool opencode "Review this repo"
-./subagent codex "Review the current directory"
-./subagent attention fitschool
-./subagent prune --dry-run --older-than 30d
-./subagent result fitschool
-./subagent open fitschool
-./subagent last fitschool
-./subagent continue fitschool "Fix the issue from the previous run"
+./relay workspaces
+./relay doctor
+./relay dashboard
+./relay dashboard restart
+./relay fitschool opencode "Review this repo"
+./relay codex "Review the current directory"
+./relay attention fitschool
+./relay prune --dry-run --older-than 30d
+./relay result fitschool
+./relay open fitschool
+./relay last fitschool
+./relay continue fitschool "Fix the issue from the previous run"
 ```
 
 Provider wrappers still work directly and use the current working directory as the workspace root. When a launch directory maps to a canonical project workspace, the startup banner also prints `canonical_workspace=...`; the run still executes in the original directory.

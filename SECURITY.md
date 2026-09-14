@@ -2,7 +2,7 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability within `local-subagents`, please report it directly by email to Akash Pandey at `pandeyak12@outlook.com` instead of opening a public issue.
+If you discover a security vulnerability within `agent-relay`, please report it directly by email to Akash Pandey at `pandeyak12@outlook.com` instead of opening a public issue.
 
 Please include:
 - A description of the issue and potential impact
@@ -14,7 +14,7 @@ We will review reports promptly and publish patches with proper credit.
 ## Security Considerations
 
 1. **Subagent Execution & Sandboxing**:
-   - `local-subagents` wrappers execute backing CLIs in non-interactive mode. By design, subagents may create, edit, or delete files in the working directory from which they are launched.
+   - `agent-relay` wrappers execute backing CLIs in non-interactive mode. By design, subagents may create, edit, or delete files in the working directory from which they are launched.
    - Always run subagents in trusted repositories or disposable git worktrees (`git worktree add ...`).
 2. **Secrets & Logs**:
    - Run logs are saved locally under `~/local-subagents/logs/` (or the directory specified by `SUBAGENT_LOG_DIR`).

@@ -18,22 +18,22 @@ Show
 
 Sleep 800ms
 
-Type "subagent doctor"
+Type "relay doctor"
 Sleep 400ms
 Enter
 Sleep 2s
 
-Type "subagent workspaces"
+Type "relay workspaces"
 Sleep 400ms
 Enter
 Sleep 2s
 
-Type "subagent opencode 'Review auth flow for token expiry'"
+Type "relay opencode 'Review auth flow for token expiry'"
 Sleep 400ms
 Enter
 Sleep 2500ms
 
-Type "subagent result --last"
+Type "relay result --last"
 Sleep 400ms
 Enter
 Sleep 3500ms

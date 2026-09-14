@@ -1,6 +1,6 @@
-# Contributing to local-subagents
+# Contributing to agent-relay
 
-Thank you for your interest in contributing to `local-subagents`!
+Thank you for your interest in contributing to `agent-relay`!
 
 ## Design Philosophy
 
@@ -13,11 +13,11 @@ Thank you for your interest in contributing to `local-subagents`!
 Clone the repo and verify your environment:
 
 ```bash
-git clone https://github.com/akashpandey/local-subagents.git
-cd local-subagents
+git clone https://github.com/akashpandey/agent-relay.git
+cd agent-relay
 
 # Run health checks
-./subagent doctor
+./relay doctor
 ```
 
 ### Running Tests
