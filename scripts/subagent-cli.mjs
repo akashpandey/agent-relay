@@ -26,6 +26,7 @@ function usage() {
   subagent dashboard [restart]
   subagent attention [workspace]
   subagent prune [--confirm] [--older-than 30d] [--workspace name] [--outcome outcome]
+  subagent result [--last | workspace | log-or-pid]
   subagent last [workspace]
   subagent continue [workspace] "task"
 
@@ -156,6 +157,21 @@ function runScript(script, args = []) {
   process.exit(child.status ?? 1);
 }
 
+function showResult(target = '--last') {
+  if (target !== '--last') {
+    const workspace = resolveWorkspace(target);
+    if (workspace) {
+      const run = latestRun(workspace);
+      if (!run) {
+        console.error('subagent: no matching runs found');
+        process.exit(1);
+      }
+      target = run.filename;
+    }
+  }
+  runScript('subagent-wait', [target]);
+}
+
 async function dashboardStatus() {
   const url = process.env.DASHBOARD_URL || 'http://localhost:4242';
   try {
@@ -202,6 +218,10 @@ if (args[0] === 'last') {
   }
   console.log(`${run.filename}\t${run.provider}\t${run.workspaceName}\t${run.sessionId || 'new'}\t${run.outcome || 'unknown'}`);
   process.exit(0);
+}
+
+if (args[0] === 'result') {
+  showResult(args[1] || '--last');
 }
 
 if (args[0] === 'attention') {

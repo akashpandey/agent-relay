@@ -19,6 +19,7 @@ subagent fitschool opencode "Task prompt..."
 subagent codex "Task prompt in the current directory..."
 subagent attention fitschool
 subagent prune --dry-run --older-than 30d
+subagent result fitschool
 subagent last fitschool
 subagent continue fitschool "Follow-up prompt..."
 ```
@@ -97,6 +98,7 @@ SUBAGENT_SESSION="session-abc-123" antigravity-subagent "Next step prompt..."
 Avoid busy polling loops (`while sleep 5; check status`) which waste tokens, context window, and CPU. Use one of these **zero-polling** patterns:
 
 Completeness rule: Never tail or manually read run logs to decide whether delegated work is complete. Use `subagent-wait <log-filename>` or `GET /api/runs/<log-filename>/result`. Logs are for debugging only after the structured result says `attentionRequired=true` or the result API is unavailable.
+With the unified CLI, prefer `subagent result --last`, `subagent result <workspace>`, or `subagent result <log-filename>` for this structured result lookup.
 
 ### Pattern A: AI Agent Native Reactive Wake-Up (Recommended for AI Assistants)
 When calling a subagent from an agentic runtime (Antigravity, Claude Code, Codex):
