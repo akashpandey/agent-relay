@@ -129,6 +129,7 @@ printf '%s\n' "Review this repo" | ./codex-subagent
 ./subagent workspaces
 ./subagent fitschool opencode "Review this repo"
 ./subagent codex "Review the current directory"
+./subagent attention fitschool
 ./subagent last fitschool
 ./subagent continue fitschool "Fix the issue from the previous run"
 ```

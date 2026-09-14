@@ -20,6 +20,7 @@ function usage() {
   subagent <provider> [wrapper-args...] "task"
   subagent <workspace> <provider> [wrapper-args...] "task"
   subagent workspaces
+  subagent attention [workspace]
   subagent last [workspace]
   subagent continue [workspace] "task"
 
@@ -52,6 +53,27 @@ function latestRun(workspaceArg = null) {
   return result.runs.find(run => run.sessionId && run.sessionId !== 'new') || result.runs[0] || null;
 }
 
+function listAttention(workspaceArg = null) {
+  const workspace = resolveWorkspace(workspaceArg);
+  const result = getFilteredRuns({ workspace: workspace || 'all', attention: '1', limit: 200, offset: 0 });
+  for (const run of result.runs) {
+    const workspaceName = run.workspaceName || run.workspace || 'workspace';
+    const continueCommand = run.sessionId && run.sessionId !== 'new'
+      ? `subagent continue ${JSON.stringify(workspaceName)} "<follow-up task>"`
+      : '';
+    console.log([
+      run.filename,
+      run.provider,
+      workspaceName,
+      run.outcome || 'unknown',
+      continueCommand,
+    ].join('\t'));
+  }
+  if (result.total > result.runs.length) {
+    console.error(`subagent: showing ${result.runs.length} of ${result.total} attention runs`);
+  }
+}
+
 function runProvider(provider, args, workspace = null) {
   const bin = providers.get(provider);
   if (!bin) {
@@ -82,6 +104,11 @@ if (args[0] === 'last') {
     process.exit(1);
   }
   console.log(`${run.filename}\t${run.provider}\t${run.workspaceName}\t${run.sessionId || 'new'}\t${run.outcome || 'unknown'}`);
+  process.exit(0);
+}
+
+if (args[0] === 'attention') {
+  listAttention(args[1]);
   process.exit(0);
 }
 
