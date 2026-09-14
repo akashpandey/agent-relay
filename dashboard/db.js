@@ -2,41 +2,13 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { canonicalWorkspacePath } from './workspaces.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const DB_DIR = process.env.SUBAGENT_DATA_DIR || path.resolve(__dirname, '../data');
 export const DB_PATH = process.env.SUBAGENT_DB_PATH || path.join(DB_DIR, 'subagents.db');
-
-const CODE_ROOT = '/home/akey/Code';
-
-export function canonicalWorkspacePath(workspace) {
-  if (!workspace || workspace === 'Unknown') return null;
-  const clean = workspace.replace(/\/+$/, '');
-
-  if (clean === '/home/akey/local-subagents' || clean.startsWith('/home/akey/local-subagents/')) {
-    return `${CODE_ROOT}/local-subagents`;
-  }
-  if (clean === `${CODE_ROOT}/OfdcParser` || clean.startsWith(`${CODE_ROOT}/OfdcParser/`)) {
-    return `${CODE_ROOT}/OfdcApplication`;
-  }
-  if (clean.startsWith('/tmp/fitschool-worktrees/') ||
-      clean.startsWith(`${CODE_ROOT}/fitschool/.worktrees/`) ||
-      clean.startsWith(`${CODE_ROOT}/fitschool/.claude/worktrees/`) ||
-      clean.startsWith(`${CODE_ROOT}/fitschool/`)) {
-    return `${CODE_ROOT}/fitschool`;
-  }
-  if (clean.startsWith(`${CODE_ROOT}/fitschool-`) && clean !== `${CODE_ROOT}/fitschool-waitlist` && !clean.startsWith(`${CODE_ROOT}/fitschool-waitlist/`)) {
-    return `${CODE_ROOT}/fitschool`;
-  }
-  if (clean.startsWith(`${CODE_ROOT}/`)) {
-    const [, name] = clean.slice(CODE_ROOT.length + 1).match(/^([^/]+)(?:\/|$)/) || [];
-    return name ? `${CODE_ROOT}/${name}` : null;
-  }
-
-  return null;
-}
 
 // Ensure directory exists
 if (!fs.existsSync(DB_DIR)) {

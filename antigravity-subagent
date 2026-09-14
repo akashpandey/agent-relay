@@ -6,6 +6,10 @@ repo_dir="$(cd "$(dirname "$script_path")" && pwd -P)"
 
 timeout="${AGY_PRINT_TIMEOUT:-120m}"
 workspace="$(pwd -P)"
+canonical_workspace=""
+if command -v node >/dev/null 2>&1; then
+  canonical_workspace="$(node "$repo_dir/scripts/workspace-canonical.mjs" "$workspace" 2>/dev/null || true)"
+fi
 
 # Prevent hanging network commands from blocking subprocess cleanup
 export PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-5}"
@@ -204,6 +208,9 @@ elif [ -n "$resume_session" ] && [ "$resume_session" != "new" ]; then
 fi
 
 if [ "$log_flag" = "1" ]; then
+  if [ -n "$canonical_workspace" ] && [ "$canonical_workspace" != "$workspace" ]; then
+    echo "antigravity-subagent: canonical_workspace=$canonical_workspace launch_workspace=$workspace" >&2
+  fi
   echo "antigravity-subagent: workspace=$workspace project=$project_id model=${AGY_MODEL:-default} session=${resume_session:-new} timeout=$timeout log_file=${AGY_LOG_FILE:-default} run_log=$log_file" >&2
 fi
 

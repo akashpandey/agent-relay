@@ -5,6 +5,10 @@ script_path="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo
 repo_dir="$(cd "$(dirname "$script_path")" && pwd -P)"
 
 workspace="$(pwd -P)"
+canonical_workspace=""
+if command -v node >/dev/null 2>&1; then
+  canonical_workspace="$(node "$repo_dir/scripts/workspace-canonical.mjs" "$workspace" 2>/dev/null || true)"
+fi
 
 # Prevent hanging network commands from blocking subprocess cleanup
 export PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-5}"
@@ -243,6 +247,9 @@ fi
 set -- "$@" "$prompt"
 
 if [ "$log_flag" = "1" ]; then
+  if [ -n "$canonical_workspace" ] && [ "$canonical_workspace" != "$workspace" ]; then
+    echo "opencode-subagent: canonical_workspace=$canonical_workspace launch_workspace=$workspace" >&2
+  fi
   echo "opencode-subagent: workspace=$workspace model=${OPENCODE_MODEL:-default} variant=${OPENCODE_VARIANT:-default} agent=${OPENCODE_AGENT:-default} session=${resume_session:-new} timeout=${timeout_seconds}s run_log=$log_file" >&2
 fi
 

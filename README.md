@@ -123,7 +123,9 @@ printf '%s\n' "Review this repo" | ./codex-subagent
 ./subagent-doctor
 ```
 
-Both wrappers use the current working directory as the workspace root and inject a short non-interactive system prompt around the task.
+Both wrappers use the current working directory as the workspace root and inject a short non-interactive system prompt around the task. When a launch directory maps to a canonical project workspace, the startup banner also prints `canonical_workspace=...`; the run still executes in the original directory.
+
+Canonical workspace grouping is shared by the wrappers and dashboard. Optional config lives at `~/.config/local-subagents/workspaces.json` as either an array of absolute repo paths or an object of names to absolute repo paths. Override the path with `SUBAGENT_WORKSPACES_CONFIG` or the default code root with `SUBAGENT_CODE_ROOT`.
 
 Run `./subagent-doctor` to check Docker, the dashboard container, the compose symlink, and the post-commit restart hook.
 
