@@ -9,6 +9,35 @@ const __dirname = path.dirname(__filename);
 export const DB_DIR = process.env.SUBAGENT_DATA_DIR || path.resolve(__dirname, '../data');
 export const DB_PATH = process.env.SUBAGENT_DB_PATH || path.join(DB_DIR, 'subagents.db');
 
+const CODE_ROOT = '/home/akey/Code';
+
+export function canonicalWorkspacePath(workspace) {
+  if (!workspace || workspace === 'Unknown') return null;
+  const clean = workspace.replace(/\/+$/, '');
+
+  if (clean === '/home/akey/local-subagents' || clean.startsWith('/home/akey/local-subagents/')) {
+    return `${CODE_ROOT}/local-subagents`;
+  }
+  if (clean === `${CODE_ROOT}/OfdcParser` || clean.startsWith(`${CODE_ROOT}/OfdcParser/`)) {
+    return `${CODE_ROOT}/OfdcApplication`;
+  }
+  if (clean.startsWith('/tmp/fitschool-worktrees/') ||
+      clean.startsWith(`${CODE_ROOT}/fitschool/.worktrees/`) ||
+      clean.startsWith(`${CODE_ROOT}/fitschool/.claude/worktrees/`) ||
+      clean.startsWith(`${CODE_ROOT}/fitschool/`)) {
+    return `${CODE_ROOT}/fitschool`;
+  }
+  if (clean.startsWith(`${CODE_ROOT}/fitschool-`) && clean !== `${CODE_ROOT}/fitschool-waitlist` && !clean.startsWith(`${CODE_ROOT}/fitschool-waitlist/`)) {
+    return `${CODE_ROOT}/fitschool`;
+  }
+  if (clean.startsWith(`${CODE_ROOT}/`)) {
+    const [, name] = clean.slice(CODE_ROOT.length + 1).match(/^([^/]+)(?:\/|$)/) || [];
+    return name ? `${CODE_ROOT}/${name}` : null;
+  }
+
+  return null;
+}
+
 // Ensure directory exists
 if (!fs.existsSync(DB_DIR)) {
   fs.mkdirSync(DB_DIR, { recursive: true });
@@ -100,14 +129,16 @@ export function rowToRunMeta(row, isAlive = false) {
   const durationSec = isAlive && startMs > 0
     ? Math.max(0, Math.round((Date.now() - startMs) / 1000))
     : (row.duration_sec || 0);
+  const workspace = canonicalWorkspacePath(row.workspace) || row.workspace || 'Unknown';
 
   return {
     filename: row.filename,
     provider: row.provider,
     pid: row.pid,
     model: row.model || 'default',
-    workspace: row.workspace || 'Unknown',
-    workspaceName: row.workspace_name || (row.workspace ? path.basename(row.workspace) : 'Unknown'),
+    workspace,
+    rawWorkspace: row.workspace || 'Unknown',
+    workspaceName: workspace === 'Unknown' ? 'Unknown' : path.basename(workspace),
     session: row.session_id || 'new',
     sessionId: row.session_id || null,
     task: row.task || '',
@@ -312,6 +343,7 @@ export function getFilteredRuns({ provider, status, outcome, workspace, q, limit
   const db = getDatabase();
   let whereClauses = [];
   let params = [];
+  const workspaceFilter = workspace && workspace !== 'all' ? workspace : null;
 
   if (provider && provider !== 'all') {
     whereClauses.push('LOWER(provider) = LOWER(?)');
@@ -325,10 +357,6 @@ export function getFilteredRuns({ provider, status, outcome, workspace, q, limit
     whereClauses.push('LOWER(outcome) = LOWER(?)');
     params.push(outcome);
   }
-  if (workspace && workspace !== 'all') {
-    whereClauses.push('(workspace LIKE ? OR LOWER(workspace_name) = LOWER(?))');
-    params.push(`%${workspace}%`, workspace);
-  }
   if (q) {
     whereClauses.push('(filename LIKE ? OR workspace LIKE ? OR model LIKE ? OR task LIKE ? OR CAST(pid AS TEXT) LIKE ?)');
     const qPattern = `%${q}%`;
@@ -337,9 +365,20 @@ export function getFilteredRuns({ provider, status, outcome, workspace, q, limit
 
   const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
   
+  if (workspaceFilter) {
+    const rows = db.prepare(`SELECT * FROM runs ${whereSql} ORDER BY start_time DESC`).all(...params);
+    const filtered = rows.filter(r => canonicalWorkspacePath(r.workspace) === workspaceFilter);
+
+    return {
+      total: filtered.length,
+      limit,
+      offset,
+      runs: filtered.slice(offset, offset + limit).map(r => rowToRunMeta(r, r.status === 'running'))
+    };
+  }
+
   const countStmt = db.prepare(`SELECT COUNT(*) as count FROM runs ${whereSql}`);
   const total = countStmt.get(...params)?.count || 0;
-
   const dataStmt = db.prepare(`
     SELECT * FROM runs ${whereSql}
     ORDER BY start_time DESC
@@ -440,7 +479,24 @@ export function getWorkspacesFromDb() {
     ORDER BY totalRuns DESC
   `).all();
 
-  return rows;
+  const byPath = new Map();
+  for (const row of rows) {
+    const canonical = canonicalWorkspacePath(row.path);
+    if (!canonical) continue;
+    const existing = byPath.get(canonical) || {
+      path: canonical,
+      name: path.basename(canonical),
+      totalRuns: 0,
+      activeRuns: 0,
+      lastRun: null
+    };
+    existing.totalRuns += row.totalRuns || 0;
+    existing.activeRuns += row.activeRuns || 0;
+    if (!existing.lastRun || row.lastRun > existing.lastRun) existing.lastRun = row.lastRun;
+    byPath.set(canonical, existing);
+  }
+
+  return [...byPath.values()].sort((a, b) => b.totalRuns - a.totalRuns);
 }
 
 export function getRun(filename) {

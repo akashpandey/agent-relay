@@ -1019,14 +1019,29 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
 
   const combinedSample = headContent + '\n---SPLIT---\n' + tailContent;
 
+  // Load .done metadata if available
+  let doneMeta = null;
+  const donePath = logFilePath.replace(/\.log$/, '.done');
+  if (fs.existsSync(donePath)) {
+    try {
+      doneMeta = JSON.parse(fs.readFileSync(donePath, 'utf8'));
+    } catch {}
+  }
+
   // Extract Workspace
-  let workspace = null;
-  const wsMatch = combinedSample.match(/Workspace:\s*([^\r\n]+)/i) ||
-                  combinedSample.match(/workspace=([^\s]+)/i) ||
-                  combinedSample.match(/workdir:\s*([^\r\n]+)/i) ||
-                  combinedSample.match(/directory=([^\s]+)/i) ||
-                  combinedSample.match(/cwd=([^\s]+)/i);
-  if (wsMatch) {
+  let workspace = doneMeta?.workspace || null;
+  const headerWsMatch = headContent.match(/subagent:\s*provider=[^\s]+\s+workspace=([^\s]+)\s+/i);
+  if (!workspace && headerWsMatch) {
+    workspace = headerWsMatch[1].trim();
+  }
+  const wsMatch = !workspace && (
+    headContent.match(/Workspace:\s*([^\r\n]+)/i) ||
+    headContent.match(/workspace=([^\s]+)/i) ||
+    headContent.match(/workdir:\s*([^\r\n]+)/i) ||
+    headContent.match(/directory=([^\s]+)/i) ||
+    headContent.match(/cwd=([^\s]+)/i)
+  );
+  if (!workspace && wsMatch) {
     let clean = wsMatch[1].trim();
     if (clean.includes(' ')) {
       const token = clean.split(/\s+/)[0];
@@ -1034,7 +1049,9 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
         clean = token;
       }
     }
-    workspace = clean;
+    if (clean.startsWith('/') || clean.startsWith('~')) {
+      workspace = clean;
+    }
   }
 
   // Extract Model
@@ -1053,15 +1070,6 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
     if (rawModel && rawModel !== 'default' && rawModel !== 'undefined' && rawModel !== 'null') {
       model = rawModel;
     }
-  }
-
-  // Load .done metadata if available
-  let doneMeta = null;
-  const donePath = logFilePath.replace(/\.log$/, '.done');
-  if (fs.existsSync(donePath)) {
-    try {
-      doneMeta = JSON.parse(fs.readFileSync(donePath, 'utf8'));
-    } catch {}
   }
 
   // Extract Session ID

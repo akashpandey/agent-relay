@@ -18,6 +18,7 @@ const state = {
   selectedRowIndex: -1,
   dashboardRefreshTimer: null,
   modalRefreshTimer: null,
+  workspaceRefreshTimer: null,
   
   // Filters & Pagination
   filterProvider: 'all',
@@ -1654,6 +1655,7 @@ function initSSE() {
           if (el.kpiSuccessVal) el.kpiSuccessVal.textContent = `${data.analytics.successRate || 100}%`;
         }
         scheduleDashboardRefresh();
+        scheduleWorkspaceRefresh();
         scheduleModalMetadataRefresh();
       }
     } catch {}
@@ -1673,8 +1675,15 @@ function scheduleDashboardRefresh() {
   state.dashboardRefreshTimer = setTimeout(() => {
     state.dashboardRefreshTimer = null;
     fetchRuns();
-    fetchWorkspaces();
   }, 500);
+}
+
+function scheduleWorkspaceRefresh() {
+  if (state.workspaceRefreshTimer) return;
+  state.workspaceRefreshTimer = setTimeout(() => {
+    state.workspaceRefreshTimer = null;
+    fetchWorkspaces();
+  }, 5000);
 }
 
 function scheduleModalMetadataRefresh() {
