@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getRun, upsertRun } from '../dashboard/db.js';
 import { parseLogMetadata } from '../dashboard/parser.js';
+import { buildRunCommands } from '../dashboard/commands.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,13 +39,7 @@ const result = run.result || null;
 const sessionId = run.sessionId || run.session || null;
 const outcome = run.outcome || result?.outcome || 'unknown';
 const attentionRequired = Boolean(run.attentionRequired || result?.attentionRequired);
-const bin = `${run.provider}-subagent`;
-const continuation = sessionId && sessionId !== 'new' ? {
-  sessionId,
-  sameSessionCommand: `${bin} --resume ${JSON.stringify(sessionId)} "<follow-up task>"`,
-  continueLastCommand: `${bin} --continue "<follow-up task>"`,
-  env: { SUBAGENT_SESSION: sessionId },
-} : null;
+const { runAgainCommand, continuation } = buildRunCommands(run, sessionId);
 console.log(JSON.stringify({
   filename: run.filename,
   processStatus: run.status,
@@ -61,6 +56,7 @@ console.log(JSON.stringify({
   logFile: logFile,
   sessionId,
   continuation,
+  runAgainCommand,
   provider: run.provider,
   model: run.model,
 }, null, 2));

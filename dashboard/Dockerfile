@@ -20,7 +20,7 @@ WORKDIR /app
 COPY package.json ./
 
 # Copy dashboard app code and public assets
-COPY server.js parser.js db.js sync-logs.js workspaces.js ./
+COPY server.js parser.js db.js sync-logs.js workspaces.js commands.js ./
 COPY public ./public
 
 EXPOSE 4242

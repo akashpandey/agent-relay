@@ -152,6 +152,8 @@ If `accepted=false` or `outcome` is `partial`, `blocked`, `failed`, or `unknown`
 
 If the original subagent caused a defect and the compact result includes `continuation`, prefer `continuation.sameSessionCommand` so the same agent can repair its own work with full context. Include the exact issue, failing check, and acceptance condition in the follow-up prompt.
 
+The dashboard run modal exposes copy-only `Continue` and `Run Again` actions. Prefer the copied `subagent continue <workspace> "<follow-up task>"` form when a run is partial, blocked, failed, or needs a same-context repair. The browser does not execute commands directly.
+
 For direct dashboard access, use `GET /api/runs/<log-filename>/result` for the compact result contract or `GET /api/runs/<log-filename>` for full metadata. The dashboard history has an Outcome filter for `done`, `partial`, `blocked`, and `unknown` task results.
 
 Dashboard note: Live Terminal is optimized for large logs. It initially shows the latest log tail and keeps a bounded rendered window while continuing to stream new output; use `Load Older`, full-log search, the log download, or `/api/logs/<log-filename>` when more history or the exact full raw log is required. Rebuild the derived SQLite cache with `npm --prefix dashboard run rebuild` if it gets stale.

@@ -107,6 +107,8 @@ const el = {
   modalDuration: document.getElementById('modal-duration'),
   modalBtnKill: document.getElementById('modal-btn-kill'),
   btnModalCopyCli: document.getElementById('btn-modal-copy-cli'),
+  btnModalCopyContinue: document.getElementById('btn-modal-copy-continue'),
+  btnModalCopyRerun: document.getElementById('btn-modal-copy-rerun'),
   btnModalCopyPrompt: document.getElementById('btn-modal-copy-prompt'),
   btnModalCopyLog: document.getElementById('btn-modal-copy-log'),
   btnModalDownloadLog: document.getElementById('btn-modal-download-log'),
@@ -633,6 +635,12 @@ function applyModalMetadata(meta) {
   el.modalCliCode.textContent = meta.cliCommand || 'No command available';
   el.btnCliCopySmall.onclick = () => copyToClipboard(meta.cliCommand, 'CLI command copied!');
   el.btnModalCopyCli.onclick = () => copyToClipboard(meta.cliCommand, 'CLI command copied!');
+
+  const continueCommand = meta.continuation?.subagentContinueCommand || meta.continuation?.sameSessionCommand || '';
+  el.btnModalCopyContinue.style.display = continueCommand ? 'inline-flex' : 'none';
+  el.btnModalCopyContinue.onclick = () => copyToClipboard(continueCommand, 'Continue command copied!');
+  el.btnModalCopyRerun.style.display = meta.runAgainCommand ? 'inline-flex' : 'none';
+  el.btnModalCopyRerun.onclick = () => copyToClipboard(meta.runAgainCommand, 'Run-again command copied!');
 
   // Left Sidebar: Tokens & Cost Mini Stats
   if (meta.tokens) {

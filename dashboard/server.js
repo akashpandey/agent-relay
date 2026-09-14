@@ -4,6 +4,7 @@ import path from 'node:path';
 import { exec } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parseLogFilename, isProcessRunning, parseLogMetadata } from './parser.js';
+import { buildRunCommands } from './commands.js';
 import {
   getStatsFromDb,
   getFilteredRuns,
@@ -427,13 +428,7 @@ const server = http.createServer(async (req, res) => {
     const sessionId = run.sessionId || run.session || null;
     const outcome = run.outcome || result?.outcome || 'unknown';
     const attentionRequired = Boolean(run.attentionRequired || result?.attentionRequired);
-    const bin = `${run.provider}-subagent`;
-    const continuation = sessionId && sessionId !== 'new' ? {
-      sessionId,
-      sameSessionCommand: `${bin} --resume ${JSON.stringify(sessionId)} "<follow-up task>"`,
-      continueLastCommand: `${bin} --continue "<follow-up task>"`,
-      env: { SUBAGENT_SESSION: sessionId },
-    } : null;
+    const { runAgainCommand, continuation } = buildRunCommands(run, sessionId);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       filename: run.filename,
@@ -451,6 +446,7 @@ const server = http.createServer(async (req, res) => {
       logFile: path.join(LOGS_DIR, safeFile),
       sessionId,
       continuation,
+      runAgainCommand,
       provider: run.provider,
       model: run.model,
     }));
@@ -476,8 +472,10 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    const sessionId = meta.sessionId || meta.session || null;
+    const { runAgainCommand, continuation } = buildRunCommands(meta, sessionId);
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(meta));
+    res.end(JSON.stringify({ ...meta, continuation, runAgainCommand }));
     return;
   }
 
