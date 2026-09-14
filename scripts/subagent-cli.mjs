@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalWorkspacePath, configuredWorkspaceEntries } from '../dashboard/workspaces.js';
-import { getFilteredRuns, getWorkspacesFromDb } from '../dashboard/db.js';
+import { deleteRun, getFilteredRuns, getWorkspacesFromDb } from '../dashboard/db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const repoDir = path.resolve(path.dirname(__filename), '..');
+const logsDir = process.env.SUBAGENT_LOG_DIR || path.join(repoDir, 'logs');
 const providers = new Map([
   ['opencode', 'opencode-subagent'],
   ['codex', 'codex-subagent'],
@@ -21,6 +23,7 @@ function usage() {
   subagent <workspace> <provider> [wrapper-args...] "task"
   subagent workspaces
   subagent attention [workspace]
+  subagent prune [--confirm] [--older-than 30d] [--workspace name] [--outcome outcome]
   subagent last [workspace]
   subagent continue [workspace] "task"
 
@@ -74,6 +77,68 @@ function listAttention(workspaceArg = null) {
   }
 }
 
+function parseDurationMs(value) {
+  const match = String(value || '').match(/^(\d+)([dhm])$/);
+  if (!match) return null;
+  const n = Number(match[1]);
+  return n * ({ m: 60_000, h: 3_600_000, d: 86_400_000 }[match[2]]);
+}
+
+function pruneRuns(argv) {
+  let confirm = false;
+  let olderThan = null;
+  let workspace = null;
+  let outcome = 'all';
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--confirm') {
+      confirm = true;
+    } else if (arg === '--dry-run') {
+      confirm = false;
+    } else if (arg === '--older-than') {
+      olderThan = parseDurationMs(argv[++i]);
+      if (olderThan === null) {
+        console.error('subagent: --older-than expects value like 30d, 12h, or 90m');
+        process.exit(2);
+      }
+    } else if (arg === '--workspace') {
+      workspace = resolveWorkspace(argv[++i]);
+      if (!workspace) {
+        console.error('subagent: unknown workspace');
+        process.exit(2);
+      }
+    } else if (arg === '--outcome') {
+      outcome = argv[++i] || 'all';
+    } else {
+      console.error(`subagent: unknown prune option: ${arg}`);
+      process.exit(2);
+    }
+  }
+
+  const result = getFilteredRuns({ workspace: workspace || 'all', outcome, limit: 5000, offset: 0 });
+  const cutoff = olderThan ? Date.now() - olderThan : null;
+  const targets = result.runs.filter(run => {
+    if (run.status === 'running') return false;
+    if (cutoff && new Date(run.startTime).getTime() >= cutoff) return false;
+    return true;
+  });
+
+  for (const run of targets) {
+    const logPath = path.join(logsDir, run.filename);
+    const donePath = logPath.replace(/\.log$/, '.done');
+    console.log(`${confirm ? 'delete' : 'would-delete'}\t${run.filename}\t${run.workspaceName}\t${run.outcome || 'unknown'}`);
+    if (confirm) {
+      for (const file of [logPath, donePath]) {
+        try { fs.unlinkSync(file); } catch (err) { if (err.code !== 'ENOENT') throw err; }
+      }
+      deleteRun(run.filename);
+    }
+  }
+
+  console.error(`subagent: ${confirm ? 'deleted' : 'would delete'} ${targets.length} runs${confirm ? '' : ' (dry run; add --confirm)'}`);
+}
+
 function runProvider(provider, args, workspace = null) {
   const bin = providers.get(provider);
   if (!bin) {
@@ -109,6 +174,11 @@ if (args[0] === 'last') {
 
 if (args[0] === 'attention') {
   listAttention(args[1]);
+  process.exit(0);
+}
+
+if (args[0] === 'prune') {
+  pruneRuns(args.slice(1));
   process.exit(0);
 }
 

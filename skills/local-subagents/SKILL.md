@@ -16,6 +16,7 @@ subagent workspaces
 subagent fitschool opencode "Task prompt..."
 subagent codex "Task prompt in the current directory..."
 subagent attention fitschool
+subagent prune --dry-run --older-than 30d
 subagent last fitschool
 subagent continue fitschool "Follow-up prompt..."
 ```
@@ -156,6 +157,8 @@ If the original subagent caused a defect and the compact result includes `contin
 The dashboard run modal exposes copy-only `Continue` and `Run Again` actions. Prefer the copied `subagent continue <workspace> "<follow-up task>"` form when a run is partial, blocked, failed, or needs a same-context repair. The browser does not execute commands directly.
 
 Use `subagent attention [workspace]`, the dashboard `Needs Attention` filter, or `/api/runs?attention=1` to find failed, blocked, partial, unknown, or attention-required runs before declaring delegated work complete.
+
+Use `subagent prune` only for log/dashboard cleanup. It is dry-run by default; require `--confirm` before it deletes `.log`/`.done` files and DB rows. Never prune running runs.
 
 For direct dashboard access, use `GET /api/runs/<log-filename>/result` for the compact result contract or `GET /api/runs/<log-filename>` for full metadata. The dashboard history has an Outcome filter for `done`, `partial`, `blocked`, and `unknown` task results.
 

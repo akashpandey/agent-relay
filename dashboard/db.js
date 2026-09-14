@@ -516,6 +516,11 @@ export function getRunLogFingerprint(filename) {
   return stmt.get(filename) || null;
 }
 
+export function deleteRun(filename) {
+  const db = getDatabase();
+  db.prepare('DELETE FROM runs WHERE filename = ?').run(filename);
+}
+
 export function resetRuns() {
   getDatabase().exec('DELETE FROM runs');
 }

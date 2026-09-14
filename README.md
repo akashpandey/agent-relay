@@ -130,6 +130,7 @@ printf '%s\n' "Review this repo" | ./codex-subagent
 ./subagent fitschool opencode "Review this repo"
 ./subagent codex "Review the current directory"
 ./subagent attention fitschool
+./subagent prune --dry-run --older-than 30d
 ./subagent last fitschool
 ./subagent continue fitschool "Fix the issue from the previous run"
 ```
