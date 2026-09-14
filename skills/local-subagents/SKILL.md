@@ -20,6 +20,7 @@ subagent codex "Task prompt in the current directory..."
 subagent attention fitschool
 subagent prune --dry-run --older-than 30d
 subagent result fitschool
+subagent open fitschool
 subagent last fitschool
 subagent continue fitschool "Follow-up prompt..."
 ```

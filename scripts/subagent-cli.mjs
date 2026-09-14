@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalWorkspacePath, configuredWorkspaceEntries } from '../dashboard/workspaces.js';
-import { deleteRun, getFilteredRuns, getWorkspacesFromDb } from '../dashboard/db.js';
+import { deleteRun, getFilteredRuns, getRun, getWorkspacesFromDb } from '../dashboard/db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const repoDir = path.resolve(path.dirname(__filename), '..');
@@ -27,6 +27,7 @@ function usage() {
   subagent attention [workspace]
   subagent prune [--confirm] [--older-than 30d] [--workspace name] [--outcome outcome]
   subagent result [--last | workspace | log-or-pid]
+  subagent open [--browser] [--last | workspace | log]
   subagent last [workspace]
   subagent continue [workspace] "task"
 
@@ -172,6 +173,31 @@ function showResult(target = '--last') {
   runScript('subagent-wait', [target]);
 }
 
+function resolveRunTarget(target = '--last') {
+  if (target === '--last') return latestRun(null);
+  const workspace = resolveWorkspace(target);
+  if (workspace) return latestRun(workspace);
+  const filename = path.basename(target);
+  return getRun(filename) || null;
+}
+
+function openRun(argv) {
+  const browser = argv[0] === '--browser';
+  const target = browser ? (argv[1] || '--last') : (argv[0] || '--last');
+  const run = resolveRunTarget(target);
+  if (!run?.filename) {
+    console.error('subagent: no matching runs found');
+    process.exit(1);
+  }
+  const baseUrl = (process.env.DASHBOARD_URL || 'http://localhost:4242').replace(/\/+$/, '');
+  const url = `${baseUrl}/#run=${encodeURIComponent(run.filename)}`;
+  console.log(url);
+  if (browser) {
+    const child = spawnSync('xdg-open', [url], { stdio: 'ignore' });
+    if (child.status !== 0) console.error('subagent: xdg-open failed');
+  }
+}
+
 async function dashboardStatus() {
   const url = process.env.DASHBOARD_URL || 'http://localhost:4242';
   try {
@@ -222,6 +248,11 @@ if (args[0] === 'last') {
 
 if (args[0] === 'result') {
   showResult(args[1] || '--last');
+}
+
+if (args[0] === 'open') {
+  openRun(args.slice(1));
+  process.exit(0);
 }
 
 if (args[0] === 'attention') {

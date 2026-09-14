@@ -135,6 +135,7 @@ printf '%s\n' "Review this repo" | ./codex-subagent
 ./subagent attention fitschool
 ./subagent prune --dry-run --older-than 30d
 ./subagent result fitschool
+./subagent open fitschool
 ./subagent last fitschool
 ./subagent continue fitschool "Fix the issue from the previous run"
 ```
