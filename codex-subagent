@@ -105,7 +105,7 @@ $user_prompt"
 
 log_flag="${CODEX_LOGS:-1}"
 sandbox="${CODEX_SANDBOX:-workspace-write}"
-codex_bin="$(command -v codex)"
+codex_bin="${SUBAGENT_CODEX_BIN:-$(command -v codex 2>/dev/null || echo "codex")}"
 
 # ponytail: Bubblewrap cannot start here when AppArmor denies unprivileged user
 # namespaces. Keep the safe default where available; callers can still force a
@@ -199,9 +199,9 @@ fi
 if [ "$use_systemd" -eq 1 ]; then
   systemd-run --user --pipe --working-directory="$workspace" --setenv=PATH="$PATH" --wait --collect --quiet --unit="$unit" --property=KillMode=control-group --property=RuntimeMaxSec="${timeout_seconds}s" "$codex_bin" "$@" >>"$log_file" 2>&1 &
 elif [ "$timeout_seconds" -gt 0 ] 2>/dev/null && command -v timeout >/dev/null 2>&1; then
-  setsid timeout --foreground "${timeout_seconds}s" codex "$@" >>"$log_file" 2>&1 &
+  setsid timeout --foreground "${timeout_seconds}s" "$codex_bin" "$@" >>"$log_file" 2>&1 &
 else
-  setsid codex "$@" >>"$log_file" 2>&1 &
+  setsid "$codex_bin" "$@" >>"$log_file" 2>&1 &
 fi
 cmd_pid=$!
 tail -f "$log_file" &

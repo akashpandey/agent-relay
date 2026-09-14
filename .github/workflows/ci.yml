@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Lint & Mock Test Suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Shell syntax check (sh -n)
+        run: |
+          sh -n antigravity-subagent claude-subagent codex-subagent opencode-subagent opencode-subagent-fallback subagent subagent-wait subagent-doctor install-skill
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          ignore_paths: dashboard data logs .playwright-cli
+        continue-on-error: true
+
+      - name: Run Mock CLI Test Suite
+        run: |
+          chmod +x tests/test-wrappers.sh
+          ./tests/test-wrappers.sh

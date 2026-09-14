@@ -15,12 +15,14 @@ fi
 export PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-5}"
 export CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-10}"
 
+agy_bin="${SUBAGENT_AGY_BIN:-$(command -v agy 2>/dev/null || echo "$HOME/.local/bin/agy")}"
+
 if [ "${1:-}" = "--models" ]; then
   if [ "$#" -ne 1 ]; then
     echo "Usage: antigravity-subagent --models" >&2
     exit 2
   fi
-  "$HOME/.local/bin/agy" models
+  "$agy_bin" models
   exit 0
 fi
 
@@ -141,27 +143,27 @@ resolve_agy_model() {
 
   case "$(echo "$raw_model" | tr '[:upper:]' '[:lower:]')" in
     flash|gemini-flash|latest-flash|flash-high|latest)
-      resolved="$("$HOME/.local/bin/agy" models 2>/dev/null | grep -iE 'Gemini [0-9.]+ Flash \(High\)' | head -n 1 | sed -e 's/^[a-z0-9.-]*[[:space:]]*//' || true)"
+      resolved="$("$agy_bin" models 2>/dev/null | grep -iE 'Gemini [0-9.]+ Flash \(High\)' | head -n 1 | sed -e 's/^[a-z0-9.-]*[[:space:]]*//' || true)"
       if [ -n "$resolved" ]; then echo "$resolved"; return 0; fi
       echo "Gemini 3.8 Flash (High)"
       ;;
     flash-medium|gemini-flash-medium|flash-med)
-      resolved="$("$HOME/.local/bin/agy" models 2>/dev/null | grep -iE 'Gemini [0-9.]+ Flash \(Medium\)' | head -n 1 | sed -e 's/^[a-z0-9.-]*[[:space:]]*//' || true)"
+      resolved="$("$agy_bin" models 2>/dev/null | grep -iE 'Gemini [0-9.]+ Flash \(Medium\)' | head -n 1 | sed -e 's/^[a-z0-9.-]*[[:space:]]*//' || true)"
       if [ -n "$resolved" ]; then echo "$resolved"; return 0; fi
       echo "Gemini 3.8 Flash (Medium)"
       ;;
     flash-low|gemini-flash-low)
-      resolved="$("$HOME/.local/bin/agy" models 2>/dev/null | grep -iE 'Gemini [0-9.]+ Flash \(Low\)' | head -n 1 | sed -e 's/^[a-z0-9.-]*[[:space:]]*//' || true)"
+      resolved="$("$agy_bin" models 2>/dev/null | grep -iE 'Gemini [0-9.]+ Flash \(Low\)' | head -n 1 | sed -e 's/^[a-z0-9.-]*[[:space:]]*//' || true)"
       if [ -n "$resolved" ]; then echo "$resolved"; return 0; fi
       echo "Gemini 3.8 Flash (Low)"
       ;;
     pro|gemini-pro|latest-pro|pro-high)
-      resolved="$("$HOME/.local/bin/agy" models 2>/dev/null | grep -iE 'Gemini [0-9.]+ Pro \(High\)' | head -n 1 | sed -e 's/^[a-z0-9.-]*[[:space:]]*//' || true)"
+      resolved="$("$agy_bin" models 2>/dev/null | grep -iE 'Gemini [0-9.]+ Pro \(High\)' | head -n 1 | sed -e 's/^[a-z0-9.-]*[[:space:]]*//' || true)"
       if [ -n "$resolved" ]; then echo "$resolved"; return 0; fi
       echo "Gemini 3.1 Pro (High)"
       ;;
     pro-low|gemini-pro-low)
-      resolved="$("$HOME/.local/bin/agy" models 2>/dev/null | grep -iE 'Gemini [0-9.]+ Pro \(Low\)' | head -n 1 | sed -e 's/^[a-z0-9.-]*[[:space:]]*//' || true)"
+      resolved="$("$agy_bin" models 2>/dev/null | grep -iE 'Gemini [0-9.]+ Pro \(Low\)' | head -n 1 | sed -e 's/^[a-z0-9.-]*[[:space:]]*//' || true)"
       if [ -n "$resolved" ]; then echo "$resolved"; return 0; fi
       echo "Gemini 3.1 Pro (Low)"
       ;;
@@ -232,11 +234,11 @@ if command -v node >/dev/null 2>&1; then
 fi
 
 if [ "$use_systemd" -eq 1 ]; then
-  systemd-run --user --pipe --working-directory="$workspace" --setenv=PATH="$PATH" --wait --collect --quiet --unit="$unit" --property=KillMode=control-group --property=RuntimeMaxSec="$timeout" "$HOME/.local/bin/agy" "$@" >>"$log_file" 2>&1 &
+  systemd-run --user --pipe --working-directory="$workspace" --setenv=PATH="$PATH" --wait --collect --quiet --unit="$unit" --property=KillMode=control-group --property=RuntimeMaxSec="$timeout" "$agy_bin" "$@" >>"$log_file" 2>&1 &
 elif command -v timeout >/dev/null 2>&1; then
-  setsid timeout --foreground "$timeout" "$HOME/.local/bin/agy" "$@" >>"$log_file" 2>&1 &
+  setsid timeout --foreground "$timeout" "$agy_bin" "$@" >>"$log_file" 2>&1 &
 else
-  setsid "$HOME/.local/bin/agy" "$@" >>"$log_file" 2>&1 &
+  setsid "$agy_bin" "$@" >>"$log_file" 2>&1 &
 fi
 cmd_pid=$!
 tail -f "$log_file" &

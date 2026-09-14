@@ -1,6 +1,13 @@
 # subagents
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/akashpandey/local-subagents/actions/workflows/ci.yml/badge.svg)](https://github.com/akashpandey/local-subagents/actions/workflows/ci.yml)
+
 Small shell wrappers for running local coding subagents in non-interactive mode.
+
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="subagents demo" width="800" />
+</p>
 
 ## Why these wrappers exist
 
@@ -492,6 +499,10 @@ fallback remains useful on hosts without systemd user services.
 
 ## Notes
 
-- These wrappers are intentionally thin. They only normalize prompt shape and runtime flags.
-- They may need local path changes if your `opencode`, `agy`, or `claude` binaries live elsewhere.
+- These wrappers are intentionally thin. They normalize prompt shapes and runtime flags.
+- Executables are discovered via `PATH` by default. You can override individual binary paths via environment variables (`SUBAGENT_CLAUDE_BIN`, `SUBAGENT_AGY_BIN`, `SUBAGENT_OPENCODE_BIN`, `SUBAGENT_CODEX_BIN`).
 - They assume the current working directory is the repo or workspace you want the subagent to operate on.
+
+## License
+
+[MIT](LICENSE) © Akash Pandey

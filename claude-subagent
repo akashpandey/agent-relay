@@ -104,6 +104,7 @@ log_dir="${SUBAGENT_LOG_DIR:-$repo_dir/logs}"
 mkdir -p "$log_dir"
 log_file="$log_dir/$(date +%Y%m%dT%H%M%S)-claude-$$.log"
 unit="local-subagent-claude-$$"
+claude_bin="${SUBAGENT_CLAUDE_BIN:-$(command -v claude 2>/dev/null || echo "$HOME/.local/bin/claude")}"
 use_systemd=0
 if command -v systemd-run >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
   use_systemd=1
@@ -178,11 +179,11 @@ if command -v node >/dev/null 2>&1; then
 fi
 
 if [ "$use_systemd" -eq 1 ]; then
-  systemd-run --user --pipe --working-directory="$workspace" --setenv=PATH="$PATH" --wait --collect --quiet --unit="$unit" --property=KillMode=control-group --property=RuntimeMaxSec="${timeout_seconds}s" "$HOME/.local/bin/claude" "$@" >>"$log_file" 2>&1 &
+  systemd-run --user --pipe --working-directory="$workspace" --setenv=PATH="$PATH" --wait --collect --quiet --unit="$unit" --property=KillMode=control-group --property=RuntimeMaxSec="${timeout_seconds}s" "$claude_bin" "$@" >>"$log_file" 2>&1 &
 elif [ "$timeout_seconds" -gt 0 ] 2>/dev/null && command -v timeout >/dev/null 2>&1; then
-  setsid timeout --foreground "${timeout_seconds}s" "$HOME/.local/bin/claude" "$@" >>"$log_file" 2>&1 &
+  setsid timeout --foreground "${timeout_seconds}s" "$claude_bin" "$@" >>"$log_file" 2>&1 &
 else
-  setsid "$HOME/.local/bin/claude" "$@" >>"$log_file" 2>&1 &
+  setsid "$claude_bin" "$@" >>"$log_file" 2>&1 &
 fi
 cmd_pid=$!
 tail -f "$log_file" &
