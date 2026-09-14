@@ -145,6 +145,14 @@ export function rowToRunMeta(row, isAlive = false) {
   };
 }
 
+function rowNeedsAttention(row) {
+  if (!row || row.status === 'running') return false;
+  return row.status === 'failed' ||
+    row.exit_code !== null && row.exit_code !== undefined && row.exit_code !== 0 ||
+    Boolean(row.attention_required) ||
+    (row.outcome || 'unknown') !== 'done';
+}
+
 /**
  * Upsert a run record into SQLite
  */
@@ -311,7 +319,7 @@ export function getAllRunsFromDb(limit = 1000, offset = 0) {
   return rows.map(r => rowToRunMeta(r, r.status === 'running'));
 }
 
-export function getFilteredRuns({ provider, status, outcome, workspace, q, limit = 50, offset = 0 }) {
+export function getFilteredRuns({ provider, status, outcome, workspace, attention, q, limit = 50, offset = 0 }) {
   const db = getDatabase();
   let whereClauses = [];
   let params = [];
@@ -337,9 +345,13 @@ export function getFilteredRuns({ provider, status, outcome, workspace, q, limit
 
   const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
   
-  if (workspaceFilter) {
+  if (workspaceFilter || attention === '1') {
     const rows = db.prepare(`SELECT * FROM runs ${whereSql} ORDER BY start_time DESC`).all(...params);
-    const filtered = rows.filter(r => canonicalWorkspacePath(r.workspace) === workspaceFilter);
+    const filtered = rows.filter(r => {
+      if (workspaceFilter && canonicalWorkspacePath(r.workspace) !== workspaceFilter) return false;
+      if (attention === '1' && !rowNeedsAttention(r)) return false;
+      return true;
+    });
 
     return {
       total: filtered.length,
@@ -373,6 +385,17 @@ export function getStatsFromDb() {
   const totalCount = db.prepare('SELECT COUNT(*) as count FROM runs').get()?.count || 0;
   const activeRows = db.prepare("SELECT * FROM runs WHERE status = 'running' ORDER BY start_time DESC").all();
   const todayCount = db.prepare('SELECT COUNT(*) as count FROM runs WHERE start_time LIKE ?').get(`${todayPrefix}%`)?.count || 0;
+  const attentionCount = db.prepare(`
+    SELECT COUNT(*) as count FROM runs
+    WHERE status != 'running'
+      AND (
+        status = 'failed'
+        OR exit_code IS NOT NULL AND exit_code != 0
+        OR attention_required = 1
+        OR outcome IS NULL
+        OR outcome != 'done'
+      )
+  `).get()?.count || 0;
   
   const providerRows = db.prepare('SELECT provider, COUNT(*) as count FROM runs GROUP BY provider').all();
   const byProvider = {};
@@ -386,6 +409,7 @@ export function getStatsFromDb() {
     totalCount,
     activeCount: activeRows.length,
     activeRuns: activeRows.map(r => rowToRunMeta(r, true)),
+    attentionCount,
     todayCount,
     byProvider,
     recentRuns: recentRows.map(r => rowToRunMeta(r, r.status === 'running'))
@@ -402,7 +426,14 @@ export function getAnalyticsFromDb() {
       SUM(cost) as total_cost,
       AVG(duration_sec) as avg_duration,
       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_count,
-      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count
+      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
+      SUM(CASE WHEN status != 'running' AND (
+        status = 'failed'
+        OR exit_code IS NOT NULL AND exit_code != 0
+        OR attention_required = 1
+        OR outcome IS NULL
+        OR outcome != 'done'
+      ) THEN 1 ELSE 0 END) as attention_count
     FROM runs
   `).get();
 
@@ -431,6 +462,7 @@ export function getAnalyticsFromDb() {
     successRate,
     completedCount: completed,
     failedCount: failed,
+    attentionCount: totalRow?.attention_count || 0,
     modelDistribution,
     providerDistribution
   };

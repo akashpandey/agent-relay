@@ -308,6 +308,7 @@ function broadcastDashboardUpdate() {
       avgDurationSec: analytics.avgDurationSec,
       successRate: analytics.successRate,
       totalCost: analytics.totalCost,
+      attentionCount: analytics.attentionCount,
     },
     timestamp: new Date().toISOString(),
   });
@@ -400,11 +401,12 @@ const server = http.createServer(async (req, res) => {
     const status = parsedUrl.searchParams.get('status');
     const outcome = parsedUrl.searchParams.get('outcome');
     const workspace = parsedUrl.searchParams.get('workspace');
+    const attention = parsedUrl.searchParams.get('attention');
     const q = (parsedUrl.searchParams.get('q') || '').trim();
     const limit = parseInt(parsedUrl.searchParams.get('limit') || '50', 10);
     const offset = parseInt(parsedUrl.searchParams.get('offset') || '0', 10);
 
-    const result = getFilteredRuns({ provider, status, outcome, workspace, q, limit, offset });
+    const result = getFilteredRuns({ provider, status, outcome, workspace, attention, q, limit, offset });
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(result));

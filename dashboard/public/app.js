@@ -24,6 +24,7 @@ const state = {
   filterProvider: 'all',
   filterStatus: 'all',
   filterOutcome: 'all',
+  filterAttention: '0',
   filterWorkspace: 'all',
   filterSearch: '',
   pageLimit: 30,
@@ -85,6 +86,8 @@ const el = {
   providerFilters: document.getElementById('provider-filters'),
   statusFilters: document.getElementById('status-filters'),
   outcomeFilters: document.getElementById('outcome-filters'),
+  attentionFilters: document.getElementById('attention-filters'),
+  attentionCount: document.getElementById('attention-count'),
   workspaceChipsContainer: document.getElementById('workspace-chips-container'),
   btnDensityComfortable: document.getElementById('btn-density-comfortable'),
   btnDensityCompact: document.getElementById('btn-density-compact'),
@@ -269,6 +272,7 @@ async function fetchAnalytics() {
     if (el.kpiTokensVal) el.kpiTokensVal.textContent = formatNumber(data.totalTokens || 0);
     if (el.kpiDurationVal) el.kpiDurationVal.textContent = `${data.avgDurationSec || 0}s`;
     if (el.kpiSuccessVal) el.kpiSuccessVal.textContent = `${data.successRate || 100}%`;
+    if (el.attentionCount) el.attentionCount.textContent = data.attentionCount || 0;
   } catch (err) {
     console.error('Failed to fetch analytics:', err);
   }
@@ -292,6 +296,7 @@ async function fetchRuns() {
       provider: state.filterProvider,
       status: state.filterStatus,
       outcome: state.filterOutcome,
+      attention: state.filterAttention,
       workspace: state.filterWorkspace,
       q: state.filterSearch,
       limit: state.pageLimit,
@@ -1490,6 +1495,18 @@ function initEventListeners() {
     });
   });
 
+  // Attention Filter Button
+  el.attentionFilters.querySelectorAll('.seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const next = state.filterAttention === '1' ? '0' : '1';
+      state.filterAttention = next;
+      btn.dataset.attention = next;
+      btn.classList.toggle('active', next === '1');
+      state.pageOffset = 0;
+      fetchRuns();
+    });
+  });
+
   // Pagination
   el.btnPrevPage.addEventListener('click', () => {
     if (state.pageOffset > 0) {
@@ -1661,6 +1678,7 @@ function initSSE() {
           if (el.kpiTokensVal) el.kpiTokensVal.textContent = formatNumber(data.analytics.totalTokens || 0);
           if (el.kpiDurationVal) el.kpiDurationVal.textContent = `${data.analytics.avgDurationSec || 0}s`;
           if (el.kpiSuccessVal) el.kpiSuccessVal.textContent = `${data.analytics.successRate || 100}%`;
+          if (el.attentionCount) el.attentionCount.textContent = data.analytics.attentionCount || 0;
         }
         scheduleDashboardRefresh();
         scheduleWorkspaceRefresh();
