@@ -127,6 +127,9 @@ printf '%s\n' "Review this repo" | ./codex-subagent
 
 ```bash
 ./subagent workspaces
+./subagent doctor
+./subagent dashboard
+./subagent dashboard restart
 ./subagent fitschool opencode "Review this repo"
 ./subagent codex "Review the current directory"
 ./subagent attention fitschool

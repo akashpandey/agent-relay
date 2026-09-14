@@ -22,6 +22,8 @@ function usage() {
   subagent <provider> [wrapper-args...] "task"
   subagent <workspace> <provider> [wrapper-args...] "task"
   subagent workspaces
+  subagent doctor
+  subagent dashboard [restart]
   subagent attention [workspace]
   subagent prune [--confirm] [--older-than 30d] [--workspace name] [--outcome outcome]
   subagent last [workspace]
@@ -149,6 +151,23 @@ function runProvider(provider, args, workspace = null) {
   process.exit(child.status ?? 1);
 }
 
+function runScript(script, args = []) {
+  const child = spawnSync(path.join(repoDir, script), args, { cwd: repoDir, stdio: 'inherit', env: process.env });
+  process.exit(child.status ?? 1);
+}
+
+async function dashboardStatus() {
+  const url = process.env.DASHBOARD_URL || 'http://localhost:4242';
+  try {
+    const res = await fetch(`${url}/api/stats`);
+    console.log(`${res.ok ? 'OK' : 'FAIL'}\t${url}`);
+    process.exit(res.ok ? 0 : 1);
+  } catch (err) {
+    console.log(`FAIL\t${url}`);
+    process.exit(1);
+  }
+}
+
 const args = process.argv.slice(2);
 if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
   usage();
@@ -160,6 +179,19 @@ if (args[0] === 'workspaces') {
     console.log(`${ws.name}\t${ws.path}\t${ws.totalRuns || 0} runs`);
   }
   process.exit(0);
+}
+
+if (args[0] === 'doctor') {
+  runScript('subagent-doctor', args.slice(1));
+}
+
+if (args[0] === 'dashboard') {
+  if (args[1] === 'restart') runScript('scripts/restart-dashboard', args.slice(2));
+  if (args.length > 1) {
+    console.error(`subagent: unknown dashboard command: ${args[1]}`);
+    process.exit(2);
+  }
+  await dashboardStatus();
 }
 
 if (args[0] === 'last') {

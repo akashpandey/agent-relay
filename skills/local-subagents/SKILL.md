@@ -13,6 +13,8 @@ Prefer the unified `subagent` front door when using canonical workspace names, f
 
 ```sh
 subagent workspaces
+subagent doctor
+subagent dashboard
 subagent fitschool opencode "Task prompt..."
 subagent codex "Task prompt in the current directory..."
 subagent attention fitschool
