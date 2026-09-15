@@ -9,6 +9,8 @@ Small, harness-agnostic shell wrappers and local-first orchestration for running
 
 ![agent-relay demo](./docs/assets/demo.gif)
 
+![Subagents Monitor dashboard](./docs/assets/dashboard.gif)
+
 ## Why these wrappers exist
 
 The main purpose of these wrappers is to make subagent delegation easy from any harness that can run a shell command.
@@ -155,8 +157,6 @@ Provider wrappers still work directly and use the current working directory as t
 Canonical workspace grouping is shared by the wrappers and dashboard. Optional config lives at `~/.config/agent-relay/workspaces.json` as either an array of absolute repo paths or an object of names to absolute repo paths. Override the path with `SUBAGENT_WORKSPACES_CONFIG` or the default code root with `SUBAGENT_CODE_ROOT`.
 
 Run `./subagent-doctor` to check Docker, the dashboard container, the compose symlink, and the post-commit restart hook.
-
-![Subagents Monitor dashboard](./docs/assets/dashboard.gif)
 
 ## Cross-Harness Relay Takeover (Token Exhaustion Handoff)
 
