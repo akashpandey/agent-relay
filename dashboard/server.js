@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { parseLogFilename, isProcessRunning, parseLogMetadata } from './parser.js';
 import { buildRunCommands } from './commands.js';
 import {
+  getDatabase,
+  deleteRun,
   getStatsFromDb,
   getFilteredRuns,
   getAnalyticsFromDb,
@@ -35,6 +37,24 @@ if (!fs.existsSync(LOGS_DIR)) {
 console.log(`[Dashboard] Initializing SQLite-backed subagent visualizer...`);
 console.log(`[Dashboard] Logs Directory: ${LOGS_DIR}`);
 console.log(`[Dashboard] Proc Directory: ${PROC_DIR}`);
+
+// Clean up any stale records whose log file no longer exists
+try {
+  const db = getDatabase();
+  const rows = db.prepare('SELECT filename FROM runs').all();
+  let pruned = 0;
+  for (const r of rows) {
+    if (!fs.existsSync(path.join(LOGS_DIR, r.filename))) {
+      deleteRun(r.filename);
+      pruned++;
+    }
+  }
+  if (pruned > 0) {
+    console.log(`[Dashboard] Cleaned up ${pruned} orphaned DB rows with missing log files.`);
+  }
+} catch (err) {
+  console.warn('[Dashboard] Could not verify orphaned runs:', err.message);
+}
 
 /**
  * Reconcile active runs with real process table to catch dead / completed jobs

@@ -7,7 +7,8 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 TEST_BIN="$TMP_DIR/bin"
 TEST_LOGS="$TMP_DIR/logs"
-mkdir -p "$TEST_BIN" "$TEST_LOGS"
+TEST_DATA="$TMP_DIR/data"
+mkdir -p "$TEST_BIN" "$TEST_LOGS" "$TEST_DATA"
 
 # 1. Create fake/mock provider binaries
 cat << 'EOF' > "$TEST_BIN/claude"
@@ -61,6 +62,8 @@ export SUBAGENT_AGY_BIN="$TEST_BIN/agy"
 export SUBAGENT_CODEX_BIN="$TEST_BIN/codex"
 export SUBAGENT_OPENCODE_BIN="$TEST_BIN/opencode"
 export SUBAGENT_LOG_DIR="$TEST_LOGS"
+export SUBAGENT_DATA_DIR="$TEST_DATA"
+export SUBAGENT_DB_PATH="$TEST_DATA/subagents.db"
 
 PASSED=0
 FAILED=0

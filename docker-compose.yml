@@ -29,6 +29,12 @@ services:
     volumes:
       - /home/akey/Code/local-subagents/data:/app/data
       - /home/akey/Code/local-subagents/logs:/app/logs:ro
+      - /home/akey/Code/local-subagents/dashboard/server.js:/app/server.js:ro
+      - /home/akey/Code/local-subagents/dashboard/parser.js:/app/parser.js:ro
+      - /home/akey/Code/local-subagents/dashboard/db.js:/app/db.js:ro
+      - /home/akey/Code/local-subagents/dashboard/sync-logs.js:/app/sync-logs.js:ro
+      - /home/akey/Code/local-subagents/dashboard/workspaces.js:/app/workspaces.js:ro
+      - /home/akey/Code/local-subagents/dashboard/commands.js:/app/commands.js:ro
       - /home/akey/Code/local-subagents/dashboard/public:/app/public:ro
       - /proc:/host_proc:ro
       - /home/akey/.local/share/opencode:/opencode_data:ro

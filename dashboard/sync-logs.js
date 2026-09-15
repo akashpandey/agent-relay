@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getRunLogFingerprint, resetRuns, upsertRun } from './db.js';
+import { getDatabase, deleteRun, getRunLogFingerprint, resetRuns, upsertRun } from './db.js';
 import { parseLogMetadata } from './parser.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -45,6 +45,22 @@ if (fs.existsSync(LOGS_DIR)) {
       console.warn(`[Sync] Error syncing ${file}:`, e.message);
     }
   }
+
+  // Prune any records in SQLite whose log file no longer exists
+  let pruned = 0;
+  try {
+    const db = getDatabase();
+    const rows = db.prepare('SELECT filename FROM runs').all();
+    for (const r of rows) {
+      if (!fs.existsSync(path.join(LOGS_DIR, r.filename))) {
+        deleteRun(r.filename);
+        pruned++;
+      }
+    }
+  } catch (e) {
+    console.warn('[Sync] Error checking orphaned DB rows:', e.message);
+  }
+
   const duration = (performance.now() - start).toFixed(2);
-  console.log(`[Sync] Synced ${synced} runs, skipped ${skipped} unchanged in ${duration}ms.`);
+  console.log(`[Sync] Synced ${synced} runs, skipped ${skipped} unchanged, pruned ${pruned} missing in ${duration}ms.`);
 }

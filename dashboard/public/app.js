@@ -918,6 +918,11 @@ async function startLogStream(filename) {
       streamOffset = state.logTotalBytes || (state.logStartOffset + new TextEncoder().encode(fullText).length);
       appendLogChunk(fullText, true);
       renderTerminalLines();
+    } else if (res.status === 404) {
+      el.modalTerminalContent.innerHTML = '<div style="padding: 2.5rem; color: var(--text-dim); text-align: center; font-size: 0.9rem;">⚠️ Log file not found on disk (may have been pruned or was a test run).</div>';
+      el.streamStatusBadge.innerHTML = '<span>●</span> Log Unavailable';
+      el.streamStatusBadge.style.color = 'var(--text-dim)';
+      return;
     }
   } catch (e) {
     console.warn('Initial log fetch failed:', e);
@@ -939,6 +944,15 @@ async function startLogStream(filename) {
   sse.onmessage = (e) => {
     try {
       const data = JSON.parse(e.data);
+      if (data.type === 'error') {
+        if (!state.rawLogLines.length) {
+          el.modalTerminalContent.innerHTML = `<div style="padding: 2.5rem; color: var(--text-dim); text-align: center; font-size: 0.9rem;">⚠️ ${escapeHtml(data.error || 'Log unavailable')}</div>`;
+        }
+        el.streamStatusBadge.innerHTML = '<span>●</span> Log Unavailable';
+        el.streamStatusBadge.style.color = 'var(--text-dim)';
+        sse.close();
+        return;
+      }
       if (data.chunk) {
         if (data.size) state.logTotalBytes = data.size;
         appendLogChunk(data.chunk);
