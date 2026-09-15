@@ -89,6 +89,7 @@ That gives you a stable delegation surface even if the underlying CLI syntax cha
 
 These wrappers assume the backing CLIs are already installed on the host:
 
+- Node.js 24 or newer, for the built-in `node:sqlite` dashboard/index APIs
 - `opencode-subagent` calls `$HOME/.opencode/bin/opencode`
 - `antigravity-subagent` calls `$HOME/.local/bin/agy`
 - `claude-subagent` calls `$HOME/.local/bin/claude`

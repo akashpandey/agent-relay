@@ -283,18 +283,7 @@ fi
 # Write completion sentinel file (.done)
 done_file="${log_file%.log}.done"
 sess_id="$(grep -oE '"session_id":"[^"]+"' "$log_file" 2>/dev/null | head -n 1 | cut -d'"' -f4 || echo "${resume_session:-new}")"
-cat <<DONE_JSON > "$done_file"
-{
-  "status": "$([ "$status" -eq 0 ] && echo "completed" || echo "failed")",
-  "exitCode": $status,
-  "provider": "claude",
-  "workspace": "$workspace",
-  "model": "${CLAUDE_MODEL:-default}",
-  "sessionId": "$sess_id",
-  "logFile": "$log_file",
-  "completedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-}
-DONE_JSON
+DONE_FILE="$done_file" DONE_STATUS="$([ "$status" -eq 0 ] && echo "completed" || echo "failed")" DONE_EXIT_CODE="$status" DONE_PROVIDER="claude" DONE_WORKSPACE="$workspace" DONE_MODEL="${CLAUDE_MODEL:-default}" DONE_SESSION_ID="$sess_id" DONE_LOG_FILE="$log_file" DONE_COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" node -e 'const fs=require("node:fs"); fs.writeFileSync(process.env.DONE_FILE, JSON.stringify({status:process.env.DONE_STATUS, exitCode:Number(process.env.DONE_EXIT_CODE), provider:process.env.DONE_PROVIDER, workspace:process.env.DONE_WORKSPACE, model:process.env.DONE_MODEL, sessionId:process.env.DONE_SESSION_ID, logFile:process.env.DONE_LOG_FILE, completedAt:process.env.DONE_COMPLETED_AT}, null, 2) + "\n")'
 
 # Automatically ingest subagent session to claude-mem (non-blocking)
 if [ -f "$done_file" ] && command -v bun >/dev/null 2>&1; then
