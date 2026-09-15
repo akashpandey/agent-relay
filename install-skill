@@ -30,7 +30,9 @@ for bin in \
   opencode-subagent \
   opencode-subagent-fallback \
   subagent-wait \
-  subagent-dashboard; do
+  subagent-dashboard \
+  subagent \
+  relay; do
   if [ -f "$repo_dir/$bin" ]; then
     ln -sf "$repo_dir/$bin" "$HOME/.local/bin/$bin"
     echo "Installed CLI: $HOME/.local/bin/$bin -> $repo_dir/$bin"

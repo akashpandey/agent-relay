@@ -1,28 +1,30 @@
 ---
 name: local-subagents
-description: Delegate a bounded coding, investigation, review, or parallel implementation task to local CLI subagents (OpenCode, Antigravity, Claude Code, Codex). Use when the user requests a subagent, a specific local harness/model, a second opinion, parallel task delegation, or background work execution.
+description: Delegate a bounded coding, investigation, review, or parallel implementation task to local CLI subagents (OpenCode, Antigravity, Claude Code, Codex). Also supports cross-harness relay takeover when tokens or quotas are exhausted.
 ---
 
-# Local Subagents
+# Local Subagents & Agent Relay
 
 Execute delegated tasks across 5 local coding harnesses (`opencode-subagent`, `opencode-subagent-fallback`, `antigravity-subagent`, `claude-subagent`, `codex-subagent`). Each wrapper runs non-interactively in the target workspace, logs output, captures diffs and telemetry, and integrates with the local Visualizer Dashboard at `http://localhost:4242`.
 
 ## Available Harnesses & Invocation
 
-Prefer the unified `subagent` front door when using canonical workspace names, finding recent sessions, or continuing prior work:
+Prefer the unified `relay` (or `subagent`) front door when using canonical workspace names, finding recent sessions, continuing prior work, or passing the baton between harnesses:
 
 ```sh
-subagent workspaces
-subagent doctor
-subagent dashboard
-subagent fitschool opencode "Task prompt..."
-subagent codex "Task prompt in the current directory..."
-subagent attention fitschool
-subagent prune --dry-run --older-than 30d
-subagent result fitschool
-subagent open fitschool
-subagent last fitschool
-subagent continue fitschool "Follow-up prompt..."
+relay workspaces
+relay doctor
+relay dashboard
+relay fitschool opencode "Task prompt..."
+relay codex "Task prompt in the current directory..."
+relay attention fitschool
+relay prune --dry-run --older-than 30d
+relay result fitschool
+relay open fitschool
+relay last fitschool
+relay continue fitschool "Follow-up prompt..."
+relay continue fitschool --to opencode "Continue using another provider..."
+relay takeover fitschool codex "Take over where previous harness left off..."
 ```
 
 Run provider wrappers directly from the target repository/workspace directory when you need full wrapper-specific flags:
@@ -92,6 +94,33 @@ SUBAGENT_SESSION="session-abc-123" antigravity-subagent "Next step prompt..."
 > [!TIP]
 > **Always use wrappers for continuation, not raw CLIs:** Always execute continuation through the wrapper binaries (`*-subagent --continue` or `--resume <id>`) rather than raw provider CLIs (`claude -c`, `opencode attach`, etc.). Raw CLIs default to interactive REPL mode on resume, which stalls headless automation. Subagent wrappers enforce non-interactive batch flags and run an automatic completion watchdog that reaps lingering event-loop handles or background MCP connections after task completion, ensuring prompt exit and accurate `.done` recording.
 
+### 3. Cross-Harness Relay Takeover (Token / Quota Exhaustion Handoff)
+
+When an interactive session (in Claude Code, Codex, Antigravity, or OpenCode) or a subagent run runs out of tokens, hits rate limits, or context window limits, transfer the baton to another harness without starting from scratch:
+
+```sh
+# Take over in the current workspace with Codex
+relay takeover codex
+
+# Take over a specific workspace with OpenCode
+relay takeover fitschool opencode
+
+# Take over with an explicit goal/instruction
+relay takeover fitschool claude "Complete the remaining tests and verify build"
+
+# Continue a previous subagent run while switching providers
+relay continue fitschool --to codex "Finish the implementation"
+```
+
+The handoff engine inspects:
+- The last recorded session across all 4 harnesses (from Codex SQLite `~/.codex/state_5.sqlite`, OpenCode SQLite `~/.local/share/opencode/opencode.db`, Claude Code `~/.claude/projects/`, and Antigravity transcript logs).
+- Initial prompt and task goal.
+- Touched files in flight.
+- Last assistant message / reasoning and detected exhaustion errors (e.g. rate limit reached).
+- Uncommitted git changes via `git status -s` and `git diff --stat`.
+
+It packages a comprehensive baton-pass prompt and launches the target harness directly.
+
 ---
 
 ## Recommended Orchestration: Zero-Polling & Event-Driven Execution
@@ -150,6 +179,13 @@ Caller contract:
     "sessionId": "",
     "sameSessionCommand": "opencode-subagent --resume <session> \"<follow-up task>\"",
     "continueLastCommand": "opencode-subagent --continue \"<follow-up task>\"",
+    "subagentContinueCommand": "relay continue fitschool \"<follow-up task>\"",
+    "relayCommands": {
+      "codex": "relay takeover fitschool codex",
+      "claude": "relay takeover fitschool claude",
+      "opencode": "relay takeover fitschool opencode",
+      "antigravity": "relay takeover fitschool antigravity"
+    },
     "env": { "SUBAGENT_SESSION": "" }
   }
 }
@@ -224,3 +260,4 @@ http://localhost:4242/api/dangling/kill-all
 7. **Never trust process status alone**: `status` / `processStatus` says whether the wrapper exited. `accepted` says whether the task result is safe to accept.
 8. **Never tail logs for acceptance**: Call `subagent-wait` or `/api/runs/<log>/result`; only inspect logs when debugging a failed, blocked, partial, or unknown outcome.
 9. **Reuse sessions deliberately**: Use `continuation.sameSessionCommand` for fixes to the same task or closely related follow-ups. Do not reuse one session across unrelated tasks or parallel workers. Always invoke continuation through subagent wrappers rather than raw CLIs to benefit from non-interactive enforcement and lingering process reaping.
+10. **Use relay takeover on quota or token exhaustion**: When a harness or subagent hits rate limits or token exhaustion midway through a task, use `relay takeover <provider>` or `relay continue --to <provider>` to transfer the goal, touched files, and uncommitted git state to another model without starting over.
