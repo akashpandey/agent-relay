@@ -10,6 +10,7 @@ for target in \
   "$HOME/.agents/skills/local-subagents" \
   "$HOME/.claude/skills/local-subagents" \
   "$HOME/.gemini/skills/local-subagents" \
+  "$HOME/.gemini/antigravity/skills/local-subagents" \
   "$HOME/.config/opencode/skills/local-subagents" \
   "$HOME/.codex/skills/local-subagents"; do
   if [ -e "$target" ] && [ ! -L "$target" ]; then
