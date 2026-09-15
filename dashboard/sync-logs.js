@@ -2,8 +2,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getDatabase, deleteRun, getRunLogFingerprint, resetRuns, upsertRun } from './db.js';
-import { parseLogMetadata } from './parser.js';
+import { getDatabase, getRunSyncState, markRunLogMissing, resetRuns, updateRunProgress, upsertRun } from './db.js';
+import { parseLogMetadata, parseLogProgress } from './parser.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,10 +31,19 @@ if (fs.existsSync(LOGS_DIR)) {
     const filePath = path.join(LOGS_DIR, file);
     try {
       const stat = fs.statSync(filePath);
-      const cached = getRunLogFingerprint(file);
+      const cached = getRunSyncState(file);
       if (!force && cached && cached.log_size === stat.size && cached.log_mtime === Math.floor(stat.mtimeMs)) {
         skipped++;
         continue;
+      }
+      const doneFile = filePath.replace(/\.log$/, '.done');
+      if (!force && cached?.status === 'running' && !fs.existsSync(doneFile)) {
+        const progress = parseLogProgress(file, filePath, PROC_DIR);
+        if (progress) {
+          updateRunProgress(progress);
+          synced++;
+          continue;
+        }
       }
       const meta = parseLogMetadata(file, filePath, PROC_DIR);
       if (meta) {
@@ -46,21 +55,21 @@ if (fs.existsSync(LOGS_DIR)) {
     }
   }
 
-  // Prune any records in SQLite whose log file no longer exists
-  let pruned = 0;
+  // Metadata is durable; raw logs are optional byte streams that may be pruned.
+  let missing = 0;
   try {
     const db = getDatabase();
     const rows = db.prepare('SELECT filename FROM runs').all();
     for (const r of rows) {
       if (!fs.existsSync(path.join(LOGS_DIR, r.filename))) {
-        deleteRun(r.filename);
-        pruned++;
+        markRunLogMissing(r.filename);
+        missing++;
       }
     }
   } catch (e) {
-    console.warn('[Sync] Error checking orphaned DB rows:', e.message);
+    console.warn('[Sync] Error checking raw log availability:', e.message);
   }
 
   const duration = (performance.now() - start).toFixed(2);
-  console.log(`[Sync] Synced ${synced} runs, skipped ${skipped} unchanged, pruned ${pruned} missing in ${duration}ms.`);
+  console.log(`[Sync] Synced ${synced} runs, skipped ${skipped} unchanged, marked ${missing} missing raw logs in ${duration}ms.`);
 }

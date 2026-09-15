@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`local-subagents` gives any shell-capable AI harness a stable way to delegate
+`agent-relay` gives any shell-capable AI harness a stable way to delegate
 work to other installed AI CLIs. This lets users choose specialized models for
 specific tasks without replacing their primary harness or consuming only its
 model allocation.

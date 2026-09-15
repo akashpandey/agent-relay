@@ -6,7 +6,7 @@ const CODE_ROOT = process.env.SUBAGENT_CODE_ROOT || '/home/akey/Code';
 
 export function configuredWorkspaceEntries() {
   const configPath = process.env.SUBAGENT_WORKSPACES_CONFIG ||
-    path.join(os.homedir(), '.config', 'local-subagents', 'workspaces.json');
+    path.join(os.homedir(), '.config', 'agent-relay', 'workspaces.json');
   try {
     const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     if (Array.isArray(parsed)) {
@@ -28,8 +28,8 @@ export function canonicalWorkspacePath(workspace) {
     if (clean === root || clean.startsWith(`${root}/`)) return root;
   }
 
-  if (clean === '/home/akey/local-subagents' || clean.startsWith('/home/akey/local-subagents/')) {
-    return `${CODE_ROOT}/local-subagents`;
+  if (clean === '/home/akey/agent-relay' || clean.startsWith('/home/akey/agent-relay/')) {
+    return `${CODE_ROOT}/agent-relay`;
   }
   if (clean === `${CODE_ROOT}/OfdcParser` || clean.startsWith(`${CODE_ROOT}/OfdcParser/`)) {
     return `${CODE_ROOT}/OfdcApplication`;

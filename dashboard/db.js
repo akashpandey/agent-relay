@@ -57,6 +57,7 @@ export function getDatabase() {
         tool_calls TEXT, -- JSON array
         cli_command TEXT,
         exit_code INTEGER,
+        log_available INTEGER DEFAULT 1,
         log_size INTEGER DEFAULT 0,
         log_mtime INTEGER DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -74,6 +75,7 @@ export function getDatabase() {
       "ALTER TABLE runs ADD COLUMN outcome TEXT DEFAULT 'unknown'",
       "ALTER TABLE runs ADD COLUMN attention_required INTEGER DEFAULT 0",
       "ALTER TABLE runs ADD COLUMN result_json TEXT",
+      "ALTER TABLE runs ADD COLUMN log_available INTEGER DEFAULT 1",
     ]) {
       try { dbInstance.exec(sql); } catch {}
     }
@@ -140,6 +142,7 @@ export function rowToRunMeta(row, isAlive = false) {
     toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : [],
     cliCommand: row.cli_command || '',
     exitCode: row.exit_code,
+    logAvailable: row.log_available !== 0,
     size: row.log_size || 0,
     mtime: row.log_mtime || 0,
   };
@@ -164,13 +167,13 @@ export function upsertRun(run) {
       task, status, start_time, end_time, duration_sec, current_action,
       tokens_total, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write,
       cost, markdown_summary, outcome, attention_required, result_json, files_modified, diffs, tool_calls, cli_command,
-      exit_code, log_size, log_mtime, updated_at
+      exit_code, log_available, log_size, log_mtime, updated_at
     ) VALUES (
       ?, ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?, ?, ?, ?, ?,
-      ?, ?, ?, datetime('now')
+      ?, ?, ?, ?, datetime('now')
     )
     ON CONFLICT(filename) DO UPDATE SET
       pid = excluded.pid,
@@ -200,6 +203,7 @@ export function upsertRun(run) {
       tool_calls = excluded.tool_calls,
       cli_command = excluded.cli_command,
       exit_code = excluded.exit_code,
+      log_available = excluded.log_available,
       log_size = excluded.log_size,
       log_mtime = excluded.log_mtime,
       updated_at = datetime('now')
@@ -240,8 +244,31 @@ export function upsertRun(run) {
     toolsJson,
     run.cliCommand || '',
     run.exitCode !== undefined ? run.exitCode : null,
+    run.logAvailable === false ? 0 : 1,
     run.size || 0,
     run.mtime || 0
+  );
+}
+
+export function updateRunProgress({ filename, currentAction, status, durationSec, size, mtime }) {
+  const db = getDatabase();
+  db.prepare(`
+    UPDATE runs SET
+      current_action = COALESCE(?, current_action),
+      status = COALESCE(?, status),
+      duration_sec = COALESCE(?, duration_sec),
+      log_available = 1,
+      log_size = COALESCE(?, log_size),
+      log_mtime = COALESCE(?, log_mtime),
+      updated_at = datetime('now')
+    WHERE filename = ?
+  `).run(
+    currentAction || null,
+    status || null,
+    durationSec !== undefined ? durationSec : null,
+    size !== undefined ? size : null,
+    mtime !== undefined ? mtime : null,
+    filename
   );
 }
 
@@ -514,6 +541,15 @@ export function getRunLogFingerprint(filename) {
   const db = getDatabase();
   const stmt = db.prepare('SELECT log_size, log_mtime FROM runs WHERE filename = ? LIMIT 1');
   return stmt.get(filename) || null;
+}
+
+export function getRunSyncState(filename) {
+  const db = getDatabase();
+  return db.prepare('SELECT status, pid, log_size, log_mtime FROM runs WHERE filename = ? LIMIT 1').get(filename) || null;
+}
+
+export function markRunLogMissing(filename) {
+  getDatabase().prepare('UPDATE runs SET log_available = 0, updated_at = datetime(\'now\') WHERE filename = ?').run(filename);
 }
 
 export function deleteRun(filename) {

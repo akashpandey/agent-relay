@@ -3,7 +3,7 @@ set -u
 
 script_path="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
 repo_dir="$(cd "$(dirname "$script_path")" && pwd -P)"
-compose_link="$HOME/docker/local-subagents/docker-compose.yml"
+compose_link="$HOME/docker/agent-relay/docker-compose.yml"
 hook="$repo_dir/.git/hooks/post-commit"
 ok=0
 
@@ -23,7 +23,7 @@ check "docker daemon reachable" docker info
 check "compose symlink points to repo" test "$(readlink "$compose_link" 2>/dev/null)" = "$repo_dir/docker-compose.yml"
 check "post-commit hook installed" test -x "$hook"
 check "restart script executable" test -x "$repo_dir/scripts/restart-dashboard"
-if docker ps --filter name=local-subagents-dashboard --format '{{.Names}}' | grep -qx local-subagents-dashboard; then
+if docker ps --filter name=agent-relay-dashboard --format '{{.Names}}' | grep -qx agent-relay-dashboard; then
   printf '[OK] dashboard container running\n'
 else
   printf '[FAIL] dashboard container running\n'

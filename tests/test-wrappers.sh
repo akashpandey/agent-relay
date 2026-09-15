@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-TMP_DIR="$(mktemp -d /tmp/local-subagents-test.XXXXXX)"
+TMP_DIR="$(mktemp -d /tmp/agent-relay-test.XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 TEST_BIN="$TMP_DIR/bin"
@@ -99,7 +99,7 @@ assert_output_contains() {
   fi
 }
 
-echo "=== Running local-subagents mock tests ==="
+echo "=== Running agent-relay mock tests ==="
 
 # Test help flags
 assert_output_contains "antigravity-subagent --help" "Usage:" "$REPO_DIR/antigravity-subagent" --help

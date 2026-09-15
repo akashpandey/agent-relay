@@ -3,16 +3,16 @@ set -eu
 
 script_path="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$script_path")" && pwd -P)
-source_dir="$repo_dir/skills/local-subagents"
+source_dir="$repo_dir/skills/agent-relay"
 
 # 1. Install skills
 for target in \
-  "$HOME/.agents/skills/local-subagents" \
-  "$HOME/.claude/skills/local-subagents" \
-  "$HOME/.gemini/skills/local-subagents" \
-  "$HOME/.gemini/antigravity/skills/local-subagents" \
-  "$HOME/.config/opencode/skills/local-subagents" \
-  "$HOME/.codex/skills/local-subagents"; do
+  "$HOME/.agents/skills/agent-relay" \
+  "$HOME/.claude/skills/agent-relay" \
+  "$HOME/.gemini/skills/agent-relay" \
+  "$HOME/.gemini/antigravity/skills/agent-relay" \
+  "$HOME/.config/opencode/skills/agent-relay" \
+  "$HOME/.codex/skills/agent-relay"; do
   if [ -e "$target" ] && [ ! -L "$target" ]; then
     echo "Replacing directory with symlink: $target"
     rm -rf "$target"

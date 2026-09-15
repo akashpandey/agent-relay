@@ -1377,6 +1377,83 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
   };
 }
 
+export function parseLogProgress(filename, logFilePath, procDir = '/proc') {
+  const parsedName = parseLogFilename(filename);
+  if (!parsedName) return null;
+
+  let stats;
+  try {
+    stats = fs.statSync(logFilePath);
+  } catch {
+    return null;
+  }
+
+  const { isAlive } = isProcessRunning(parsedName.pid, procDir);
+  const readSize = Math.min(stats.size, 24576);
+  let tailContent = '';
+  if (readSize > 0) {
+    try {
+      const fd = fs.openSync(logFilePath, 'r');
+      const tailBuf = Buffer.alloc(readSize);
+      fs.readSync(fd, tailBuf, 0, readSize, stats.size - readSize);
+      fs.closeSync(fd);
+      tailContent = tailBuf.toString('utf8');
+    } catch {}
+  }
+
+  let currentAction = isAlive ? 'Running...' : 'Finished';
+  const lines = tailContent.split('\n').map(l => l.trim()).filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').trim();
+    if (!line) continue;
+    if (line.includes('→ Read') || line.includes('✱ Grep') || line.startsWith('$ ') || line.includes('Edit ') || line.includes('Write ')) {
+      currentAction = line.slice(0, 120);
+      break;
+    }
+    if (line.includes('message=stream')) {
+      currentAction = 'Streaming LLM response...';
+      break;
+    }
+    if (line.includes('message=tracking')) {
+      currentAction = 'Snapshotting workspace state...';
+      break;
+    }
+    if (line.includes('message="shell tool using shell"') || line.includes('message=exec')) {
+      currentAction = 'Executing shell command...';
+      break;
+    }
+    if (line.includes('message=tool') || line.includes('tool:')) {
+      currentAction = line.slice(0, 120);
+      break;
+    }
+    if (line.startsWith('/bin/bash') || line.startsWith('exec') || line.startsWith('>')) {
+      currentAction = line.slice(0, 120);
+      break;
+    }
+    if (line.startsWith('**Step') || line.startsWith('Step ') || line.startsWith('Let me') || line.startsWith('Diff Summary')) {
+      currentAction = line.slice(0, 120);
+      break;
+    }
+    if (line.includes('session limit') || line.includes('error') || line.includes('Error')) {
+      currentAction = line.slice(0, 120);
+      break;
+    }
+  }
+
+  const startTimeMs = new Date(parsedName.startTime).getTime();
+  const endTimeMs = isAlive ? Date.now() : stats.mtimeMs;
+  const diff = Math.round((endTimeMs - startTimeMs) / 1000);
+
+  return {
+    filename,
+    status: isAlive ? 'running' : null,
+    currentAction,
+    durationSec: diff >= 0 && diff < 86400 * 7 ? diff : undefined,
+    size: stats.size,
+    mtime: Math.floor(stats.mtimeMs),
+  };
+}
+
 function formatBytes(bytes) {
   if (!bytes || bytes === 0) return '0 B';
   const k = 1024;

@@ -45,7 +45,7 @@ Environment:
   AGY_LOG_FILE       Optional agy --log-file path (agy's own internal log).
   AGY_LOGS           Print wrapper banner to stderr. Default: 1.
   SUBAGENT_SESSION   Resume this provider's existing conversation ID.
-  SUBAGENT_LOG_DIR   Where wrapper run logs are written. Default: ~/local-subagents/logs.
+  SUBAGENT_LOG_DIR   Where wrapper run logs are written. Default: ~/agent-relay/logs.
 
 Every run's combined stdout+stderr is teed to a timestamped file under
 SUBAGENT_LOG_DIR (printed in the startup banner) so a backgrounded run can be

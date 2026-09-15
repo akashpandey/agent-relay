@@ -8,12 +8,21 @@ restart_script="$repo_dir/scripts/restart-dashboard"
 mkdir -p "$(dirname "$hook")"
 cat > "$hook" <<HOOK
 #!/usr/bin/env sh
-set -eu
+set -u
 
-[ "\${SUBAGENT_DOCKER_AUTO_RESTART:-1}" = "1" ] || exit 0
+repo_dir="$repo_dir"
 
-( "$restart_script" ) >/dev/null 2>&1 &
-echo "local-subagents dashboard restart queued"
+if [ "\${SUBAGENT_DOCKER_AUTO_RESTART:-1}" = "1" ]; then
+  ( "$restart_script" ) >/dev/null 2>&1 &
+  echo "agent-relay dashboard restart queued"
+fi
+
+for remote in origin gitea; do
+  if git -C "$repo_dir" remote get-url "\$remote" >/dev/null 2>&1; then
+    ( git -C "$repo_dir" push "\$remote" HEAD:main ) >/dev/null 2>&1 &
+    echo "agent-relay push to \$remote queued"
+  fi
+done
 HOOK
 
 chmod +x "$hook"

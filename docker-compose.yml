@@ -6,11 +6,11 @@ x-default-logging: &default-logging
 
 services:
   subagent-dashboard:
-    container_name: local-subagents-dashboard
+    container_name: agent-relay-dashboard
     build:
       context: ./dashboard
       dockerfile: Dockerfile
-    image: local-subagents-dashboard:latest
+    image: agent-relay-dashboard:latest
     logging: *default-logging
     pid: "host"
     mem_limit: 256m
@@ -27,15 +27,15 @@ services:
       - CODEX_DATA=/codex_data
       - SUBAGENT_DATA_DIR=/app/data
     volumes:
-      - /home/akey/Code/local-subagents/data:/app/data
-      - /home/akey/Code/local-subagents/logs:/app/logs:ro
-      - /home/akey/Code/local-subagents/dashboard/server.js:/app/server.js:ro
-      - /home/akey/Code/local-subagents/dashboard/parser.js:/app/parser.js:ro
-      - /home/akey/Code/local-subagents/dashboard/db.js:/app/db.js:ro
-      - /home/akey/Code/local-subagents/dashboard/sync-logs.js:/app/sync-logs.js:ro
-      - /home/akey/Code/local-subagents/dashboard/workspaces.js:/app/workspaces.js:ro
-      - /home/akey/Code/local-subagents/dashboard/commands.js:/app/commands.js:ro
-      - /home/akey/Code/local-subagents/dashboard/public:/app/public:ro
+      - /home/akey/Code/agent-relay/data:/app/data
+      - /home/akey/Code/agent-relay/logs:/app/logs:ro
+      - /home/akey/Code/agent-relay/dashboard/server.js:/app/server.js:ro
+      - /home/akey/Code/agent-relay/dashboard/parser.js:/app/parser.js:ro
+      - /home/akey/Code/agent-relay/dashboard/db.js:/app/db.js:ro
+      - /home/akey/Code/agent-relay/dashboard/sync-logs.js:/app/sync-logs.js:ro
+      - /home/akey/Code/agent-relay/dashboard/workspaces.js:/app/workspaces.js:ro
+      - /home/akey/Code/agent-relay/dashboard/commands.js:/app/commands.js:ro
+      - /home/akey/Code/agent-relay/dashboard/public:/app/public:ro
       - /proc:/host_proc:ro
       - /home/akey/.local/share/opencode:/opencode_data:ro
       - /home/akey/.gemini/antigravity-cli/brain:/gemini_brain:ro

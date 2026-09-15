@@ -28,5 +28,5 @@ A clear and concise description of what you expected to happen.
 
 **Log snippet / terminal output**
 ```text
-(Paste relevant sanitized lines from ~/local-subagents/logs/...)
+(Paste relevant sanitized lines from ~/agent-relay/logs/...)
 ```

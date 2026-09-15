@@ -3,17 +3,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { exec } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { parseLogFilename, isProcessRunning, parseLogMetadata } from './parser.js';
+import { parseLogFilename, isProcessRunning, parseLogMetadata, parseLogProgress } from './parser.js';
 import { buildRunCommands } from './commands.js';
 import {
   getDatabase,
-  deleteRun,
   getStatsFromDb,
   getFilteredRuns,
   getAnalyticsFromDb,
   getWorkspacesFromDb,
   getRun,
-  getRunLogFingerprint,
+  getRunSyncState,
+  markRunLogMissing,
+  updateRunProgress,
   upsertRun,
   registerRunComplete
 } from './db.js';
@@ -38,22 +39,22 @@ console.log(`[Dashboard] Initializing SQLite-backed subagent visualizer...`);
 console.log(`[Dashboard] Logs Directory: ${LOGS_DIR}`);
 console.log(`[Dashboard] Proc Directory: ${PROC_DIR}`);
 
-// Clean up any stale records whose log file no longer exists
+// Keep DB history even when raw logs are pruned; mark only the byte stream unavailable.
 try {
   const db = getDatabase();
   const rows = db.prepare('SELECT filename FROM runs').all();
-  let pruned = 0;
+  let missing = 0;
   for (const r of rows) {
     if (!fs.existsSync(path.join(LOGS_DIR, r.filename))) {
-      deleteRun(r.filename);
-      pruned++;
+      markRunLogMissing(r.filename);
+      missing++;
     }
   }
-  if (pruned > 0) {
-    console.log(`[Dashboard] Cleaned up ${pruned} orphaned DB rows with missing log files.`);
+  if (missing > 0) {
+    console.log(`[Dashboard] Marked ${missing} runs with missing raw log files.`);
   }
 } catch (err) {
-  console.warn('[Dashboard] Could not verify orphaned runs:', err.message);
+  console.warn('[Dashboard] Could not verify raw log availability:', err.message);
 }
 
 /**
@@ -176,7 +177,7 @@ function findDanglingSubagentProcesses(activeRuns = []) {
           }
         }
 
-        if (cmd.includes('server.js') || cmd.includes('local-subagents-dashboard')) {
+        if (cmd.includes('server.js') || cmd.includes('agent-relay-dashboard')) {
           isSubagent = false;
         }
 
@@ -251,9 +252,18 @@ function syncLogFile(filename, { force = false } = {}) {
   if (!safeFile.endsWith('.log') || !fs.existsSync(filePath)) return false;
 
   const stat = fs.statSync(filePath);
-  const cached = getRunLogFingerprint(safeFile);
+  const cached = getRunSyncState(safeFile);
   if (!force && cached && cached.log_size === stat.size && cached.log_mtime === Math.floor(stat.mtimeMs)) {
     return false;
+  }
+
+  const doneFile = filePath.replace(/\.log$/, '.done');
+  if (!force && cached?.status === 'running' && !fs.existsSync(doneFile)) {
+    const progress = parseLogProgress(safeFile, filePath, PROC_DIR);
+    if (progress) {
+      updateRunProgress(progress);
+      return true;
+    }
   }
 
   const meta = parseLogMetadata(safeFile, filePath, PROC_DIR);
@@ -736,5 +746,5 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`[Dashboard] Local Subagents Visualizer running with SQLite engine at: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+  console.log(`[Dashboard] Agent Relay Visualizer running with SQLite engine at: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
 });

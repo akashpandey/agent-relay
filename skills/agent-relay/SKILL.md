@@ -1,9 +1,9 @@
 ---
-name: local-subagents
+name: agent-relay
 description: Delegate a bounded coding, investigation, review, or parallel implementation task to local CLI subagents (OpenCode, Antigravity, Claude Code, Codex). Also supports cross-harness relay takeover when tokens or quotas are exhausted.
 ---
 
-# Local Subagents & Agent Relay
+# Agent Relay
 
 Execute delegated tasks across 5 local coding harnesses (`opencode-subagent`, `opencode-subagent-fallback`, `antigravity-subagent`, `claude-subagent`, `codex-subagent`). Each wrapper runs non-interactively in the target workspace, logs output, captures diffs and telemetry, and integrates with the local Visualizer Dashboard at `http://localhost:4242`.
 
@@ -220,7 +220,7 @@ codex-subagent --models
 subagent-doctor
 ```
 
-Use `subagent-doctor` when local-subagents behavior looks stale, Docker restart automation seems broken, or the dashboard/API is unreachable.
+Use `subagent-doctor` when agent-relay behavior looks stale, Docker restart automation seems broken, or the dashboard/API is unreachable.
 
 Specify a non-default model via environment variables:
 - `OPENCODE_MODEL='zai-coding-plan/glm-5.3' opencode-subagent "..."`

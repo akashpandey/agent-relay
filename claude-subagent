@@ -39,7 +39,7 @@ Environment:
   SUBAGENT_SESSION       Resume this provider's existing session ID.
   CLAUDE_TIMEOUT         Timeout in seconds. Default: 7200.
   CLAUDE_LOGS            Print wrapper banner to stderr. Default: 1.
-  SUBAGENT_LOG_DIR       Where wrapper run logs are written. Default: ~/local-subagents/logs.
+  SUBAGENT_LOG_DIR       Where wrapper run logs are written. Default: ~/agent-relay/logs.
 
 Examples:
   CLAUDE_MODEL='sonnet' claude-subagent "Fix the bug"

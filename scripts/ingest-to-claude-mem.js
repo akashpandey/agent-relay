@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // SPDX-License-Identifier: Apache-2.0
 /**
- * local-subagents -> claude-mem Ingestion Bridge
+ * agent-relay -> claude-mem Ingestion Bridge
  * Automatically captures subagent executions across OpenCode, Antigravity, Claude Code, and Codex.
  */
 
@@ -285,7 +285,7 @@ if (import.meta.main) {
   const args = process.argv.slice(2);
   const isDryRun = args.includes('--dry-run');
   const isForce = args.includes('--force');
-  const logsDir = join(homedir(), 'local-subagents', 'logs');
+  const logsDir = join(homedir(), 'agent-relay', 'logs');
 
   if (args.includes('--all') || args.includes('-a')) {
     await ingestAllDoneFiles(logsDir, { dryRun: isDryRun, force: isForce });

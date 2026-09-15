@@ -30,7 +30,7 @@ The underlying CLIs already work, but their raw command lines are noisy, backend
 - pass through a few useful runtime knobs via environment variables
 - add enough observability to tell whether the run is alive or stuck
 - tee every run's combined output to a timestamped log file under
-  `~/local-subagents/logs/` (path override: `SUBAGENT_LOG_DIR`), printed in the
+  `~/agent-relay/logs/` (path override: `SUBAGENT_LOG_DIR`), printed in the
   startup banner, so a backgrounded run can be tailed live instead of waiting
   for the final result
 
@@ -103,9 +103,9 @@ Install the shared delegation skill for Codex and Claude Code with:
 ./install-skill
 ```
 
-This creates symlinks from `~/.codex/skills/local-subagents` and
-`~/.claude/skills/local-subagents` to the tracked source at
-`skills/local-subagents/`. Update that source here; do not edit the installed
+This creates symlinks from `~/.codex/skills/agent-relay` and
+`~/.claude/skills/agent-relay` to the tracked source at
+`skills/agent-relay/`. Update that source here; do not edit the installed
 links. OpenCode already permits Claude-style skills on this host. Antigravity's
 plugin system can import Claude skills when needed, but has no global skill
 directory configured yet.
@@ -152,9 +152,11 @@ printf '%s\n' "Review this repo" | ./codex-subagent
 
 Provider wrappers still work directly and use the current working directory as the workspace root. When a launch directory maps to a canonical project workspace, the startup banner also prints `canonical_workspace=...`; the run still executes in the original directory.
 
-Canonical workspace grouping is shared by the wrappers and dashboard. Optional config lives at `~/.config/local-subagents/workspaces.json` as either an array of absolute repo paths or an object of names to absolute repo paths. Override the path with `SUBAGENT_WORKSPACES_CONFIG` or the default code root with `SUBAGENT_CODE_ROOT`.
+Canonical workspace grouping is shared by the wrappers and dashboard. Optional config lives at `~/.config/agent-relay/workspaces.json` as either an array of absolute repo paths or an object of names to absolute repo paths. Override the path with `SUBAGENT_WORKSPACES_CONFIG` or the default code root with `SUBAGENT_CODE_ROOT`.
 
 Run `./subagent-doctor` to check Docker, the dashboard container, the compose symlink, and the post-commit restart hook.
+
+![Subagents Monitor dashboard](./docs/assets/dashboard.gif)
 
 ## Cross-Harness Relay Takeover (Token Exhaustion Handoff)
 
@@ -329,7 +331,7 @@ Environment variables:
 - `OPENCODE_TIMEOUT` - timeout in seconds, default `7200`
 - `OPENCODE_LOGS` - set to `0` to suppress wrapper log banner
 - `SUBAGENT_SESSION` - optional OpenCode session ID to resume
-- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/local-subagents/logs`
+- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/agent-relay/logs`
 
 Every subagent final answer is asked to end with a JSON task outcome contract:
 
@@ -360,7 +362,7 @@ Behavior:
 - enables `--print-logs` by default
 - prints a startup banner (including the run log path) so hung runs are easier to identify
 - tees combined stdout+stderr to a timestamped file under `SUBAGENT_LOG_DIR`
-  (default `~/local-subagents/logs/`) for diagnostics when a structured result
+  (default `~/agent-relay/logs/`) for diagnostics when a structured result
   reports a blocker or failure
 - preserves the underlying command's real exit code even though output goes
   through `tee`
@@ -423,7 +425,7 @@ Environment variables:
 - `AGY_LOG_FILE` - optional path passed to `agy --log-file` (agy's own internal log, separate from the wrapper's run log)
 - `AGY_LOGS` - set to `0` to suppress wrapper log banner
 - `SUBAGENT_SESSION` - optional Antigravity conversation ID to resume
-- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/local-subagents/logs`
+- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/agent-relay/logs`
 
 Behavior:
 
@@ -454,7 +456,7 @@ Environment variables:
 - `CLAUDE_TIMEOUT` - timeout in seconds, default `7200`
 - `CLAUDE_LOGS` - set to `0` to suppress the wrapper log banner
 - `SUBAGENT_SESSION` - optional Claude Code session ID to resume
-- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/local-subagents/logs`
+- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/agent-relay/logs`
 
 Behavior:
 
@@ -476,7 +478,7 @@ Environment variables:
 - `SUBAGENT_SESSION` - optional Codex session ID to resume
 - `CODEX_TIMEOUT` - timeout in seconds, default `7200`
 - `CODEX_LOGS` - set to `0` to suppress the wrapper log banner
-- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/local-subagents/logs`
+- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/agent-relay/logs`
 
 Behavior:
 
@@ -491,14 +493,15 @@ selectors documented by the installed CLI instead.
 
 ## Observability
 
-All wrappers tee their combined
-stdout+stderr to a timestamped file under `~/local-subagents/logs/` (override with
-`SUBAGENT_LOG_DIR`). The path is printed in the startup banner, so a run
-launched in the background can be watched live:
+The dashboard uses SQLite for durable run metadata and `logs/` for optional
+raw terminal streams. Wrappers tee combined stdout+stderr to a timestamped
+file under `~/agent-relay/logs/` (override with `SUBAGENT_LOG_DIR`). The path
+is printed in the startup banner, so a run launched in the background can be
+watched live:
 
 ```bash
 OPENCODE_MODEL='openai/gpt-5.5' opencode-subagent "long task" &
-tail -f ~/local-subagents/logs/<the-run-log-printed-above>.log
+tail -f ~/agent-relay/logs/<the-run-log-printed-above>.log
 ```
 
 This exists because, unmodified, `opencode` streams tool/loop progress to
@@ -509,8 +512,10 @@ without depending on upstream CLI verbosity flags. `opencode-subagent-fallback`
 inherits this for free since it shells out to `opencode-subagent` for both
 its probe and real task calls.
 
-The `logs/` directory is gitignored and not rotated — clean it out
-periodically if it grows (`rm -rf ~/local-subagents/logs/*`).
+The `logs/` directory is gitignored and not rotated. Clean it out periodically
+if it grows (`rm -rf ~/agent-relay/logs/*`); the dashboard keeps indexed run
+metadata in `data/subagents.db`, but full raw-log download/search is only
+available while the corresponding log file still exists.
 
 ## Process Cleanup
 
