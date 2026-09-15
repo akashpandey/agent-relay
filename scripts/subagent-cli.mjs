@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalWorkspacePath, configuredWorkspaceEntries } from '../dashboard/workspaces.js';
 import { deleteRun, getFilteredRuns, getRun, getWorkspacesFromDb } from '../dashboard/db.js';
+import { findLatestWorkspaceSession, buildRelayTakeoverPrompt } from './relay-handoff.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const repoDir = path.resolve(path.dirname(__filename), '..');
@@ -23,6 +24,7 @@ function usage() {
   console.log(`Usage:
   ${cmdName} <provider> [wrapper-args...] "task"
   ${cmdName} <workspace> <provider> [wrapper-args...] "task"
+  ${cmdName} takeover [workspace] <provider> [instructions...]
   ${cmdName} workspaces
   ${cmdName} doctor
   ${cmdName} dashboard [restart]
@@ -31,9 +33,9 @@ function usage() {
   ${cmdName} result [--last | workspace | log-or-pid]
   ${cmdName} open [--browser] [--last | workspace | log]
   ${cmdName} last [workspace]
-  ${cmdName} continue [workspace] "task"
+  ${cmdName} continue [workspace] "task" [--to <provider>]
 
-Aliases: relay, subagent
+Aliases: relay, subagent (takeover alias: handoff)
 Providers: ${[...providers.keys()].join(', ')}`);
 }
 
@@ -268,17 +270,103 @@ if (args[0] === 'prune') {
   process.exit(0);
 }
 
+if (args[0] === 'takeover' || args[0] === 'handoff') {
+  if (args.length < 2) {
+    console.error(`Usage: ${cmdName} takeover [workspace] <provider> [instructions...]`);
+    process.exit(2);
+  }
+
+  let targetWorkspace = null;
+  let targetProvider = null;
+  let userInstructions = '';
+
+  if (providers.has(args[1])) {
+    targetProvider = args[1];
+    targetWorkspace = process.cwd();
+    userInstructions = args.slice(2).join(' ');
+  } else {
+    targetWorkspace = resolveWorkspace(args[1]);
+    if (!targetWorkspace) {
+      console.error(`${cmdName}: unknown workspace or provider: ${args[1]}`);
+      process.exit(2);
+    }
+    if (!args[2] || !providers.has(args[2])) {
+      console.error(`${cmdName}: takeover requires a valid target provider (${[...providers.keys()].join(', ')}). Received: ${args[2] || '(none)'}`);
+      process.exit(2);
+    }
+    targetProvider = args[2];
+    userInstructions = args.slice(3).join(' ');
+  }
+
+  const session = findLatestWorkspaceSession(targetWorkspace);
+  if (!session) {
+    console.error(`${cmdName}: no previous session found for workspace: ${targetWorkspace}`);
+    process.exit(1);
+  }
+
+  const handoff = buildRelayTakeoverPrompt({
+    sourceProvider: session.provider,
+    goal: session.goal,
+    lastAssistantMessage: session.lastAssistantMessage,
+    touchedFiles: session.touchedFiles,
+    workspace: targetWorkspace,
+    userInstruction: userInstructions,
+  });
+
+  console.log(`[relay] transferring baton: ${session.provider.toUpperCase()} -> ${targetProvider.toUpperCase()}`);
+  console.log(`[relay] workspace: ${targetWorkspace}`);
+  console.log(`[relay] handoff reason: ${handoff.reason}`);
+  if (session.touchedFiles?.length) {
+    console.log(`[relay] files in flight: ${session.touchedFiles.length}`);
+  }
+
+  runProvider(targetProvider, [handoff.prompt], targetWorkspace);
+}
+
 if (args[0] === 'continue') {
+  const toIndex = args.findIndex(a => a === '--to' || a === '--with');
+  if (toIndex !== -1 && args[toIndex + 1]) {
+    const targetProvider = args[toIndex + 1];
+    if (!providers.has(targetProvider)) {
+      console.error(`${cmdName}: unknown target provider for continue: ${targetProvider}`);
+      process.exit(2);
+    }
+    const remainingArgs = args.filter((_, idx) => idx !== toIndex && idx !== toIndex + 1);
+    const maybeWorkspace = resolveWorkspace(remainingArgs[1]);
+    const userInstructions = (maybeWorkspace ? remainingArgs.slice(2) : remainingArgs.slice(1)).join(' ');
+    const targetWorkspace = maybeWorkspace || process.cwd();
+
+    const session = findLatestWorkspaceSession(targetWorkspace);
+    if (!session) {
+      console.error(`${cmdName}: no previous session found for workspace: ${targetWorkspace}`);
+      process.exit(1);
+    }
+
+    const handoff = buildRelayTakeoverPrompt({
+      sourceProvider: session.provider,
+      goal: session.goal,
+      lastAssistantMessage: session.lastAssistantMessage,
+      touchedFiles: session.touchedFiles,
+      workspace: targetWorkspace,
+      userInstruction: userInstructions,
+    });
+
+    console.log(`[relay] transferring baton: ${session.provider.toUpperCase()} -> ${targetProvider.toUpperCase()}`);
+    console.log(`[relay] workspace: ${targetWorkspace}`);
+    console.log(`[relay] handoff reason: ${handoff.reason}`);
+    runProvider(targetProvider, [handoff.prompt], targetWorkspace);
+  }
+
   const maybeWorkspace = resolveWorkspace(args[1]);
   const taskArgs = maybeWorkspace ? args.slice(2) : args.slice(1);
   const task = taskArgs.join(' ');
   if (!task) {
-    console.error('subagent: continue needs a follow-up task');
+    console.error(`${cmdName}: continue needs a follow-up task`);
     process.exit(2);
   }
   const run = latestRun(maybeWorkspace || null);
   if (!run?.sessionId || run.sessionId === 'new') {
-    console.error('subagent: no resumable matching run found');
+    console.error(`${cmdName}: no resumable matching run found`);
     process.exit(1);
   }
   runProvider(run.provider, ['--resume', run.sessionId, task], maybeWorkspace || run.workspace);

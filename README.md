@@ -147,6 +147,8 @@ printf '%s\n' "Review this repo" | ./codex-subagent
 ./relay open fitschool
 ./relay last fitschool
 ./relay continue fitschool "Fix the issue from the previous run"
+./relay continue fitschool --to opencode "Finish tests using another harness"
+./relay takeover fitschool codex "Pick up where Claude/OpenCode left off"
 ```
 
 Provider wrappers still work directly and use the current working directory as the workspace root. When a launch directory maps to a canonical project workspace, the startup banner also prints `canonical_workspace=...`; the run still executes in the original directory.
@@ -154,6 +156,35 @@ Provider wrappers still work directly and use the current working directory as t
 Canonical workspace grouping is shared by the wrappers and dashboard. Optional config lives at `~/.config/local-subagents/workspaces.json` as either an array of absolute repo paths or an object of names to absolute repo paths. Override the path with `SUBAGENT_WORKSPACES_CONFIG` or the default code root with `SUBAGENT_CODE_ROOT`.
 
 Run `./subagent-doctor` to check Docker, the dashboard container, the compose symlink, and the post-commit restart hook.
+
+## Cross-Harness Relay Takeover (Token Exhaustion Handoff)
+
+When you hit a rate limit, quota exhaustion, or context ceiling midway in an interactive harness session (Claude Code, Codex CLI, Antigravity CLI, or OpenCode) or in a subagent run, you don't need to re-explain the task from scratch.
+
+`agent-relay` inspects the local session logs across all four harnesses, extracts the working context, inspects current repository changes (`git status` & `git diff`), and packages a structured baton-pass prompt for the target subagent harness:
+
+```bash
+# Take over in current workspace using Codex:
+relay takeover codex
+
+# Take over a named workspace using OpenCode:
+relay takeover fitschool opencode
+
+# Take over with an explicit directive:
+relay takeover fitschool claude "Finish the remaining unit tests and commit"
+
+# Continue a previous subagent run but switch provider:
+relay continue fitschool --to codex "Continue where the last run stopped"
+```
+
+### What gets passed during takeover:
+1. **Original User Goal**: Extracted from the previous harness session.
+2. **Files Touched / Inspected**: Working file list referenced by the prior harness.
+3. **Previous Harness Status**: The last assistant message, including detected exhaustion causes (e.g. rate limits or token limits).
+4. **Git Workspace State**: Uncommitted changes via `git status -s` and `git diff --stat`.
+5. **Target Directive**: Clear instructions for the new harness to seamlessly resume and complete the objective.
+
+In the **Web Dashboard**, opening any run modal provides a **🔀 Relay Takeover** card with 1-click commands to transition that run to any alternate harness.
 
 ## Session reuse
 

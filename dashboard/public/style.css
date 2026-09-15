@@ -1349,7 +1349,7 @@ kbd {
   color: var(--text-dim);
 }
 
-.fs-task-card, .fs-metrics-card, .fs-files-card, .fs-cli-card {
+.fs-task-card, .fs-metrics-card, .fs-files-card, .fs-cli-card, .fs-relay-card {
   background-color: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: 8px;

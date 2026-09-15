@@ -15,19 +15,34 @@ export function buildRunCommands(run, sessionId = null) {
   const workspace = run.workspaceName || run.workspace;
   const workspaceArg = workspace && workspace !== 'Unknown' ? workspace : null;
   const providerBin = `${run.provider}-subagent`;
-  const subagentPrefix = workspaceArg ? `subagent ${shellQuote(workspaceArg)}` : 'subagent';
+  const subagentPrefix = workspaceArg ? `relay ${shellQuote(workspaceArg)}` : 'relay';
   const task = run.fullTask || run.task || '';
   const runAgainCommand = `${subagentPrefix} ${provider} ${taskQuote(task)}`;
+
+  const alternateProviders = ['codex', 'opencode', 'claude', 'antigravity'].filter(
+    p => p !== run.provider && (run.provider !== 'agy' || p !== 'antigravity')
+  );
+  const relayCommands = {};
+  for (const p of alternateProviders) {
+    relayCommands[p] = workspaceArg
+      ? `relay takeover ${shellQuote(workspaceArg)} ${p}`
+      : `relay takeover ${p}`;
+  }
+
   const continuation = sessionId && sessionId !== 'new' ? {
     sessionId,
     sameSessionCommand: `${providerBin} --resume ${JSON.stringify(sessionId)} ${followUpPlaceholder()}`,
     continueLastCommand: `${providerBin} --continue ${followUpPlaceholder()}`,
     subagentContinueCommand: workspaceArg
-      ? `subagent continue ${shellQuote(workspaceArg)} ${followUpPlaceholder()}`
-      : `subagent continue ${followUpPlaceholder()}`,
+      ? `relay continue ${shellQuote(workspaceArg)} ${followUpPlaceholder()}`
+      : `relay continue ${followUpPlaceholder()}`,
+    relayCommands,
     runAgainCommand,
     env: { SUBAGENT_SESSION: sessionId },
-  } : null;
+  } : {
+    relayCommands,
+    runAgainCommand,
+  };
 
   return { runAgainCommand, continuation };
 }

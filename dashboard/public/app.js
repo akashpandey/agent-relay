@@ -131,6 +131,8 @@ const el = {
   modalFilesChips: document.getElementById('modal-files-chips'),
   modalCliCode: document.getElementById('modal-cli-code'),
   btnCliCopySmall: document.getElementById('btn-cli-copy-small'),
+  fsRelayCard: document.getElementById('fs-relay-card'),
+  modalRelayActions: document.getElementById('modal-relay-actions'),
 
   // Right Viewport Tabs
   fsTabs: document.querySelectorAll('.fs-tab'),
@@ -646,6 +648,26 @@ function applyModalMetadata(meta) {
   el.btnModalCopyContinue.onclick = () => copyToClipboard(continueCommand, 'Continue command copied!');
   el.btnModalCopyRerun.style.display = meta.runAgainCommand ? 'inline-flex' : 'none';
   el.btnModalCopyRerun.onclick = () => copyToClipboard(meta.runAgainCommand, 'Run-again command copied!');
+
+  // Left Sidebar: Relay Takeover
+  if (el.fsRelayCard && el.modalRelayActions) {
+    const relayCmds = meta.continuation?.relayCommands;
+    if (relayCmds && Object.keys(relayCmds).length > 0) {
+      el.fsRelayCard.style.display = 'block';
+      el.modalRelayActions.innerHTML = '';
+      for (const [targetProvider, cmd] of Object.entries(relayCmds)) {
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-sm btn-secondary';
+        const label = formatProviderName(targetProvider);
+        btn.title = `Copy takeover command for ${label}: ${cmd}`;
+        btn.innerHTML = `<span style="opacity: 0.7">➜</span> ${escapeHtml(label)}`;
+        btn.onclick = () => copyToClipboard(cmd, `Relay takeover command for ${label} copied!`);
+        el.modalRelayActions.appendChild(btn);
+      }
+    } else {
+      el.fsRelayCard.style.display = 'none';
+    }
+  }
 
   // Left Sidebar: Tokens & Cost Mini Stats
   if (meta.tokens) {
@@ -1395,6 +1417,17 @@ function copyToClipboard(text, successMsg = 'Copied to clipboard!') {
   }).catch(() => {
     prompt('Copy to clipboard:', text);
   });
+}
+
+function formatProviderName(p) {
+  const map = {
+    codex: 'Codex',
+    claude: 'Claude Code',
+    opencode: 'OpenCode',
+    antigravity: 'Antigravity',
+    agy: 'Antigravity',
+  };
+  return map[String(p).toLowerCase()] || p;
 }
 
 function showToast(msg) {

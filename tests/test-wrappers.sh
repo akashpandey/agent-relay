@@ -117,6 +117,11 @@ assert_output_contains "opencode-subagent argument task" "Mock opencode done" "$
 # Test stdin invocation
 assert_output_contains "claude-subagent stdin task" "Mock claude done" bash -c "printf '%s\n' 'Stdin test' | '$REPO_DIR/claude-subagent'"
 
+# Test relay CLI and takeover command
+assert_output_contains "relay help" "takeover" "$REPO_DIR/relay"
+assert_output_contains "relay takeover help" "Usage: relay takeover" "$REPO_DIR/relay" takeover
+assert_output_contains "relay takeover opencode" "transferring baton" "$REPO_DIR/relay" takeover opencode "Complete testing"
+
 # Test log file creation
 log_count=$(find "$TEST_LOGS" -type f -name "*.log" | wc -l)
 echo -n "Verifying run logs were written ($log_count found) ... "
