@@ -7,9 +7,7 @@
 
 Small, harness-agnostic shell wrappers and local-first orchestration for running coding subagents in non-interactive mode.
 
-<p align="center">
-  <img src="docs/assets/demo.gif" alt="agent-relay demo" width="800" />
-</p>
+![agent-relay demo](./docs/assets/demo.gif)
 
 ## Why these wrappers exist
 
