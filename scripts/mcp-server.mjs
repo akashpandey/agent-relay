@@ -253,7 +253,11 @@ async function callTool(name, args = {}) {
   }
   if (name === 'takeover_run') {
     const command = ['relay', 'takeover'];
-    if (args.workspace) command.push(args.workspace);
+    if (args.workspace) {
+      const workspace = resolveWorkspace(args.workspace);
+      if (!workspace) throw new Error(`unknown workspace: ${args.workspace}`);
+      command.push(workspace);
+    }
     command.push(args.provider);
     if (args.instructions) command.push(args.instructions);
     return maybeExecute(command, Boolean(args.execute));
