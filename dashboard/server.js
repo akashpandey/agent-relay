@@ -253,11 +253,11 @@ function syncLogFile(filename, { force = false } = {}) {
 
   const stat = fs.statSync(filePath);
   const cached = getRunSyncState(safeFile);
+  const doneFile = filePath.replace(/\.log$/, '.done');
   if (!force && cached && cached.log_size === stat.size && cached.log_mtime === Math.floor(stat.mtimeMs)) {
-    return false;
+    if (!(cached.status === 'running' && fs.existsSync(doneFile))) return false;
   }
 
-  const doneFile = filePath.replace(/\.log$/, '.done');
   if (!force && cached?.status === 'running' && !fs.existsSync(doneFile)) {
     const progress = parseLogProgress(safeFile, filePath, PROC_DIR);
     if (progress) {
@@ -322,8 +322,9 @@ function searchLogFile(filePath, query, limit = LOG_SEARCH_MAX_RESULTS) {
 
 function broadcastDashboardUpdate() {
   if (sseClients.size === 0) return;
-  const stats = getStatsFromDb();
+  let stats = getStatsFromDb();
   reconcileActiveRuns(stats.activeRuns);
+  stats = getStatsFromDb();
   const analytics = getAnalyticsFromDb();
 
   const payload = JSON.stringify({
@@ -352,10 +353,11 @@ function broadcastDashboardUpdate() {
 let debounceTimer = null;
 try {
   fs.watch(LOGS_DIR, (eventType, filename) => {
-    if (!filename || !filename.endsWith('.log')) return;
+    if (!filename || (!filename.endsWith('.log') && !filename.endsWith('.done'))) return;
+    const logFilename = filename.endsWith('.done') ? filename.replace(/\.done$/, '.log') : filename;
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-      try { syncLogFile(filename); } catch {}
+      try { syncLogFile(logFilename); } catch {}
       broadcastDashboardUpdate();
     }, 200);
   });
@@ -396,8 +398,9 @@ const server = http.createServer(async (req, res) => {
 
   // GET /api/stats
   if (pathname === '/api/stats' && req.method === 'GET') {
-    const stats = getStatsFromDb();
+    let stats = getStatsFromDb();
     reconcileActiveRuns(stats.activeRuns);
+    stats = getStatsFromDb();
     const dangling = findDanglingSubagentProcesses(stats.activeRuns);
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
