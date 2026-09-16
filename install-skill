@@ -32,6 +32,7 @@ for bin in \
   opencode-subagent-fallback \
   subagent-wait \
   subagent-dashboard \
+  agent-relay-mcp \
   subagent \
   relay; do
   if [ -f "$repo_dir/$bin" ]; then

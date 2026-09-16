@@ -160,6 +160,23 @@ Canonical workspace grouping is shared by the wrappers and dashboard. Optional c
 
 Run `./subagent-doctor` to check Docker, the dashboard container, the compose symlink, and the post-commit restart hook.
 
+## MCP Server
+
+`agent-relay-mcp` exposes a local stdio MCP server for agents that prefer
+structured tools over shell commands. It wraps the existing SQLite/dashboard
+surfaces; it does not replace the wrappers, logs, or dashboard.
+
+Example MCP command:
+
+```bash
+agent-relay-mcp
+```
+
+Available tools include `list_workspaces`, `list_runs`, `get_run_result`,
+`wait_for_run`, `get_log_tail`, `search_log`, `continue_run`, `takeover_run`,
+and `doctor`. Use `get_run_result` or `wait_for_run` for acceptance checks;
+raw log tools are diagnostic only.
+
 ## Cross-Harness Relay Takeover (Token Exhaustion Handoff)
 
 When you hit a rate limit, quota exhaustion, or context ceiling midway in an interactive harness session (Claude Code, Codex CLI, Antigravity CLI, or OpenCode) or in a subagent run, you don't need to re-explain the task from scratch.

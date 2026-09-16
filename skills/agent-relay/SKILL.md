@@ -207,6 +207,12 @@ Dashboard note: Live Terminal is optimized for large logs. It initially shows th
 
 Do not use `/api/logs/<log-filename>`, `tail`, or the Live Terminal as the normal completion check. They are diagnostic surfaces, not the task result contract.
 
+### MCP Tool Surface
+
+When the host supports MCP, prefer the local `agent-relay-mcp` server over ad-hoc shell parsing. It exposes structured tools: `list_workspaces`, `list_runs`, `get_run_result`, `wait_for_run`, `get_log_tail`, `search_log`, `continue_run`, `takeover_run`, and `doctor`.
+
+Use `get_run_result` / `wait_for_run` for acceptance. Use `get_log_tail` / `search_log` only for diagnostics after a result reports `attentionRequired=true`, `accepted=false`, or `outcome=unknown|partial|blocked|failed`.
+
 ---
 
 ## Model Selection
