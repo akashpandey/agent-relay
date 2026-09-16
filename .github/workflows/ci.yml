@@ -15,9 +15,14 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
       - name: Shell syntax check (sh -n)
         run: |
-          sh -n antigravity-subagent claude-subagent codex-subagent opencode-subagent opencode-subagent-fallback subagent subagent-wait subagent-doctor install-skill
+          sh -n antigravity-agent claude-agent codex-agent opencode-agent opencode-agent-fallback agent agent-wait agent-doctor install-skill
 
       - name: Run ShellCheck
         uses: ludeeus/action-shellcheck@master

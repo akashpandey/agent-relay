@@ -5,7 +5,7 @@ x-default-logging: &default-logging
     max-file: "3"
 
 services:
-  subagent-dashboard:
+  agent-dashboard:
     container_name: agent-relay-dashboard
     build:
       context: ./dashboard
@@ -25,7 +25,7 @@ services:
       - GEMINI_BRAIN=/gemini_brain
       - CLAUDE_DATA=/claude_data
       - CODEX_DATA=/codex_data
-      - SUBAGENT_DATA_DIR=/app/data
+      - AGENT_RELAY_DATA_DIR=/app/data
     volumes:
       - /home/akey/Code/agent-relay/data:/app/data
       - /home/akey/Code/agent-relay/logs:/app/logs:ro

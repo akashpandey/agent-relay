@@ -3,7 +3,7 @@ Briefly describe the change and the motivation behind it.
 
 ## Type of Change
 - [ ] Bug fix (non-breaking change fixing an issue)
-- [ ] New feature (e.g. support for another CLI, new subagent command)
+- [ ] New feature (e.g. support for another CLI, new agent command)
 - [ ] Documentation update
 - [ ] Performance or reliability improvement
 

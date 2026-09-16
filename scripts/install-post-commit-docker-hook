@@ -12,7 +12,7 @@ set -u
 
 repo_dir="$repo_dir"
 
-if [ "\${SUBAGENT_DOCKER_AUTO_RESTART:-1}" = "1" ]; then
+if [ "\${AGENT_RELAY_DOCKER_AUTO_RESTART:-1}" = "1" ]; then
   ( "$restart_script" ) >/dev/null 2>&1 &
   echo "agent-relay dashboard restart queued"
 fi

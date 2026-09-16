@@ -15,11 +15,11 @@ fi
 export PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-5}"
 export CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-10}"
 
-agy_bin="${SUBAGENT_AGY_BIN:-$(command -v agy 2>/dev/null || echo "$HOME/.local/bin/agy")}"
+agy_bin="${AGENT_RELAY_AGY_BIN:-${SUBAGENT_AGY_BIN:-$(command -v agy 2>/dev/null || echo "$HOME/.local/bin/agy")}}"
 
 if [ "${1:-}" = "--models" ]; then
   if [ "$#" -ne 1 ]; then
-    echo "Usage: antigravity-subagent --models" >&2
+    echo "Usage: antigravity-agent --models" >&2
     exit 2
   fi
   "$agy_bin" models
@@ -29,9 +29,9 @@ fi
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   cat <<'EOF'
 Usage:
-  antigravity-subagent "task"
-  printf '%s\n' "task" | antigravity-subagent
-  antigravity-subagent --models
+  antigravity-agent "task"
+  printf '%s\n' "task" | antigravity-agent
+  antigravity-agent --models
 
 Environment:
   AGY_MODEL          Model label (e.g. 'Gemini 3.8 Flash (High)') or family alias:
@@ -44,25 +44,25 @@ Environment:
   AGY_PRINT_TIMEOUT  Print-mode timeout, default: 120m.
   AGY_LOG_FILE       Optional agy --log-file path (agy's own internal log).
   AGY_LOGS           Print wrapper banner to stderr. Default: 1.
-  SUBAGENT_SESSION   Resume this provider's existing conversation ID.
-  SUBAGENT_LOG_DIR   Where wrapper run logs are written. Default: ~/agent-relay/logs.
+  AGENT_RELAY_SESSION   Resume this provider's existing conversation ID.
+  AGENT_RELAY_LOG_DIR   Where wrapper run logs are written. Default: ~/agent-relay/logs.
 
 Every run's combined stdout+stderr is teed to a timestamped file under
-SUBAGENT_LOG_DIR (printed in the startup banner) so a backgrounded run can be
+AGENT_RELAY_LOG_DIR (printed in the startup banner) so a backgrounded run can be
 tailed live instead of waiting for --print to return.
 
 Examples:
-  AGY_MODEL='gemini-flash' antigravity-subagent "Fix the bug"
-  AGY_MODEL='gemini-pro' antigravity-subagent "Review this repo"
-  AGY_MODEL='Gemini 3.8 Flash (High)' antigravity-subagent "Implement TASK.md"
+  AGY_MODEL='gemini-flash' antigravity-agent "Fix the bug"
+  AGY_MODEL='gemini-pro' antigravity-agent "Review this repo"
+  AGY_MODEL='Gemini 3.8 Flash (High)' antigravity-agent "Implement TASK.md"
 
 Refresh live list:
-  antigravity-subagent --models
+  antigravity-agent --models
 EOF
   exit 0
 fi
 
-resume_session="${SUBAGENT_SESSION:-}"
+resume_session="${AGENT_RELAY_SESSION:-${SUBAGENT_SESSION:-}}"
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --continue|-c)
@@ -95,7 +95,7 @@ export PAGER="${PAGER:-cat}"
 export GIT_PAGER="${GIT_PAGER:-cat}"
 export SYSTEMD_PAGER="${SYSTEMD_PAGER:-cat}"
 
-prompt="You are running as a non-interactive coding subagent.
+prompt="You are running as a non-interactive coding agent.
 Workspace: $workspace
 
 Rules:
@@ -112,10 +112,10 @@ $user_prompt"
 
 log_flag="${AGY_LOGS:-1}"
 
-log_dir="${SUBAGENT_LOG_DIR:-$repo_dir/logs}"
+log_dir="${AGENT_RELAY_LOG_DIR:-${SUBAGENT_LOG_DIR:-$repo_dir/logs}}"
 mkdir -p "$log_dir"
 log_file="$log_dir/$(date +%Y%m%dT%H%M%S)-antigravity-$$.log"
-unit="local-subagent-antigravity-$$"
+unit="local-agent-antigravity-$$"
 use_systemd=0
 if command -v systemd-run >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
   use_systemd=1
@@ -188,7 +188,7 @@ project_id="${AGY_PROJECT:-subagent-$(basename "$workspace")}"
 if [ -n "${AGY_MODEL:-}" ]; then
   resolved_agy_model="$(resolve_agy_model "$AGY_MODEL")"
   if [ "$resolved_agy_model" != "$AGY_MODEL" ]; then
-    echo "antigravity-subagent: resolved alias '$AGY_MODEL' -> '$resolved_agy_model'" >&2
+    echo "antigravity-agent: resolved alias '$AGY_MODEL' -> '$resolved_agy_model'" >&2
     AGY_MODEL="$resolved_agy_model"
   fi
 fi
@@ -211,9 +211,9 @@ fi
 
 if [ "$log_flag" = "1" ]; then
   if [ -n "$canonical_workspace" ] && [ "$canonical_workspace" != "$workspace" ]; then
-    echo "antigravity-subagent: canonical_workspace=$canonical_workspace launch_workspace=$workspace" >&2
+    echo "antigravity-agent: canonical_workspace=$canonical_workspace launch_workspace=$workspace" >&2
   fi
-  echo "antigravity-subagent: workspace=$workspace project=$project_id model=${AGY_MODEL:-default} session=${resume_session:-new} timeout=$timeout log_file=${AGY_LOG_FILE:-default} run_log=$log_file" >&2
+  echo "antigravity-agent: workspace=$workspace project=$project_id model=${AGY_MODEL:-default} session=${resume_session:-new} timeout=$timeout log_file=${AGY_LOG_FILE:-default} run_log=$log_file" >&2
 fi
 
 # ponytail: snapshot every pid that exists before this run starts (space-
@@ -225,7 +225,7 @@ fi
 # how a forgotten dev server survives the wrapper exiting.
 before_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
 
-printf 'subagent: provider=antigravity workspace=%s model=%s session=%s\nTask:\n%s\n\n---\n\n' \
+printf 'agent: provider=antigravity workspace=%s model=%s session=%s\nTask:\n%s\n\n---\n\n' \
   "$workspace" "${AGY_MODEL:-default}" "${resume_session:-new}" "$user_prompt" > "$log_file"
 
 # Register run start in SQLite database immediately
@@ -290,7 +290,7 @@ if [ -f "${log_file}.reaped" ]; then
   rm -f "${log_file}.reaped"
   if [ "$status" -ne 0 ]; then
     if [ "$log_flag" = "1" ]; then
-      echo "antigravity-subagent: process reaped after task completion (lingering event-loop handles)" >&2
+      echo "antigravity-agent: process reaped after task completion (lingering event-loop handles)" >&2
     fi
     status=0
   fi
@@ -357,7 +357,7 @@ if command -v node >/dev/null 2>&1; then
 fi
 
 if [ "$log_flag" = "1" ]; then
-  echo "antigravity-subagent: finished status=$status ($([ "$status" -eq 0 ] && echo "completed" || echo "failed")) session=$conv_id" >&2
+  echo "antigravity-agent: finished status=$status ($([ "$status" -eq 0 ] && echo "completed" || echo "failed")) session=$conv_id" >&2
 fi
 
 exit "$status"

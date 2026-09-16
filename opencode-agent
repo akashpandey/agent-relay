@@ -14,13 +14,13 @@ fi
 export PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-5}"
 export CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-10}"
 
-opencode_bin="${SUBAGENT_OPENCODE_BIN:-$(command -v opencode 2>/dev/null || echo "$HOME/.opencode/bin/opencode")}"
+opencode_bin="${AGENT_RELAY_OPENCODE_BIN:-${SUBAGENT_OPENCODE_BIN:-$(command -v opencode 2>/dev/null || echo "$HOME/.opencode/bin/opencode")}}"
 
 if [ "${1:-}" = "--models" ]; then
   if [ "${2:-}" = "--refresh" ] && [ "$#" -eq 2 ]; then
     "$opencode_bin" models --refresh >/dev/null
   elif [ "$#" -ne 1 ]; then
-    echo "Usage: opencode-subagent --models [--refresh]" >&2
+    echo "Usage: opencode-agent --models [--refresh]" >&2
     exit 2
   fi
 
@@ -35,9 +35,9 @@ fi
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   cat <<'EOF'
 Usage:
-  opencode-subagent "task"
-  printf '%s\n' "task" | opencode-subagent
-  opencode-subagent --models [--refresh]
+  opencode-agent "task"
+  printf '%s\n' "task" | opencode-agent
+  opencode-agent --models [--refresh]
 
 Environment:
   OPENCODE_MODEL    Model in provider/model format or family alias:
@@ -51,27 +51,27 @@ Environment:
   OPENCODE_AGENT    Optional opencode agent name.
   OPENCODE_TIMEOUT  Optional timeout in seconds. Default: 7200.
   OPENCODE_LOGS     Print opencode logs to stderr. Default: 1.
-  SUBAGENT_SESSION  Resume this provider's existing session ID.
-  SUBAGENT_LOG_DIR  Where wrapper run logs are written. Default: ~/agent-relay/logs.
+  AGENT_RELAY_SESSION  Resume this provider's existing session ID.
+  AGENT_RELAY_LOG_DIR  Where wrapper run logs are written. Default: ~/agent-relay/logs.
 
 Every run's combined stdout+stderr (including opencode's own --print-logs
-stream) is teed to a timestamped file under SUBAGENT_LOG_DIR (printed in the
+stream) is teed to a timestamped file under AGENT_RELAY_LOG_DIR (printed in the
 startup banner) so a backgrounded run can be tailed live instead of waiting
 for the final result.
 
 Examples:
-  OPENCODE_MODEL='openai/latest' opencode-subagent "Fix the bug"
-  OPENCODE_MODEL='glm/latest' opencode-subagent "Review this repo"
-  OPENCODE_MODEL='openai/gpt-5.6-sol' opencode-subagent "Implement TASK.md"
+  OPENCODE_MODEL='openai/latest' opencode-agent "Fix the bug"
+  OPENCODE_MODEL='glm/latest' opencode-agent "Review this repo"
+  OPENCODE_MODEL='openai/gpt-5.6-sol' opencode-agent "Implement TASK.md"
 
 Supported model providers: opencode-go, openai, zai-coding-plan.
-Use `opencode-subagent --models` to list the currently available models, or
-`opencode-subagent --models --refresh` to refresh OpenCode's cache first.
+Use `opencode-agent --models` to list the currently available models, or
+`opencode-agent --models --refresh` to refresh OpenCode's cache first.
 EOF
   exit 0
 fi
 
-resume_session="${SUBAGENT_SESSION:-}"
+resume_session="${AGENT_RELAY_SESSION:-${SUBAGENT_SESSION:-}}"
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --continue|-c)
@@ -104,7 +104,7 @@ export PAGER="${PAGER:-cat}"
 export GIT_PAGER="${GIT_PAGER:-cat}"
 export SYSTEMD_PAGER="${SYSTEMD_PAGER:-cat}"
 
-prompt="You are running as a non-interactive coding subagent.
+prompt="You are running as a non-interactive coding agent.
 Workspace: $workspace
 
 Rules:
@@ -128,12 +128,12 @@ resolve_opencode_model() {
   # Automatic reroute for token-heavy routes
   case "$raw_model" in
     opencode-go/glm-5.3)
-      echo "opencode-subagent: rerouting opencode-go/glm-5.3 -> zai-coding-plan/glm-5.3 (token-heavy route)" >&2
+      echo "opencode-agent: rerouting opencode-go/glm-5.3 -> zai-coding-plan/glm-5.3 (token-heavy route)" >&2
       echo "zai-coding-plan/glm-5.3"
       return 0
       ;;
     opencode-go/glm-5.2)
-      echo "opencode-subagent: rerouting opencode-go/glm-5.2 -> zai-coding-plan/glm-5.2 (token-heavy route)" >&2
+      echo "opencode-agent: rerouting opencode-go/glm-5.2 -> zai-coding-plan/glm-5.2 (token-heavy route)" >&2
       echo "zai-coding-plan/glm-5.2"
       return 0
       ;;
@@ -189,16 +189,16 @@ resolve_opencode_model() {
 if [ -n "${OPENCODE_MODEL:-}" ]; then
   resolved_opencode_model="$(resolve_opencode_model "$OPENCODE_MODEL")"
   if [ "$resolved_opencode_model" != "$OPENCODE_MODEL" ]; then
-    echo "opencode-subagent: resolved alias '$OPENCODE_MODEL' -> '$resolved_opencode_model'" >&2
+    echo "opencode-agent: resolved alias '$OPENCODE_MODEL' -> '$resolved_opencode_model'" >&2
     OPENCODE_MODEL="$resolved_opencode_model"
   fi
 fi
 
-log_dir="${SUBAGENT_LOG_DIR:-$repo_dir/logs}"
+log_dir="${AGENT_RELAY_LOG_DIR:-${SUBAGENT_LOG_DIR:-$repo_dir/logs}}"
 mkdir -p "$log_dir"
 log_file="$log_dir/$(date +%Y%m%dT%H%M%S)-opencode-$$.log"
 done_file="$log_file.done"
-unit="local-subagent-opencode-$$"
+unit="local-agent-opencode-$$"
 use_systemd=0
 if command -v systemd-run >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
   use_systemd=1
@@ -250,9 +250,9 @@ set -- "$@" "$prompt"
 
 if [ "$log_flag" = "1" ]; then
   if [ -n "$canonical_workspace" ] && [ "$canonical_workspace" != "$workspace" ]; then
-    echo "opencode-subagent: canonical_workspace=$canonical_workspace launch_workspace=$workspace" >&2
+    echo "opencode-agent: canonical_workspace=$canonical_workspace launch_workspace=$workspace" >&2
   fi
-  echo "opencode-subagent: workspace=$workspace model=${OPENCODE_MODEL:-default} variant=${OPENCODE_VARIANT:-default} agent=${OPENCODE_AGENT:-default} session=${resume_session:-new} timeout=${timeout_seconds}s run_log=$log_file" >&2
+  echo "opencode-agent: workspace=$workspace model=${OPENCODE_MODEL:-default} variant=${OPENCODE_VARIANT:-default} agent=${OPENCODE_AGENT:-default} session=${resume_session:-new} timeout=${timeout_seconds}s run_log=$log_file" >&2
 fi
 
 # ponytail: snapshot every pid that exists before this run starts (space-
@@ -264,7 +264,7 @@ fi
 # how a forgotten dev server survives the wrapper exiting.
 before_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
 
-printf 'subagent: provider=opencode workspace=%s model=%s session=%s\nTask:\n%s\n\n---\n\n' \
+printf 'agent: provider=opencode workspace=%s model=%s session=%s\nTask:\n%s\n\n---\n\n' \
   "$workspace" "${OPENCODE_MODEL:-default}" "${resume_session:-new}" "$user_prompt" > "$log_file"
 
 # Register run start in SQLite database immediately
@@ -329,7 +329,7 @@ if [ -f "${log_file}.reaped" ]; then
   rm -f "${log_file}.reaped"
   if [ "$status" -ne 0 ]; then
     if [ "$log_flag" = "1" ]; then
-      echo "opencode-subagent: process reaped after task completion (lingering event-loop handles)" >&2
+      echo "opencode-agent: process reaped after task completion (lingering event-loop handles)" >&2
     fi
     status=0
   fi
@@ -396,7 +396,7 @@ if command -v node >/dev/null 2>&1; then
 fi
 
 if [ "$log_flag" = "1" ]; then
-  echo "opencode-subagent: finished status=$status ($([ "$status" -eq 0 ] && echo "completed" || echo "failed")) session=$sess_id" >&2
+  echo "opencode-agent: finished status=$status ($([ "$status" -eq 0 ] && echo "completed" || echo "failed")) session=$sess_id" >&2
 fi
 
 exit "$status"

@@ -3,7 +3,8 @@ set -u
 
 script_path="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
 repo_dir="$(cd "$(dirname "$script_path")" && pwd -P)"
-compose_link="$HOME/docker/agent-relay/docker-compose.yml"
+compose_dir="$HOME/docker/agent-relay"
+compose_link="$compose_dir/docker-compose.yml"
 hook="$repo_dir/.git/hooks/post-commit"
 ok=0
 
@@ -20,6 +21,8 @@ check() {
 
 check "docker CLI available" command -v docker
 check "docker daemon reachable" docker info
+mkdir -p "$compose_dir" 2>/dev/null || true
+ln -sfn "$repo_dir/docker-compose.yml" "$compose_link" 2>/dev/null || true
 check "compose symlink points to repo" test "$(readlink "$compose_link" 2>/dev/null)" = "$repo_dir/docker-compose.yml"
 check "post-commit hook installed" test -x "$hook"
 check "restart script executable" test -x "$repo_dir/scripts/restart-dashboard"

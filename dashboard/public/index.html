@@ -170,17 +170,17 @@
               </div>
               <p>Processes currently running in your terminal will stream live progress, tokens, and diffs here automatically. Quick launch:</p>
               <div class="quick-cmd-pills">
-                <button class="quick-cmd-pill" data-cmd='opencode-subagent "Task..."' title="Click to copy CLI command">
-                  <span class="pill-dot dot-opencode"></span><code>opencode-subagent "..."</code>
+                <button class="quick-cmd-pill" data-cmd='opencode-agent "Task..."' title="Click to copy CLI command">
+                  <span class="pill-dot dot-opencode"></span><code>opencode-agent "..."</code>
                 </button>
-                <button class="quick-cmd-pill" data-cmd='antigravity-subagent "Task..."' title="Click to copy CLI command">
-                  <span class="pill-dot dot-antigravity"></span><code>antigravity-subagent "..."</code>
+                <button class="quick-cmd-pill" data-cmd='antigravity-agent "Task..."' title="Click to copy CLI command">
+                  <span class="pill-dot dot-antigravity"></span><code>antigravity-agent "..."</code>
                 </button>
-                <button class="quick-cmd-pill" data-cmd='codex-subagent "Task..."' title="Click to copy CLI command">
-                  <span class="pill-dot dot-codex"></span><code>codex-subagent "..."</code>
+                <button class="quick-cmd-pill" data-cmd='codex-agent "Task..."' title="Click to copy CLI command">
+                  <span class="pill-dot dot-codex"></span><code>codex-agent "..."</code>
                 </button>
-                <button class="quick-cmd-pill" data-cmd='claude-subagent "Task..."' title="Click to copy CLI command">
-                  <span class="pill-dot dot-claude"></span><code>claude-subagent "..."</code>
+                <button class="quick-cmd-pill" data-cmd='claude-agent "Task..."' title="Click to copy CLI command">
+                  <span class="pill-dot dot-claude"></span><code>claude-agent "..."</code>
                 </button>
               </div>
             </div>
@@ -310,8 +310,8 @@
         <div class="fs-header-actions">
           <button class="btn btn-sm btn-danger" id="modal-btn-kill" style="display: none;">Stop Process</button>
           <button class="btn btn-sm btn-secondary" id="btn-modal-copy-cli" title="Copy CLI Command">Copy CLI</button>
-          <button class="btn btn-sm btn-secondary" id="btn-modal-copy-continue" title="Copy subagent continue command">Continue</button>
-          <button class="btn btn-sm btn-secondary" id="btn-modal-copy-rerun" title="Copy subagent run-again command">Run Again</button>
+          <button class="btn btn-sm btn-secondary" id="btn-modal-copy-continue" title="Copy agent continue command">Continue</button>
+          <button class="btn btn-sm btn-secondary" id="btn-modal-copy-rerun" title="Copy agent run-again command">Run Again</button>
           <button class="btn btn-sm btn-secondary" id="btn-modal-copy-prompt" title="Copy initial prompt">Copy Prompt</button>
           <button class="btn btn-sm btn-secondary" id="btn-modal-copy-log" title="Copy log content">Copy Log</button>
           <a class="btn btn-sm btn-secondary" id="btn-modal-download-log" download target="_blank">Raw Log</a>
@@ -544,7 +544,7 @@
         <button class="btn-close" id="btn-close-dangling-modal">✕</button>
       </div>
       <div class="modal-body">
-        <p class="modal-desc">These processes match background subagent runners or child CLI instances that are still alive in the process tree.</p>
+        <p class="modal-desc">These processes match background agent runners or child CLI instances that are still alive in the process tree.</p>
         <div class="dangling-list" id="dangling-list-container">
           <!-- Populated by JS -->
         </div>

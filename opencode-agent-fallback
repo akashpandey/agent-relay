@@ -10,8 +10,8 @@ export CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-10}"
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   cat <<'EOF'
 Usage:
-  OPENCODE_MODEL_CHAIN='opencode-go/glm-5.2,zai-coding-plan/glm-5.2' opencode-subagent-fallback "task"
-  printf '%s\n' "task" | OPENCODE_MODEL_CHAIN='...' opencode-subagent-fallback
+  OPENCODE_MODEL_CHAIN='opencode-go/glm-5.2,zai-coding-plan/glm-5.2' opencode-agent-fallback "task"
+  printf '%s\n' "task" | OPENCODE_MODEL_CHAIN='...' opencode-agent-fallback
 
 Tries each model in OPENCODE_MODEL_CHAIN (comma-separated, priority order) with a
 cheap probe call first. The first model whose probe does not hit a quota/rate-limit
@@ -26,10 +26,10 @@ Environment:
   OPENCODE_MODEL_CHAIN   Required. Comma-separated provider/model list, in priority order.
   OPENCODE_PROBE_TIMEOUT Seconds for the cheap probe call per model. Default: 30.
   OPENCODE_TIMEOUT       Seconds for the real task once a model is selected. Default: 7200.
-  OPENCODE_VARIANT       Passed through to opencode-subagent for the real task.
-  OPENCODE_AGENT         Passed through to opencode-subagent for the real task.
-  OPENCODE_LOGS          Passed through to opencode-subagent for the real task. Default: 1.
-  SUBAGENT_SESSION       Passed only to the selected model's real task; probes stay fresh.
+  OPENCODE_VARIANT       Passed through to opencode-agent for the real task.
+  OPENCODE_AGENT         Passed through to opencode-agent for the real task.
+  OPENCODE_LOGS          Passed through to opencode-agent for the real task. Default: 1.
+  AGENT_RELAY_SESSION       Passed only to the selected model's real task; probes stay fresh.
 
 Quota/rate-limit signatures it detects (case-insensitive):
   usage limit, quota, rate limit, 429, insufficient_quota, AI_APICallError
@@ -37,7 +37,7 @@ EOF
   exit 0
 fi
 
-resume_session="${SUBAGENT_SESSION:-}"
+resume_session="${AGENT_RELAY_SESSION:-${SUBAGENT_SESSION:-}}"
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --continue|-c)
@@ -62,7 +62,7 @@ fi
 
 chain="${OPENCODE_MODEL_CHAIN:-}"
 if [ -z "$chain" ]; then
-  echo "opencode-subagent-fallback: OPENCODE_MODEL_CHAIN is required (comma-separated provider/model list). See --help." >&2
+  echo "opencode-agent-fallback: OPENCODE_MODEL_CHAIN is required (comma-separated provider/model list). See --help." >&2
   exit 1
 fi
 
@@ -85,20 +85,20 @@ for candidate in "$@"; do
 
   probe_log="$(mktemp)"
   probe_ok=1
-  if SUBAGENT_SESSION= OPENCODE_MODEL="$candidate" OPENCODE_TIMEOUT="$probe_timeout" OPENCODE_LOGS=1 \
-      "$HOME/.local/bin/opencode-subagent" "Reply with exactly one word: OK" \
+  if AGENT_RELAY_SESSION= OPENCODE_MODEL="$candidate" OPENCODE_TIMEOUT="$probe_timeout" OPENCODE_LOGS=1 \
+      "$HOME/.local/bin/opencode-agent" "Reply with exactly one word: OK" \
       >"$probe_log" 2>&1; then
     probe_ok=0
   fi
 
   if grep -qiE "$quota_pattern" "$probe_log"; then
-    echo "opencode-subagent-fallback: skipping $candidate (quota/rate-limit signature detected)" >&2
+    echo "opencode-agent-fallback: skipping $candidate (quota/rate-limit signature detected)" >&2
     rm -f "$probe_log"
     continue
   fi
 
   if [ "$probe_ok" -ne 0 ]; then
-    echo "opencode-subagent-fallback: skipping $candidate (probe failed, non-quota error — see log)" >&2
+    echo "opencode-agent-fallback: skipping $candidate (probe failed, non-quota error — see log)" >&2
     tail -5 "$probe_log" >&2
     rm -f "$probe_log"
     continue
@@ -110,13 +110,13 @@ for candidate in "$@"; do
 done
 
 if [ -z "$selected_model" ]; then
-  echo "opencode-subagent-fallback: every model in the chain failed its probe ($chain)" >&2
+  echo "opencode-agent-fallback: every model in the chain failed its probe ($chain)" >&2
   exit 1
 fi
 
-echo "opencode-subagent-fallback: selected model=$selected_model" >&2
+echo "opencode-agent-fallback: selected model=$selected_model" >&2
 
 exec env OPENCODE_MODEL="$selected_model" OPENCODE_TIMEOUT="$real_timeout" \
   OPENCODE_VARIANT="${OPENCODE_VARIANT:-}" OPENCODE_AGENT="${OPENCODE_AGENT:-}" \
-  OPENCODE_LOGS="${OPENCODE_LOGS:-1}" SUBAGENT_SESSION="$resume_session" \
-  "$HOME/.local/bin/opencode-subagent" "$user_prompt"
+  OPENCODE_LOGS="${OPENCODE_LOGS:-1}" AGENT_RELAY_SESSION="$resume_session" \
+  "$HOME/.local/bin/opencode-agent" "$user_prompt"

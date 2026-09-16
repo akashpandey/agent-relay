@@ -17,10 +17,10 @@ export CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-10}"
 
 if [ "${1:-}" = "--models" ]; then
   if [ "$#" -ne 1 ]; then
-    echo "Usage: codex-subagent --models" >&2
+    echo "Usage: codex-agent --models" >&2
     exit 2
   fi
-  echo "codex-subagent: Codex has no live model-list command; showing documented selectors." >&2
+  echo "codex-agent: Codex has no live model-list command; showing documented selectors." >&2
   printf '%s\n' gpt-5.6-sol gpt-5.6-terra gpt-5.6-luna
   exit 0
 fi
@@ -28,9 +28,9 @@ fi
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   cat <<'EOF'
 Usage:
-  codex-subagent "task"
-  printf '%s\n' "task" | codex-subagent
-  codex-subagent --models
+  codex-agent "task"
+  printf '%s\n' "task" | codex-agent
+  codex-agent --models
 
 Environment:
   CODEX_MODEL      Model selector or family alias:
@@ -40,23 +40,23 @@ Environment:
   CODEX_EFFORT     Optional effort: low, medium, high, xhigh, max, or ultra.
   CODEX_SANDBOX    Sandbox mode. Default: workspace-write, or danger-full-access
                    when this host cannot create Bubblewrap user namespaces.
-  SUBAGENT_SESSION Resume this provider's existing session ID.
+  AGENT_RELAY_SESSION Resume this provider's existing session ID.
   CODEX_TIMEOUT    Timeout in seconds. Default: 7200.
   CODEX_LOGS       Print wrapper banner to stderr. Default: 1.
-  SUBAGENT_LOG_DIR Where wrapper run logs are written. Default: ~/agent-relay/logs.
+  AGENT_RELAY_LOG_DIR Where wrapper run logs are written. Default: ~/agent-relay/logs.
 
 Examples:
-  CODEX_MODEL='latest' codex-subagent "Fix the bug"
-  CODEX_MODEL='terra' CODEX_EFFORT='high' codex-subagent "Review this repo"
-  CODEX_MODEL='gpt-5.6-sol' CODEX_EFFORT='max' codex-subagent "Implement TASK.md"
+  CODEX_MODEL='latest' codex-agent "Fix the bug"
+  CODEX_MODEL='terra' CODEX_EFFORT='high' codex-agent "Review this repo"
+  CODEX_MODEL='gpt-5.6-sol' CODEX_EFFORT='max' codex-agent "Implement TASK.md"
 
-Codex has no live model-list command. `codex-subagent --models` prints the
+Codex has no live model-list command. `codex-agent --models` prints the
 documented selectors: gpt-5.6-sol, gpt-5.6-terra, and gpt-5.6-luna.
 EOF
   exit 0
 fi
 
-resume_session="${SUBAGENT_SESSION:-}"
+resume_session="${AGENT_RELAY_SESSION:-${SUBAGENT_SESSION:-}}"
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --continue|-c)
@@ -89,7 +89,7 @@ export PAGER="${PAGER:-cat}"
 export GIT_PAGER="${GIT_PAGER:-cat}"
 export SYSTEMD_PAGER="${SYSTEMD_PAGER:-cat}"
 
-prompt="You are running as a non-interactive coding subagent.
+prompt="You are running as a non-interactive coding agent.
 Workspace: $workspace
 
 Rules:
@@ -105,19 +105,19 @@ $user_prompt"
 
 log_flag="${CODEX_LOGS:-1}"
 sandbox="${CODEX_SANDBOX:-workspace-write}"
-codex_bin="${SUBAGENT_CODEX_BIN:-$(command -v codex 2>/dev/null || echo "codex")}"
+codex_bin="${AGENT_RELAY_CODEX_BIN:-${SUBAGENT_CODEX_BIN:-$(command -v codex 2>/dev/null || echo "codex")}}"
 
 # ponytail: Bubblewrap cannot start here when AppArmor denies unprivileged user
 # namespaces. Keep the safe default where available; callers can still force a
 # sandbox explicitly, and the host policy can be fixed later to remove fallback.
 if [ -z "${CODEX_SANDBOX+x}" ] && ! unshare -Ur true >/dev/null 2>&1; then
   sandbox="danger-full-access"
-  echo "codex-subagent: workspace-write unavailable; using danger-full-access" >&2
+  echo "codex-agent: workspace-write unavailable; using danger-full-access" >&2
 fi
-log_dir="${SUBAGENT_LOG_DIR:-$repo_dir/logs}"
+log_dir="${AGENT_RELAY_LOG_DIR:-${SUBAGENT_LOG_DIR:-$repo_dir/logs}}"
 mkdir -p "$log_dir"
 log_file="$log_dir/$(date +%Y%m%dT%H%M%S)-codex-$$.log"
-unit="local-subagent-codex-$$"
+unit="local-agent-codex-$$"
 use_systemd=0
 if command -v systemd-run >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
   use_systemd=1
@@ -164,7 +164,7 @@ cd "$workspace"
 if [ -n "${CODEX_MODEL:-}" ]; then
   resolved_codex_model="$(resolve_codex_model "$CODEX_MODEL")"
   if [ "$resolved_codex_model" != "$CODEX_MODEL" ]; then
-    echo "codex-subagent: resolved alias '$CODEX_MODEL' -> '$resolved_codex_model'" >&2
+    echo "codex-agent: resolved alias '$CODEX_MODEL' -> '$resolved_codex_model'" >&2
     CODEX_MODEL="$resolved_codex_model"
   fi
 fi
@@ -181,14 +181,14 @@ set -- "$@" "$prompt"
 
 if [ "$log_flag" = "1" ]; then
   if [ -n "$canonical_workspace" ] && [ "$canonical_workspace" != "$workspace" ]; then
-    echo "codex-subagent: canonical_workspace=$canonical_workspace launch_workspace=$workspace" >&2
+    echo "codex-agent: canonical_workspace=$canonical_workspace launch_workspace=$workspace" >&2
   fi
-  echo "codex-subagent: workspace=$workspace model=${CODEX_MODEL:-default} effort=${CODEX_EFFORT:-default} sandbox=$sandbox session=${resume_session:-new} timeout=${timeout_seconds}s run_log=$log_file" >&2
+  echo "codex-agent: workspace=$workspace model=${CODEX_MODEL:-default} effort=${CODEX_EFFORT:-default} sandbox=$sandbox session=${resume_session:-new} timeout=${timeout_seconds}s run_log=$log_file" >&2
 fi
 
 # ponytail: a separate process group makes timeout cleanup cover ordinary children.
 before_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
-printf 'subagent: provider=codex workspace=%s model=%s session=%s\nTask:\n%s\n\n---\n\n' \
+printf 'agent: provider=codex workspace=%s model=%s session=%s\nTask:\n%s\n\n---\n\n' \
   "$workspace" "${CODEX_MODEL:-default}" "${resume_session:-new}" "$user_prompt" > "$log_file"
 
 # Register run start in SQLite database immediately
@@ -248,7 +248,7 @@ if [ -f "${log_file}.reaped" ]; then
   rm -f "${log_file}.reaped"
   if [ "$status" -ne 0 ]; then
     if [ "$log_flag" = "1" ]; then
-      echo "codex-subagent: process reaped after task completion (lingering event-loop handles)" >&2
+      echo "codex-agent: process reaped after task completion (lingering event-loop handles)" >&2
     fi
     status=0
   fi
@@ -317,7 +317,7 @@ if command -v node >/dev/null 2>&1; then
 fi
 
 if [ "$log_flag" = "1" ]; then
-  echo "codex-subagent: finished status=$status ($([ "$status" -eq 0 ] && echo "completed" || echo "failed")) session=$sess_id" >&2
+  echo "codex-agent: finished status=$status ($([ "$status" -eq 0 ] && echo "completed" || echo "failed")) session=$sess_id" >&2
 fi
 
 exit "$status"

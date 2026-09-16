@@ -28,12 +28,12 @@ case "$cmd" in
     ;;
   opencode|codex|claude|antigravity)
     provider="$1"
-    task="${2:-Task delegated to subagent}"
-    echo -e "${CYAN}[subagent]${RESET} launch_dir=${BOLD}$(pwd)${RESET}"
-    echo -e "${CYAN}[subagent]${RESET} canonical_workspace=${BOLD}agent-relay${RESET}"
-    echo -e "${CYAN}[subagent]${RESET} provider=${BOLD}${provider}${RESET} model=${YELLOW}gpt-5.6-sol${RESET} log=logs/20260915T043000-${provider}-4123.log"
-    echo -e "${GREEN}[subagent]${RESET} dispatched task: \"${task}\""
-    echo -e "${BLUE}[subagent]${RESET} running in background (pid 4123)..."
+    task="${2:-Task delegated to agent}"
+    echo -e "${CYAN}[agent]${RESET} launch_dir=${BOLD}$(pwd)${RESET}"
+    echo -e "${CYAN}[agent]${RESET} canonical_workspace=${BOLD}agent-relay${RESET}"
+    echo -e "${CYAN}[agent]${RESET} provider=${BOLD}${provider}${RESET} model=${YELLOW}gpt-5.6-sol${RESET} log=logs/20260915T043000-${provider}-4123.log"
+    echo -e "${GREEN}[agent]${RESET} dispatched task: \"${task}\""
+    echo -e "${BLUE}[agent]${RESET} running in background (pid 4123)..."
     ;;
   result)
     cat << 'EOF'
@@ -48,12 +48,12 @@ case "$cmd" in
   ],
   "summary": "Verified auth token refresh and boundary handling. Tests pass.",
   "continuation": {
-    "subagentContinueCommand": "subagent continue 'agent-relay' '<follow-up task>'"
+    "subagentContinueCommand": "agent continue 'agent-relay' '<follow-up task>'"
   }
 }
 EOF
     ;;
   *)
-    echo "Usage: subagent <doctor | workspaces | opencode | codex | claude | antigravity | result>"
+    echo "Usage: agent <doctor | workspaces | opencode | codex | claude | antigravity | result>"
     ;;
 esac

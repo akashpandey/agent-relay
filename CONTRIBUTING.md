@@ -31,13 +31,13 @@ We run tests against mock CLIs so you do not need active API keys or LLM provide
 Ensure POSIX shell scripts pass syntax checks:
 
 ```bash
-sh -n antigravity-subagent claude-subagent codex-subagent opencode-subagent subagent subagent-wait subagent-doctor
+sh -n antigravity-agent claude-agent codex-agent opencode-agent agent agent-wait agent-doctor
 ```
 
 If you have `shellcheck` installed:
 
 ```bash
-shellcheck -s sh antigravity-subagent claude-subagent codex-subagent opencode-subagent subagent subagent-wait subagent-doctor
+shellcheck -s sh antigravity-agent claude-agent codex-agent opencode-agent agent agent-wait agent-doctor
 ```
 
 ## Pull Request Guidelines

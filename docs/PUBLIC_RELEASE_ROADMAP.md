@@ -145,12 +145,12 @@ Linux-specific.
 Add three optional environment variables:
 
 ```text
-SUBAGENT_RUN_ID
-SUBAGENT_PARENT_ID
-SUBAGENT_EVENT_DIR
+AGENT_RELAY_RUN_ID
+AGENT_RELAY_PARENT_ID
+AGENT_RELAY_EVENT_DIR
 ```
 
-If `SUBAGENT_RUN_ID` is absent, the wrapper generates one. Before launching the
+If `AGENT_RELAY_RUN_ID` is absent, the wrapper generates one. Before launching the
 provider CLI, it exports its run ID as the parent ID inherited by any nested
 wrapper. This creates task ancestry without parsing prompts or guessing from
 the operating-system process tree.

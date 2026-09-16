@@ -8,12 +8,12 @@ import { buildRunCommands } from '../dashboard/commands.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoDir = path.resolve(__dirname, '..');
-const logsDir = process.env.SUBAGENT_LOG_DIR || path.join(repoDir, 'logs');
+const logsDir = process.env.AGENT_RELAY_LOG_DIR || process.env.SUBAGENT_LOG_DIR || path.join(repoDir, 'logs');
 const procDir = process.env.PROC_DIR || '/proc';
 const input = process.argv[2];
 
 if (!input) {
-  console.error('subagent-result: missing log file');
+  console.error('agent-result: missing log file');
   process.exit(2);
 }
 
@@ -31,7 +31,7 @@ try {
 
 if (!run) run = getRun(filename);
 if (!run) {
-  console.error(`subagent-result: run not found: ${filename}`);
+  console.error(`agent-result: run not found: ${filename}`);
   process.exit(1);
 }
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * agent-relay -> claude-mem Ingestion Bridge
- * Automatically captures subagent executions across OpenCode, Antigravity, Claude Code, and Codex.
+ * Automatically captures agent executions across OpenCode, Antigravity, Claude Code, and Codex.
  */
 
 import { existsSync, readFileSync, readdirSync } from 'fs';
@@ -119,13 +119,13 @@ function extractOpenCodeActions(done) {
     } catch {}
   }
 
-  return { actions, summary: summary || 'OpenCode subagent execution' };
+  return { actions, summary: summary || 'OpenCode agent execution' };
 }
 
 function extractAntigravityActions(done) {
   const actions = [];
   const transcriptPath = join(homedir(), '.gemini', 'antigravity-cli', 'brain', done.sessionId, '.system_generated', 'logs', 'transcript.jsonl');
-  let summary = 'Antigravity subagent execution';
+  let summary = 'Antigravity agent execution';
 
   const tryPaths = [transcriptPath, done.logFile];
   for (const tPath of tryPaths) {
@@ -160,13 +160,13 @@ function extractGenericActions(done) {
     try {
       const content = readFileSync(done.logFile, 'utf-8');
       actions.push({
-        name: 'subagent_execution',
+        name: 'agent_execution',
         input: { logFile: done.logFile, model: done.model, status: done.status },
         output: { status: done.status, exitCode: done.exitCode },
       });
     } catch {}
   }
-  return { actions, summary: `${done.provider} subagent execution (${done.status})` };
+  return { actions, summary: `${done.provider} agent execution (${done.status})` };
 }
 
 // 6. Ingest single .done file
@@ -189,7 +189,7 @@ export async function ingestDoneFile(donePath, options = {}) {
     return true;
   }
 
-  const contentSessionId = `subagent-${done.provider}-${done.sessionId || basename(donePath, '.done')}`;
+  const contentSessionId = `agent-${done.provider}-${done.sessionId || basename(donePath, '.done')}`;
 
   if (!options.force && isSessionAlreadyIngested(contentSessionId)) {
     console.log(`[claude-mem-bridge] Session ${contentSessionId} already ingested. Skipping.`);
@@ -235,8 +235,8 @@ export async function ingestDoneFile(donePath, options = {}) {
           tool_input: act.input,
           tool_response: act.output || { status: 'completed' },
           cwd: done.workspace,
-          agentId: `${done.provider}-subagent`,
-          agentType: 'local-subagent',
+          agentId: `${done.provider}-agent`,
+          agentType: 'local-agent',
         }),
       });
     } catch {}

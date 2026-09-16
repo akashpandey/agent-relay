@@ -25,15 +25,16 @@ done
 # 2. Install CLI binaries into ~/.local/bin
 mkdir -p "$HOME/.local/bin"
 for bin in \
-  antigravity-subagent \
-  claude-subagent \
-  codex-subagent \
-  opencode-subagent \
-  opencode-subagent-fallback \
-  subagent-wait \
-  subagent-dashboard \
+  antigravity-agent \
+  claude-agent \
+  codex-agent \
+  opencode-agent \
+  opencode-agent-fallback \
+  agent-wait \
+  agent-dashboard \
+  agent-doctor \
   agent-relay-mcp \
-  subagent \
+  agent \
   relay; do
   if [ -f "$repo_dir/$bin" ]; then
     ln -sf "$repo_dir/$bin" "$HOME/.local/bin/$bin"

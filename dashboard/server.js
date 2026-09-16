@@ -35,7 +35,7 @@ if (!fs.existsSync(LOGS_DIR)) {
   fs.mkdirSync(LOGS_DIR, { recursive: true });
 }
 
-console.log(`[Dashboard] Initializing SQLite-backed subagent visualizer...`);
+console.log(`[Dashboard] Initializing SQLite-backed agent visualizer...`);
 console.log(`[Dashboard] Logs Directory: ${LOGS_DIR}`);
 console.log(`[Dashboard] Proc Directory: ${PROC_DIR}`);
 
@@ -117,7 +117,7 @@ function reconcileActiveRuns(activeRuns) {
 }
 
 /**
- * Find all dangling (orphaned) subagent processes on the system
+ * Find all dangling (orphaned) agent processes on the system
  */
 function findDanglingSubagentProcesses(activeRuns = []) {
   const dangling = [];
@@ -129,6 +129,8 @@ function findDanglingSubagentProcesses(activeRuns = []) {
   for (const r of activeRuns) {
     if (r.pid) {
       activePids.add(r.pid);
+      activeUnits.add(`local-agent-${r.provider}-${r.pid}`);
+      activeUnits.add(`local-agent-${r.pid}`);
       activeUnits.add(`local-subagent-${r.provider}-${r.pid}`);
       activeUnits.add(`local-subagent-${r.pid}`);
     }
@@ -149,7 +151,7 @@ function findDanglingSubagentProcesses(activeRuns = []) {
 
         if (fs.existsSync(cgroupPath)) {
           const cgroupContent = fs.readFileSync(cgroupPath, 'utf8');
-          if (cgroupContent.includes('local-subagent-')) {
+          if (cgroupContent.includes('local-agent-') || cgroupContent.includes('local-subagent-')) {
             isSubagent = true;
             for (const unit of activeUnits) {
               if (cgroupContent.includes(unit)) {
@@ -165,10 +167,10 @@ function findDanglingSubagentProcesses(activeRuns = []) {
           cmd = raw.replace(/\0/g, ' ').trim();
 
           if (
-            cmd.includes('antigravity-subagent') ||
-            cmd.includes('opencode-subagent') ||
-            cmd.includes('claude-subagent') ||
-            cmd.includes('codex-subagent')
+            cmd.includes('antigravity-agent') ||
+            cmd.includes('opencode-agent') ||
+            cmd.includes('claude-agent') ||
+            cmd.includes('codex-agent')
           ) {
             isSubagent = true;
             if (activePids.has(pid)) {
@@ -184,7 +186,7 @@ function findDanglingSubagentProcesses(activeRuns = []) {
         if (isSubagent && !isPartOfActiveRun) {
           dangling.push({
             pid,
-            cmd: cmd.slice(0, 140) || 'orphaned subagent process',
+            cmd: cmd.slice(0, 140) || 'orphaned agent process',
           });
         }
       } catch {}
@@ -526,7 +528,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const unit = `local-subagent-${run.provider}-${run.pid}`;
+    const unit = `local-agent-${run.provider}-${run.pid}`;
     exec(`systemctl --user stop ${unit} 2>/dev/null`, () => {});
     const result = await terminateProcessTree(run.pid);
     registerRunComplete({ filename: safeFile, exitCode: 143, status: 'failed' });

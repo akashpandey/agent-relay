@@ -32,9 +32,9 @@ const state = {
   totalRuns: 0,
 
   // Settings
-  theme: localStorage.getItem('subagent_theme') || 'midnight',
-  density: localStorage.getItem('subagent_density') || 'comfortable',
-  notificationsEnabled: localStorage.getItem('subagent_notif') === 'true',
+  theme: localStorage.getItem('agent_relay_theme') || localStorage.getItem('subagent_theme') || 'midnight',
+  density: localStorage.getItem('agent_relay_density') || localStorage.getItem('subagent_density') || 'comfortable',
+  notificationsEnabled: (localStorage.getItem('agent_relay_notif') || localStorage.getItem('subagent_notif')) === 'true',
   activeModalTab: 'terminal',
   isFullscreen: false,
   
@@ -217,12 +217,12 @@ function applyTheme(theme) {
   state.theme = theme;
   document.documentElement.setAttribute('data-theme', theme);
   if (el.themeSelector) el.themeSelector.value = theme;
-  localStorage.setItem('subagent_theme', theme);
+  localStorage.setItem('agent_relay_theme', theme);
 }
 
 function applyDensity(density) {
   state.density = density;
-  localStorage.setItem('subagent_density', density);
+  localStorage.setItem('agent_relay_density', density);
   if (density === 'compact') {
     el.historyTable.classList.add('compact-mode');
     el.btnDensityCompact.classList.add('active');
@@ -365,7 +365,7 @@ function renderActiveCards(activeRuns) {
   } else if (activeRuns.length < prevActiveCount) {
     // A run completed
     playChime('success');
-    sendDesktopNotification('Subagent Completed', 'A local LLM subagent run finished execution.');
+    sendDesktopNotification('Agent Completed', 'A local LLM agent run finished execution.');
   }
 
   if (activeRuns.length === 0) {
@@ -394,17 +394,17 @@ function renderActiveCards(activeRuns) {
           </div>
           <p>Processes currently running in your terminal will stream live progress, tokens, and diffs here automatically. Quick launch:</p>
           <div class="quick-cmd-pills">
-            <button class="quick-cmd-pill" data-cmd='opencode-subagent "Task..."' title="Click to copy CLI command">
-              <span class="pill-dot dot-opencode"></span><code>opencode-subagent "..."</code>
+            <button class="quick-cmd-pill" data-cmd='opencode-agent "Task..."' title="Click to copy CLI command">
+              <span class="pill-dot dot-opencode"></span><code>opencode-agent "..."</code>
             </button>
-            <button class="quick-cmd-pill" data-cmd='antigravity-subagent "Task..."' title="Click to copy CLI command">
-              <span class="pill-dot dot-antigravity"></span><code>antigravity-subagent "..."</code>
+            <button class="quick-cmd-pill" data-cmd='antigravity-agent "Task..."' title="Click to copy CLI command">
+              <span class="pill-dot dot-antigravity"></span><code>antigravity-agent "..."</code>
             </button>
-            <button class="quick-cmd-pill" data-cmd='codex-subagent "Task..."' title="Click to copy CLI command">
-              <span class="pill-dot dot-codex"></span><code>codex-subagent "..."</code>
+            <button class="quick-cmd-pill" data-cmd='codex-agent "Task..."' title="Click to copy CLI command">
+              <span class="pill-dot dot-codex"></span><code>codex-agent "..."</code>
             </button>
-            <button class="quick-cmd-pill" data-cmd='claude-subagent "Task..."' title="Click to copy CLI command">
-              <span class="pill-dot dot-claude"></span><code>claude-subagent "..."</code>
+            <button class="quick-cmd-pill" data-cmd='claude-agent "Task..."' title="Click to copy CLI command">
+              <span class="pill-dot dot-claude"></span><code>claude-agent "..."</code>
             </button>
           </div>
         </div>
@@ -477,7 +477,7 @@ function renderActiveCards(activeRuns) {
         </div>
 
         <div class="active-prompt-preview">
-          ${escapeHtml(run.task || 'Executing subagent instructions...')}
+          ${escapeHtml(run.task || 'Executing agent instructions...')}
         </div>
 
         <div class="active-action-row">
@@ -495,7 +495,7 @@ function renderActiveCards(activeRuns) {
       card.querySelector('.btn-card-view').addEventListener('click', () => openWorkspaceModal(run.filename));
       card.querySelector('.btn-card-cli').addEventListener('click', (e) => {
         e.stopPropagation();
-        copyToClipboard(run.cliCommand || `opencode-subagent "${run.task || ''}"`, 'CLI command copied!');
+        copyToClipboard(run.cliCommand || `opencode-agent "${run.task || ''}"`, 'CLI command copied!');
       });
       card.querySelector('.btn-card-kill').addEventListener('click', (e) => {
         e.stopPropagation();
@@ -515,7 +515,7 @@ function renderHistoryTable() {
     el.historyTbody.innerHTML = `
       <tr>
         <td colspan="7" class="table-empty" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
-          No matching subagent runs found.
+          No matching agent runs found.
         </td>
       </tr>
     `;
@@ -585,7 +585,7 @@ function renderHistoryTable() {
 
     tr.querySelector('.btn-row-cli').addEventListener('click', (e) => {
       e.stopPropagation();
-      copyToClipboard(run.cliCommand || `opencode-subagent "${run.task || ''}"`, 'CLI command copied!');
+      copyToClipboard(run.cliCommand || `opencode-agent "${run.task || ''}"`, 'CLI command copied!');
     });
 
     tr.querySelector('.btn-row-inspect').addEventListener('click', (e) => {
@@ -643,7 +643,7 @@ function applyModalMetadata(meta) {
   el.btnCliCopySmall.onclick = () => copyToClipboard(meta.cliCommand, 'CLI command copied!');
   el.btnModalCopyCli.onclick = () => copyToClipboard(meta.cliCommand, 'CLI command copied!');
 
-  const continueCommand = meta.continuation?.subagentContinueCommand || meta.continuation?.sameSessionCommand || '';
+  const continueCommand = meta.continuation?.agentContinueCommand || meta.continuation?.subagentContinueCommand || meta.continuation?.sameSessionCommand || '';
   el.btnModalCopyContinue.style.display = continueCommand ? 'inline-flex' : 'none';
   el.btnModalCopyContinue.onclick = () => copyToClipboard(continueCommand, 'Continue command copied!');
   el.btnModalCopyRerun.style.display = meta.runAgainCommand ? 'inline-flex' : 'none';
@@ -1140,6 +1140,7 @@ async function searchFullLog() {
 function looksLikeRawLog(text) {
   const sample = String(text || '').slice(0, 2000);
   return (
+    sample.startsWith('agent: provider=') ||
     sample.startsWith('subagent: provider=') ||
     /timestamp=\S+\s+level=(?:INFO|WARN|ERROR)\s+run=/.test(sample)
   );
@@ -1148,7 +1149,7 @@ function looksLikeRawLog(text) {
 // --- Process Management ---
 
 async function killProcess(pid, filename) {
-  if (!confirm(`Are you sure you want to terminate subagent process PID ${pid}?`)) return;
+  if (!confirm(`Are you sure you want to terminate agent process PID ${pid}?`)) return;
   try {
     const res = await fetch(`/api/runs/${encodeURIComponent(filename)}/kill`, { method: 'POST' });
     const data = await res.json();
@@ -1166,12 +1167,12 @@ async function killProcess(pid, filename) {
 }
 
 async function killAllDangling() {
-  if (!confirm(`Terminate all ${state.danglingProcesses.length} dangling subagent processes on the system?`)) return;
+  if (!confirm(`Terminate all ${state.danglingProcesses.length} dangling agent processes on the system?`)) return;
   try {
     const res = await fetch('/api/dangling/kill-all', { method: 'POST' });
     const data = await res.json();
     if (data.success) {
-      alert(`Terminated ${data.killedCount ?? data.terminatedCount ?? 0} dangling subagent processes.`);
+      alert(`Terminated ${data.killedCount ?? data.terminatedCount ?? 0} dangling agent processes.`);
       closeDanglingModal();
       fetchStats();
     }
@@ -1183,7 +1184,7 @@ async function killAllDangling() {
 function openDanglingModal() {
   el.danglingListContainer.innerHTML = '';
   if (state.danglingProcesses.length === 0) {
-    el.danglingListContainer.innerHTML = '<div style="color: var(--text-dim);">No dangling subagent processes detected.</div>';
+    el.danglingListContainer.innerHTML = '<div style="color: var(--text-dim);">No dangling agent processes detected.</div>';
   } else {
     for (const proc of state.danglingProcesses) {
       const item = document.createElement('div');
@@ -1484,7 +1485,7 @@ function initEventListeners() {
   // Notification Toggle
   el.btnToggleNotif.addEventListener('click', () => {
     state.notificationsEnabled = !state.notificationsEnabled;
-    localStorage.setItem('subagent_notif', state.notificationsEnabled);
+    localStorage.setItem('agent_relay_notif', state.notificationsEnabled);
     updateNotifButton();
     if (state.notificationsEnabled) {
       if ('Notification' in window && Notification.permission !== 'granted') {

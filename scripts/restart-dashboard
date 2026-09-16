@@ -1,12 +1,16 @@
 #!/usr/bin/env sh
 set -eu
 
-compose_dir="${SUBAGENT_DOCKER_DIR:-$HOME/docker/agent-relay}"
-service="${SUBAGENT_DOCKER_SERVICE:-subagent-dashboard}"
+compose_dir="${AGENT_RELAY_DOCKER_DIR:-${SUBAGENT_DOCKER_DIR:-$HOME/docker/agent-relay}}"
+service="${AGENT_RELAY_DOCKER_SERVICE:-${SUBAGENT_DOCKER_SERVICE:-agent-dashboard}}"
+project="${AGENT_RELAY_DOCKER_PROJECT:-${SUBAGENT_DOCKER_PROJECT:-agent-relay}}"
 log_file="$compose_dir/restart.log"
 lock_dir="$compose_dir/restart.lock"
 script_path="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
 repo_dir="$(cd "$(dirname "$script_path")/.." && pwd -P)"
+
+mkdir -p "$compose_dir"
+ln -sfn "$repo_dir/docker-compose.yml" "$compose_dir/docker-compose.yml"
 
 if [ -d "$lock_dir" ]; then
   lock_pid="$(cat "$lock_dir/pid" 2>/dev/null || echo "")"
@@ -28,7 +32,7 @@ trap 'rm -rf "$lock_dir" 2>/dev/null || true' EXIT HUP INT TERM
 {
   printf '\n%s\n' "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) agent-relay dashboard restart ==="
   cd "$compose_dir"
-  docker compose --project-directory "$repo_dir" stop "$service" || true
-  docker compose --project-directory "$repo_dir" build "$service"
-  docker compose --project-directory "$repo_dir" up -d --force-recreate "$service"
+  docker compose -p "$project" --project-directory "$repo_dir" stop "$service" || true
+  docker compose -p "$project" --project-directory "$repo_dir" build "$service"
+  docker compose -p "$project" --project-directory "$repo_dir" up -d --force-recreate "$service"
 } >> "$log_file" 2>&1

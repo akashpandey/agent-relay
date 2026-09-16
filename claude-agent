@@ -17,10 +17,10 @@ export CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-10}"
 
 if [ "${1:-}" = "--models" ]; then
   if [ "$#" -ne 1 ]; then
-    echo "Usage: claude-subagent --models" >&2
+    echo "Usage: claude-agent --models" >&2
     exit 2
   fi
-  echo "claude-subagent: Claude Code has no live model-list command; showing documented selectors." >&2
+  echo "claude-agent: Claude Code has no live model-list command; showing documented selectors." >&2
   printf '%s\n' opus sonnet
   exit 0
 fi
@@ -28,31 +28,31 @@ fi
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   cat <<'EOF'
 Usage:
-  claude-subagent "task"
-  printf '%s\n' "task" | claude-subagent
-  claude-subagent --models
+  claude-agent "task"
+  printf '%s\n' "task" | claude-agent
+  claude-agent --models
 
 Environment:
   CLAUDE_MODEL           Model alias or full model ID.
   CLAUDE_FALLBACK_MODEL  Comma-separated fallback aliases or IDs.
   CLAUDE_EFFORT          Optional effort: low, medium, high, xhigh, or max.
-  SUBAGENT_SESSION       Resume this provider's existing session ID.
+  AGENT_RELAY_SESSION       Resume this provider's existing session ID.
   CLAUDE_TIMEOUT         Timeout in seconds. Default: 7200.
   CLAUDE_LOGS            Print wrapper banner to stderr. Default: 1.
-  SUBAGENT_LOG_DIR       Where wrapper run logs are written. Default: ~/agent-relay/logs.
+  AGENT_RELAY_LOG_DIR       Where wrapper run logs are written. Default: ~/agent-relay/logs.
 
 Examples:
-  CLAUDE_MODEL='sonnet' claude-subagent "Fix the bug"
-  CLAUDE_MODEL='opus' CLAUDE_EFFORT='high' claude-subagent "Review this repo"
-  CLAUDE_MODEL='sonnet' claude-subagent "Implement TASK.md"
+  CLAUDE_MODEL='sonnet' claude-agent "Fix the bug"
+  CLAUDE_MODEL='opus' CLAUDE_EFFORT='high' claude-agent "Review this repo"
+  CLAUDE_MODEL='sonnet' claude-agent "Implement TASK.md"
 
-Claude Code has no live model-list command. `claude-subagent --models` prints
+Claude Code has no live model-list command. `claude-agent --models` prints
 the available documented selectors: opus and sonnet.
 EOF
   exit 0
 fi
 
-resume_session="${SUBAGENT_SESSION:-}"
+resume_session="${AGENT_RELAY_SESSION:-${SUBAGENT_SESSION:-}}"
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --continue|-c)
@@ -85,7 +85,7 @@ export PAGER="${PAGER:-cat}"
 export GIT_PAGER="${GIT_PAGER:-cat}"
 export SYSTEMD_PAGER="${SYSTEMD_PAGER:-cat}"
 
-prompt="You are running as a non-interactive coding subagent.
+prompt="You are running as a non-interactive coding agent.
 Workspace: $workspace
 
 Rules:
@@ -100,11 +100,11 @@ Task:
 $user_prompt"
 
 log_flag="${CLAUDE_LOGS:-1}"
-log_dir="${SUBAGENT_LOG_DIR:-$repo_dir/logs}"
+log_dir="${AGENT_RELAY_LOG_DIR:-${SUBAGENT_LOG_DIR:-$repo_dir/logs}}"
 mkdir -p "$log_dir"
 log_file="$log_dir/$(date +%Y%m%dT%H%M%S)-claude-$$.log"
-unit="local-subagent-claude-$$"
-claude_bin="${SUBAGENT_CLAUDE_BIN:-$(command -v claude 2>/dev/null || echo "$HOME/.local/bin/claude")}"
+unit="local-agent-claude-$$"
+claude_bin="${AGENT_RELAY_CLAUDE_BIN:-${SUBAGENT_CLAUDE_BIN:-$(command -v claude 2>/dev/null || echo "$HOME/.local/bin/claude")}}"
 use_systemd=0
 if command -v systemd-run >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
   use_systemd=1
@@ -145,7 +145,7 @@ cd "$workspace"
 if [ -n "${CLAUDE_MODEL:-}" ]; then
   resolved_claude_model="$(resolve_claude_model "$CLAUDE_MODEL")"
   if [ "$resolved_claude_model" != "$CLAUDE_MODEL" ]; then
-    echo "claude-subagent: resolved alias '$CLAUDE_MODEL' -> '$resolved_claude_model'" >&2
+    echo "claude-agent: resolved alias '$CLAUDE_MODEL' -> '$resolved_claude_model'" >&2
     CLAUDE_MODEL="$resolved_claude_model"
   fi
 fi
@@ -163,14 +163,14 @@ set -- "$@" "$prompt"
 
 if [ "$log_flag" = "1" ]; then
   if [ -n "$canonical_workspace" ] && [ "$canonical_workspace" != "$workspace" ]; then
-    echo "claude-subagent: canonical_workspace=$canonical_workspace launch_workspace=$workspace" >&2
+    echo "claude-agent: canonical_workspace=$canonical_workspace launch_workspace=$workspace" >&2
   fi
-  echo "claude-subagent: workspace=$workspace model=${CLAUDE_MODEL:-default} effort=${CLAUDE_EFFORT:-default} fallback=${CLAUDE_FALLBACK_MODEL:-none} session=${resume_session:-new} timeout=${timeout_seconds}s run_log=$log_file" >&2
+  echo "claude-agent: workspace=$workspace model=${CLAUDE_MODEL:-default} effort=${CLAUDE_EFFORT:-default} fallback=${CLAUDE_FALLBACK_MODEL:-none} session=${resume_session:-new} timeout=${timeout_seconds}s run_log=$log_file" >&2
 fi
 
 # ponytail: a separate process group makes timeout cleanup cover ordinary children.
 before_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
-printf 'subagent: provider=claude workspace=%s model=%s session=%s\nTask:\n%s\n\n---\n\n' \
+printf 'agent: provider=claude workspace=%s model=%s session=%s\nTask:\n%s\n\n---\n\n' \
   "$workspace" "${CLAUDE_MODEL:-default}" "${resume_session:-new}" "$user_prompt" > "$log_file"
 
 # Register run start in SQLite database immediately
@@ -230,7 +230,7 @@ if [ -f "${log_file}.reaped" ]; then
   rm -f "${log_file}.reaped"
   if [ "$status" -ne 0 ]; then
     if [ "$log_flag" = "1" ]; then
-      echo "claude-subagent: process reaped after task completion (lingering event-loop handles)" >&2
+      echo "claude-agent: process reaped after task completion (lingering event-loop handles)" >&2
     fi
     status=0
   fi
@@ -296,7 +296,7 @@ if command -v node >/dev/null 2>&1; then
 fi
 
 if [ "$log_flag" = "1" ]; then
-  echo "claude-subagent: finished status=$status ($([ "$status" -eq 0 ] && echo "completed" || echo "failed")) session=$sess_id" >&2
+  echo "claude-agent: finished status=$status ($([ "$status" -eq 0 ] && echo "completed" || echo "failed")) session=$sess_id" >&2
 fi
 
 exit "$status"

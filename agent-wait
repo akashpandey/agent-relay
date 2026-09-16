@@ -4,16 +4,16 @@ set -eu
 script_path="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
 repo_dir="$(cd "$(dirname "$script_path")" && pwd -P)"
 
-LOGS_DIR="${SUBAGENT_LOG_DIR:-$repo_dir/logs}"
+LOGS_DIR="${AGENT_RELAY_LOG_DIR:-${SUBAGENT_LOG_DIR:-$repo_dir/logs}}"
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   cat <<'HELP'
 Usage:
-  subagent-wait [LOG_FILE | PID | --last]
-  subagent-wait LOG_1 LOG_2 ...
+  agent-wait [LOG_FILE | PID | --last]
+  agent-wait LOG_1 LOG_2 ...
 
 Description:
-  Waits for one or more background local subagents to complete using zero-polling
+  Waits for one or more background local agents to complete using zero-polling
   OS process monitors. Unblocks immediately upon process exit and outputs the
   structured task result JSON. Use this for completeness checks instead of
   tailing logs. If session reuse is possible, the JSON includes continuation
@@ -21,10 +21,10 @@ Description:
   accepted.
 
 Examples:
-  subagent-wait --last
-  subagent-wait 20260817T193219-antigravity-3345675.log
-  subagent-wait 3345675
-  subagent-wait "$log1" "$log2"
+  agent-wait --last
+  agent-wait 20260817T193219-antigravity-3345675.log
+  agent-wait 3345675
+  agent-wait "$log1" "$log2"
 HELP
   exit 0
 fi
@@ -33,7 +33,7 @@ fi
 if [ "$#" -eq 0 ] || [ "${1:-}" = "--last" ]; then
   latest_log="$(ls -t "$LOGS_DIR"/*.log 2>/dev/null | head -n 1 || true)"
   if [ -z "$latest_log" ]; then
-    echo "subagent-wait: no subagent logs found in $LOGS_DIR" >&2
+    echo "agent-wait: no agent logs found in $LOGS_DIR" >&2
     exit 1
   fi
   set -- "$latest_log"
@@ -56,7 +56,7 @@ for target in "$@"; do
     log_path="$LOGS_DIR/$target"
     pid="$(basename "$target" .log | grep -oE '[0-9]+$' || true)"
   else
-    echo "subagent-wait: target not found: $target" >&2
+    echo "agent-wait: target not found: $target" >&2
     overall_status=1
     continue
   fi
@@ -70,7 +70,7 @@ for target in "$@"; do
   done_file="${log_path%.log}.done"
   if command -v node >/dev/null 2>&1; then
     set +e
-    result_json="$(node "$repo_dir/scripts/subagent-result.js" "$log_path" 2>/dev/null)"
+    result_json="$(node "$repo_dir/scripts/agent-result.js" "$log_path" 2>/dev/null)"
     result_status=$?
     set -e
     if [ "$result_status" -eq 0 ] && [ -n "$result_json" ]; then
@@ -85,10 +85,10 @@ for target in "$@"; do
   if [ -f "$done_file" ]; then
     sed -n '1,200p' "$done_file"
   elif [ -n "$log_path" ] && [ -f "$log_path" ]; then
-    echo "=== Subagent Run Finished: $(basename "$log_path") ==="
+    echo "=== Agent Run Finished: $(basename "$log_path") ==="
     tail -n 15 "$log_path"
   else
-    echo "subagent-wait: process $pid finished"
+    echo "agent-wait: process $pid finished"
   fi
 done
 

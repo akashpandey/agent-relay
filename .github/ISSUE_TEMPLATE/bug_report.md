@@ -16,7 +16,7 @@ A clear and concise description of what the bug is.
   - Codex CLI: [e.g. 0.8.0 or N/A]
   - Antigravity / agy: [e.g. 2.0 or N/A]
   - OpenCode: [e.g. 0.5.0 or N/A]
-- Output of `./subagent doctor`:
+- Output of `./agent doctor`:
 
 **To Reproduce**
 Steps to reproduce the behavior:

@@ -4,5 +4,5 @@ set -eu
 script_path="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
 repo_dir="$(cd "$(dirname "$script_path")" && pwd -P)"
 export NODE_NO_WARNINGS="${NODE_NO_WARNINGS:-1}"
-export SUBAGENT_CLI_NAME="${SUBAGENT_CLI_NAME:-$(basename "$0")}"
-exec node "$repo_dir/scripts/subagent-cli.mjs" "$@"
+export AGENT_RELAY_CLI_NAME="${AGENT_RELAY_CLI_NAME:-${SUBAGENT_CLI_NAME:-$(basename "$0")}}"
+exec node "$repo_dir/scripts/agent-cli.mjs" "$@"

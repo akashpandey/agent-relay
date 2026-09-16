@@ -9,16 +9,16 @@ import { findLatestWorkspaceSession, buildRelayTakeoverPrompt } from './relay-ha
 
 const __filename = fileURLToPath(import.meta.url);
 const repoDir = path.resolve(path.dirname(__filename), '..');
-const logsDir = process.env.SUBAGENT_LOG_DIR || path.join(repoDir, 'logs');
+const logsDir = process.env.AGENT_RELAY_LOG_DIR || process.env.SUBAGENT_LOG_DIR || path.join(repoDir, 'logs');
 const providers = new Map([
-  ['opencode', 'opencode-subagent'],
-  ['codex', 'codex-subagent'],
-  ['claude', 'claude-subagent'],
-  ['antigravity', 'antigravity-subagent'],
-  ['agy', 'antigravity-subagent'],
+  ['opencode', 'opencode-agent'],
+  ['codex', 'codex-agent'],
+  ['claude', 'claude-agent'],
+  ['antigravity', 'antigravity-agent'],
+  ['agy', 'antigravity-agent'],
 ]);
 
-const cmdName = process.env.SUBAGENT_CLI_NAME || 'relay';
+const cmdName = process.env.AGENT_RELAY_CLI_NAME || process.env.SUBAGENT_CLI_NAME || 'relay';
 
 function usage() {
   console.log(`Usage:
@@ -35,7 +35,7 @@ function usage() {
   ${cmdName} last [workspace]
   ${cmdName} continue [workspace] "task" [--to <provider>]
 
-Aliases: relay, subagent (takeover alias: handoff)
+Aliases: relay, agent (takeover alias: handoff)
 Providers: ${[...providers.keys()].join(', ')}`);
 }
 
@@ -229,7 +229,7 @@ if (args[0] === 'workspaces') {
 }
 
 if (args[0] === 'doctor') {
-  runScript('subagent-doctor', args.slice(1));
+  runScript('agent-doctor', args.slice(1));
 }
 
 if (args[0] === 'dashboard') {

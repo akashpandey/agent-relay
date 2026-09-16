@@ -7,8 +7,8 @@ import { canonicalWorkspacePath } from './workspaces.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export const DB_DIR = process.env.SUBAGENT_DATA_DIR || path.resolve(__dirname, '../data');
-export const DB_PATH = process.env.SUBAGENT_DB_PATH || path.join(DB_DIR, 'subagents.db');
+export const DB_DIR = process.env.AGENT_RELAY_DATA_DIR || process.env.SUBAGENT_DATA_DIR || path.resolve(__dirname, '../data');
+export const DB_PATH = process.env.AGENT_RELAY_DB_PATH || process.env.SUBAGENT_DB_PATH || path.join(DB_DIR, 'subagents.db');
 
 // Ensure directory exists
 if (!fs.existsSync(DB_DIR)) {
@@ -273,7 +273,7 @@ export function updateRunProgress({ filename, currentAction, status, durationSec
 }
 
 /**
- * Register a subagent run start immediately
+ * Register an agent run start immediately
  */
 export function registerRunStart({ filename, pid, provider, model, workspace, session, task, startTime }) {
   const db = getDatabase();
@@ -281,7 +281,7 @@ export function registerRunStart({ filename, pid, provider, model, workspace, se
     INSERT INTO runs (
       filename, pid, provider, model, workspace, workspace_name, session_id,
       task, status, start_time, current_action, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, 'Starting subagent...', datetime('now'))
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, 'Starting agent...', datetime('now'))
     ON CONFLICT(filename) DO UPDATE SET
       pid = excluded.pid,
       provider = excluded.provider,
@@ -308,7 +308,7 @@ export function registerRunStart({ filename, pid, provider, model, workspace, se
 }
 
 /**
- * Register a subagent run completion
+ * Register an agent run completion
  */
 export function registerRunComplete({ filename, exitCode, status, sessionId, endTime, markdownSummary, durationSec }) {
   const db = getDatabase();

@@ -388,15 +388,16 @@ export function cleanTaskPrompt(raw) {
   if (taskMatch && taskMatch[1].trim()) {
     clean = taskMatch[1].trim();
   } else {
-    // Strip subagent wrapper boilerplate
-    clean = clean.replace(/^You are running as a non-interactive coding subagent\.[\s\S]*?Task:\s*/i, '');
-    clean = clean.replace(/^You are running as a non-interactive coding subagent\.[^\n]*\n*/i, '');
+    // Strip agent wrapper boilerplate
+    clean = clean.replace(/^You are running as a non-interactive coding (?:agent|subagent)\.[\s\S]*?Task:\s*/i, '');
+    clean = clean.replace(/^You are running as a non-interactive coding (?:agent|subagent)\.[^\n]*\n*/i, '');
   }
 
   clean = clean.replace(/\\n/g, '\n').replace(/^[\r\n]+/, '').trim();
 
   // Strip error/smoke test strings
   if (
+    clean === 'CLAUDE_AGENT_OK' ||
     clean === 'CLAUDE_SUBAGENT_OK' ||
     clean.startsWith('Fable 5 requires') ||
     clean.startsWith("You've hit your session limit")
@@ -758,7 +759,7 @@ export function getCodexSessionDetails(sessionId, startTimeIso, workspace) {
 
 /**
  * Parses the filename format: YYYYMMDDTHHMMSS-provider-pid.log
- * All subagent wrappers generate timestamp using local system time (IST, +05:30).
+ * All agent wrappers generate timestamp using local system time (IST, +05:30).
  */
 export function parseLogFilename(filename) {
   const match = filename.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})-([a-zA-Z0-9_-]+)-(\d+)\.log$/);
@@ -1030,7 +1031,7 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
 
   // Extract Workspace
   let workspace = doneMeta?.workspace || null;
-  const headerWsMatch = headContent.match(/subagent:\s*provider=[^\s]+\s+workspace=([^\s]+)\s+/i);
+  const headerWsMatch = headContent.match(/(?:agent|subagent):\s*provider=[^\s]+\s+workspace=([^\s]+)\s+/i);
   if (!workspace && headerWsMatch) {
     workspace = headerWsMatch[1].trim();
   }
@@ -1104,8 +1105,8 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
   let filesModified = [];
   let toolCalls = [];
 
-  // Check explicit standardized wrapper subagent: header
-  const headerMatch = headContent.match(/subagent:\s*provider=([^\s]+)\s+workspace=([^\s]+)\s+model=(.*?)\s+session=([^\s\r\n]+)/i);
+  // Check explicit standardized wrapper agent: header
+  const headerMatch = headContent.match(/(?:agent|subagent):\s*provider=([^\s]+)\s+workspace=([^\s]+)\s+model=(.*?)\s+session=([^\s\r\n]+)/i);
   if (headerMatch) {
     if (!workspace || workspace === 'Unknown') workspace = headerMatch[2].trim();
     if (headerMatch[3].trim() && headerMatch[3].trim() !== 'default') model = headerMatch[3].trim();
@@ -1209,7 +1210,7 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
   if (!task) {
     const cleanSample = combinedSample.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').trim();
     if (parsedName.provider === 'antigravity') {
-      const firstLines = cleanSample.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('antigravity-subagent:'));
+      const firstLines = cleanSample.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('antigravity-agent:'));
       if (firstLines.length > 0) {
         task = firstLines.slice(0, 2).join(' ');
       }
@@ -1219,7 +1220,7 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
         task = commitMatch[1].trim();
       }
     } else if (parsedName.provider === 'claude') {
-      const firstLine = cleanSample.split('\n').find(l => l && !l.startsWith('claude-subagent:'));
+      const firstLine = cleanSample.split('\n').find(l => l && !l.startsWith('claude-agent:'));
       if (firstLine) task = firstLine;
     }
   }
@@ -1329,13 +1330,13 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
   const cleanPrompt = (task || '').replace(/"/g, '\\"').replace(/\n/g, ' ').slice(0, 250);
   let cliCommand = '';
   if (parsedName.provider === 'opencode') {
-    cliCommand = `OPENCODE_MODEL='${model || 'glm-5.2'}' opencode-subagent "${cleanPrompt}"`;
+    cliCommand = `OPENCODE_MODEL='${model || 'glm-5.2'}' opencode-agent "${cleanPrompt}"`;
   } else if (parsedName.provider === 'antigravity') {
-    cliCommand = `AGY_MODEL='${model || 'default'}' antigravity-subagent "${cleanPrompt}"`;
+    cliCommand = `AGY_MODEL='${model || 'default'}' antigravity-agent "${cleanPrompt}"`;
   } else if (parsedName.provider === 'claude') {
-    cliCommand = `CLAUDE_MODEL='${model || 'sonnet'}' claude-subagent "${cleanPrompt}"`;
+    cliCommand = `CLAUDE_MODEL='${model || 'sonnet'}' claude-agent "${cleanPrompt}"`;
   } else if (parsedName.provider === 'codex') {
-    cliCommand = `CODEX_MODEL='${model || 'gpt-5.5'}' codex-subagent "${cleanPrompt}"`;
+    cliCommand = `CODEX_MODEL='${model || 'gpt-5.5'}' codex-agent "${cleanPrompt}"`;
   }
 
   return {

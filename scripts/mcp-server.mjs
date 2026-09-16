@@ -9,7 +9,7 @@ import { canonicalWorkspacePath, configuredWorkspaceEntries } from '../dashboard
 
 const __filename = fileURLToPath(import.meta.url);
 const repoDir = path.resolve(path.dirname(__filename), '..');
-const logsDir = process.env.SUBAGENT_LOG_DIR || path.join(repoDir, 'logs');
+const logsDir = process.env.AGENT_RELAY_LOG_DIR || process.env.SUBAGENT_LOG_DIR || path.join(repoDir, 'logs');
 const providers = new Set(['opencode', 'codex', 'claude', 'antigravity']);
 
 const tools = [
@@ -20,7 +20,7 @@ const tools = [
   },
   {
     name: 'list_runs',
-    description: 'List indexed subagent runs from subagents.db with optional filters.',
+    description: 'List indexed agent runs from subagents.db with optional filters.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -114,7 +114,7 @@ const tools = [
   },
   {
     name: 'doctor',
-    description: 'Run subagent-doctor and return its output.',
+    description: 'Run agent-doctor and return its output.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
 ];
@@ -263,7 +263,7 @@ async function callTool(name, args = {}) {
     return maybeExecute(command, Boolean(args.execute));
   }
   if (name === 'doctor') {
-    const child = spawnSync(path.join(repoDir, 'subagent-doctor'), [], { cwd: repoDir, encoding: 'utf8', env: process.env });
+    const child = spawnSync(path.join(repoDir, 'agent-doctor'), [], { cwd: repoDir, encoding: 'utf8', env: process.env });
     return { status: child.status, stdout: child.stdout, stderr: child.stderr };
   }
   throw new Error(`unknown tool: ${name}`);

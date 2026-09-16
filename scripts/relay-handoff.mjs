@@ -352,7 +352,7 @@ export function detectExhaustionReason(lastAssistantMessage) {
 }
 
 /**
- * Synthesizes the Relay Baton prompt for the receiving subagent
+ * Synthesizes the Relay Baton prompt for the receiving agent
  */
 export function buildRelayTakeoverPrompt({
   sourceProvider,

@@ -3,10 +3,10 @@ set -eu
 
 script_path="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
 DIR="$(cd "$(dirname "$script_path")" && pwd -P)"
-export LOGS_DIR="${SUBAGENT_LOG_DIR:-$DIR/logs}"
+export LOGS_DIR="${AGENT_RELAY_LOG_DIR:-${SUBAGENT_LOG_DIR:-$DIR/logs}}"
 export PROC_DIR="/proc"
 export PORT="${PORT:-4242}"
 export HOST="${HOST:-0.0.0.0}"
 
-echo "Starting Subagent Visualizer Dashboard on http://${HOST}:${PORT} ..."
+echo "Starting Agent Relay Dashboard on http://${HOST}:${PORT} ..."
 exec node "$DIR/dashboard/server.js"

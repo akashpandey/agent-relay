@@ -2,10 +2,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const CODE_ROOT = process.env.SUBAGENT_CODE_ROOT || '/home/akey/Code';
+const CODE_ROOT = process.env.AGENT_RELAY_CODE_ROOT || process.env.SUBAGENT_CODE_ROOT || '/home/akey/Code';
 
 export function configuredWorkspaceEntries() {
-  const configPath = process.env.SUBAGENT_WORKSPACES_CONFIG ||
+  const configPath = process.env.AGENT_RELAY_WORKSPACES_CONFIG || process.env.SUBAGENT_WORKSPACES_CONFIG ||
     path.join(os.homedir(), '.config', 'agent-relay', 'workspaces.json');
   try {
     const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));

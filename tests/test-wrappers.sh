@@ -57,13 +57,13 @@ EOF
 chmod +x "$TEST_BIN"/*
 
 export PATH="$TEST_BIN:$PATH"
-export SUBAGENT_CLAUDE_BIN="$TEST_BIN/claude"
-export SUBAGENT_AGY_BIN="$TEST_BIN/agy"
-export SUBAGENT_CODEX_BIN="$TEST_BIN/codex"
-export SUBAGENT_OPENCODE_BIN="$TEST_BIN/opencode"
-export SUBAGENT_LOG_DIR="$TEST_LOGS"
-export SUBAGENT_DATA_DIR="$TEST_DATA"
-export SUBAGENT_DB_PATH="$TEST_DATA/subagents.db"
+export AGENT_RELAY_CLAUDE_BIN="$TEST_BIN/claude"
+export AGENT_RELAY_AGY_BIN="$TEST_BIN/agy"
+export AGENT_RELAY_CODEX_BIN="$TEST_BIN/codex"
+export AGENT_RELAY_OPENCODE_BIN="$TEST_BIN/opencode"
+export AGENT_RELAY_LOG_DIR="$TEST_LOGS"
+export AGENT_RELAY_DATA_DIR="$TEST_DATA"
+export AGENT_RELAY_DB_PATH="$TEST_DATA/agents.db"
 
 PASSED=0
 FAILED=0
@@ -102,23 +102,23 @@ assert_output_contains() {
 echo "=== Running agent-relay mock tests ==="
 
 # Test help flags
-assert_output_contains "antigravity-subagent --help" "Usage:" "$REPO_DIR/antigravity-subagent" --help
-assert_output_contains "claude-subagent --help" "Usage:" "$REPO_DIR/claude-subagent" --help
-assert_output_contains "codex-subagent --help" "Usage:" "$REPO_DIR/codex-subagent" --help
-assert_output_contains "opencode-subagent --help" "Usage:" "$REPO_DIR/opencode-subagent" --help
+assert_output_contains "antigravity-agent --help" "Usage:" "$REPO_DIR/antigravity-agent" --help
+assert_output_contains "claude-agent --help" "Usage:" "$REPO_DIR/claude-agent" --help
+assert_output_contains "codex-agent --help" "Usage:" "$REPO_DIR/codex-agent" --help
+assert_output_contains "opencode-agent --help" "Usage:" "$REPO_DIR/opencode-agent" --help
 
 # Test models commands
-assert_output_contains "antigravity-subagent --models" "Gemini 3.8 Flash" "$REPO_DIR/antigravity-subagent" --models
-assert_output_contains "opencode-subagent --models" "openai/gpt-5.6-sol" "$REPO_DIR/opencode-subagent" --models
+assert_output_contains "antigravity-agent --models" "Gemini 3.8 Flash" "$REPO_DIR/antigravity-agent" --models
+assert_output_contains "opencode-agent --models" "openai/gpt-5.6-sol" "$REPO_DIR/opencode-agent" --models
 
 # Test argument invocation
-assert_output_contains "claude-subagent argument task" "Mock claude done" "$REPO_DIR/claude-subagent" "Test task"
-assert_output_contains "antigravity-subagent argument task" "Mock agy done" "$REPO_DIR/antigravity-subagent" "Test task"
-assert_output_contains "codex-subagent argument task" "Mock codex done" "$REPO_DIR/codex-subagent" "Test task"
-assert_output_contains "opencode-subagent argument task" "Mock opencode done" "$REPO_DIR/opencode-subagent" "Test task"
+assert_output_contains "claude-agent argument task" "Mock claude done" "$REPO_DIR/claude-agent" "Test task"
+assert_output_contains "antigravity-agent argument task" "Mock agy done" "$REPO_DIR/antigravity-agent" "Test task"
+assert_output_contains "codex-agent argument task" "Mock codex done" "$REPO_DIR/codex-agent" "Test task"
+assert_output_contains "opencode-agent argument task" "Mock opencode done" "$REPO_DIR/opencode-agent" "Test task"
 
 # Test stdin invocation
-assert_output_contains "claude-subagent stdin task" "Mock claude done" bash -c "printf '%s\n' 'Stdin test' | '$REPO_DIR/claude-subagent'"
+assert_output_contains "claude-agent stdin task" "Mock claude done" bash -c "printf '%s\n' 'Stdin test' | '$REPO_DIR/claude-agent'"
 
 # Test relay CLI and takeover command
 assert_output_contains "relay help" "takeover" "$REPO_DIR/relay"

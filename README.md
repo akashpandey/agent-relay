@@ -5,7 +5,7 @@
 
 > **Pass the baton between Claude Code, Codex, Antigravity, and OpenCode with a single Unix command.**
 
-Small, harness-agnostic shell wrappers and local-first orchestration for running coding subagents in non-interactive mode.
+Small, harness-agnostic shell wrappers and local-first orchestration for running coding agents in non-interactive mode.
 
 ![agent-relay demo](./docs/assets/demo.gif)
 
@@ -13,7 +13,7 @@ Small, harness-agnostic shell wrappers and local-first orchestration for running
 
 ## Why these wrappers exist
 
-The main purpose of these wrappers is to make subagent delegation easy from any harness that can run a shell command.
+The main purpose of these wrappers is to make agent delegation easy from any harness that can run a shell command.
 
 That includes:
 
@@ -24,7 +24,7 @@ That includes:
 - local automation tools
 - other agent runners
 
-The underlying CLIs already work, but their raw command lines are noisy, backend-specific, and awkward to embed repeatedly in prompts or automation. These wrappers give you one stable entrypoint per subagent with the same basic shape:
+The underlying CLIs already work, but their raw command lines are noisy, backend-specific, and awkward to embed repeatedly in prompts or automation. These wrappers give you one stable entrypoint per agent with the same basic shape:
 
 - take a task as an argument or from stdin
 - treat the current directory as the workspace root
@@ -32,7 +32,7 @@ The underlying CLIs already work, but their raw command lines are noisy, backend
 - pass through a few useful runtime knobs via environment variables
 - add enough observability to tell whether the run is alive or stuck
 - tee every run's combined output to a timestamped log file under
-  `~/agent-relay/logs/` (path override: `SUBAGENT_LOG_DIR`), printed in the
+  `~/agent-relay/logs/` (path override: `AGENT_RELAY_LOG_DIR`), printed in the
   startup banner, so a backgrounded run can be tailed live instead of waiting
   for the final result
 
@@ -40,15 +40,15 @@ That makes them useful as lightweight building blocks inside terminal workflows,
 
 Included wrappers:
 
-- `opencode-subagent`
-- `opencode-subagent-fallback`
-- `antigravity-subagent`
-- `claude-subagent`
-- `codex-subagent`
+- `opencode-agent`
+- `opencode-agent-fallback`
+- `antigravity-agent`
+- `claude-agent`
+- `codex-agent`
 
 ## What they are good for
 
-These wrappers are useful when you want a harness to delegate a bounded task to a subagent without opening an interactive UI.
+These wrappers are useful when you want a harness to delegate a bounded task to a agent without opening an interactive UI.
 
 Common cases:
 
@@ -92,10 +92,10 @@ That gives you a stable delegation surface even if the underlying CLI syntax cha
 These wrappers assume the backing CLIs are already installed on the host:
 
 - Node.js 24 or newer, for the built-in `node:sqlite` dashboard/index APIs
-- `opencode-subagent` calls `$HOME/.opencode/bin/opencode`
-- `antigravity-subagent` calls `$HOME/.local/bin/agy`
-- `claude-subagent` calls `$HOME/.local/bin/claude`
-- `codex-subagent` calls `codex`
+- `opencode-agent` calls `$HOME/.opencode/bin/opencode`
+- `antigravity-agent` calls `$HOME/.local/bin/agy`
+- `claude-agent` calls `$HOME/.local/bin/claude`
+- `codex-agent` calls `codex`
 
 They are meant for a machine where those tools already exist. The wrappers do not install or manage them.
 
@@ -117,25 +117,25 @@ directory configured yet.
 ## Usage
 
 ```bash
-./opencode-subagent "Fix the bug"
-printf '%s\n' "Review this repo" | ./opencode-subagent
-./opencode-subagent --models
+./opencode-agent "Fix the bug"
+printf '%s\n' "Review this repo" | ./opencode-agent
+./opencode-agent --models
 
-./antigravity-subagent "Implement TASK.md"
-printf '%s\n' "Review this repo" | ./antigravity-subagent
-./antigravity-subagent --models
+./antigravity-agent "Implement TASK.md"
+printf '%s\n' "Review this repo" | ./antigravity-agent
+./antigravity-agent --models
 
-./claude-subagent "Review this repo"
-printf '%s\n' "Review this repo" | ./claude-subagent
-./claude-subagent --models
+./claude-agent "Review this repo"
+printf '%s\n' "Review this repo" | ./claude-agent
+./claude-agent --models
 
-./codex-subagent "Review this repo"
-printf '%s\n' "Review this repo" | ./codex-subagent
-./codex-subagent --models
-./subagent-doctor
+./codex-agent "Review this repo"
+printf '%s\n' "Review this repo" | ./codex-agent
+./codex-agent --models
+./agent-doctor
 ```
 
-`./relay` (or `./subagent`) is the preferred front door when you want workspace aliases or quick continuation:
+`./relay` (or `./agent`) is the preferred front door when you want workspace aliases or quick continuation:
 
 ```bash
 ./relay workspaces
@@ -156,9 +156,9 @@ printf '%s\n' "Review this repo" | ./codex-subagent
 
 Provider wrappers still work directly and use the current working directory as the workspace root. When a launch directory maps to a canonical project workspace, the startup banner also prints `canonical_workspace=...`; the run still executes in the original directory.
 
-Canonical workspace grouping is shared by the wrappers and dashboard. Optional config lives at `~/.config/agent-relay/workspaces.json` as either an array of absolute repo paths or an object of names to absolute repo paths. Override the path with `SUBAGENT_WORKSPACES_CONFIG` or the default code root with `SUBAGENT_CODE_ROOT`.
+Canonical workspace grouping is shared by the wrappers and dashboard. Optional config lives at `~/.config/agent-relay/workspaces.json` as either an array of absolute repo paths or an object of names to absolute repo paths. Override the path with `AGENT_RELAY_WORKSPACES_CONFIG` or the default code root with `AGENT_RELAY_CODE_ROOT`.
 
-Run `./subagent-doctor` to check Docker, the dashboard container, the compose symlink, and the post-commit restart hook.
+Run `./agent-doctor` to check Docker, the dashboard container, the compose symlink, and the post-commit restart hook.
 
 ## MCP Server
 
@@ -179,9 +179,9 @@ raw log tools are diagnostic only.
 
 ## Cross-Harness Relay Takeover (Token Exhaustion Handoff)
 
-When you hit a rate limit, quota exhaustion, or context ceiling midway in an interactive harness session (Claude Code, Codex CLI, Antigravity CLI, or OpenCode) or in a subagent run, you don't need to re-explain the task from scratch.
+When you hit a rate limit, quota exhaustion, or context ceiling midway in an interactive harness session (Claude Code, Codex CLI, Antigravity CLI, or OpenCode) or in a agent run, you don't need to re-explain the task from scratch.
 
-`agent-relay` inspects the local session logs across all four harnesses, extracts the working context, inspects current repository changes (`git status` & `git diff`), and packages a structured baton-pass prompt for the target subagent harness:
+`agent-relay` inspects the local session logs across all four harnesses, extracts the working context, inspects current repository changes (`git status` & `git diff`), and packages a structured baton-pass prompt for the target agent harness:
 
 ```bash
 # Take over in current workspace using Codex:
@@ -193,7 +193,7 @@ relay takeover fitschool opencode
 # Take over with an explicit directive:
 relay takeover fitschool claude "Finish the remaining unit tests and commit"
 
-# Continue a previous subagent run but switch provider:
+# Continue a previous agent run but switch provider:
 relay continue fitschool --to codex "Continue where the last run stopped"
 ```
 
@@ -209,21 +209,21 @@ In the **Web Dashboard**, opening any run modal provides a **🔀 Relay Takeover
 ## Session reuse
 
 Fresh runs persist their provider session. For a sequential follow-up, pass the
-prior provider session/conversation ID through `SUBAGENT_SESSION`:
+prior provider session/conversation ID through `AGENT_RELAY_SESSION`:
 
 ```bash
-SUBAGENT_SESSION='<provider-session-id>' \
-  ./codex-subagent "Implement the fix you proposed."
+AGENT_RELAY_SESSION='<provider-session-id>' \
+  ./codex-agent "Implement the fix you proposed."
 ```
 
 The wrappers map this to each CLI's native resume option. Do not reuse one
 session across parallel workers or unrelated tasks; context and file intent
 will mix. Copy the provider ID from its run output or session list; every
-wrapper also keeps the full run log under `SUBAGENT_LOG_DIR`.
+wrapper also keeps the full run log under `AGENT_RELAY_LOG_DIR`.
 
-The compact result from `subagent-wait` and `/api/runs/<log>/result` includes a
+The compact result from `agent-wait` and `/api/runs/<log>/result` includes a
 `continuation` object when a session ID is available. Use
-`continuation.sameSessionCommand` when the same subagent should fix its own
+`continuation.sameSessionCommand` when the same agent should fix its own
 issue or continue a closely related task. Use a fresh session for unrelated work
 or parallel workers.
 
@@ -233,26 +233,26 @@ All wrappers support **dynamic model family aliases** so you never have to hardc
 
 | Wrapper | Family Alias | Dynamically Resolves To |
 |---|---|---|
-| `antigravity-subagent` | `gemini-flash` / `flash` / `latest` | Newest Gemini Flash (High) (e.g. `Gemini 3.8 Flash (High)`) |
-| `antigravity-subagent` | `gemini-pro` / `pro` | Newest Gemini Pro (High) (e.g. `Gemini 3.1 Pro (High)`) |
-| `opencode-subagent` | `openai/latest` / `openai/sol` / `gpt-sol` | Newest OpenAI GPT Sol (e.g. `openai/gpt-5.6-sol`) |
-| `opencode-subagent` | `glm/latest` / `zai/latest` / `glm` | Newest Z.AI GLM (e.g. `zai-coding-plan/glm-5.3`) |
-| `opencode-subagent` | `glm/flash` / `zai/flash` | Newest Z.AI GLM Flash (e.g. `zai-coding-plan/glm-5.3-flash`) |
-| `opencode-subagent` | `opencode-go/qwen-latest` | Newest Qwen Max (e.g. `opencode-go/qwen3.8-max`) |
-| `opencode-subagent` | `opencode-go/deepseek-latest` | Newest DeepSeek Pro (e.g. `opencode-go/deepseek-v4-pro`) |
-| `codex-subagent` | `latest` / `sol` / `gpt-sol` | Newest GPT Sol (e.g. `gpt-5.6-sol`) |
-| `claude-subagent` | `opus` / `sonnet` / `latest` | Latest Anthropic model alias |
+| `antigravity-agent` | `gemini-flash` / `flash` / `latest` | Newest Gemini Flash (High) (e.g. `Gemini 3.8 Flash (High)`) |
+| `antigravity-agent` | `gemini-pro` / `pro` | Newest Gemini Pro (High) (e.g. `Gemini 3.1 Pro (High)`) |
+| `opencode-agent` | `openai/latest` / `openai/sol` / `gpt-sol` | Newest OpenAI GPT Sol (e.g. `openai/gpt-5.6-sol`) |
+| `opencode-agent` | `glm/latest` / `zai/latest` / `glm` | Newest Z.AI GLM (e.g. `zai-coding-plan/glm-5.3`) |
+| `opencode-agent` | `glm/flash` / `zai/flash` | Newest Z.AI GLM Flash (e.g. `zai-coding-plan/glm-5.3-flash`) |
+| `opencode-agent` | `opencode-go/qwen-latest` | Newest Qwen Max (e.g. `opencode-go/qwen3.8-max`) |
+| `opencode-agent` | `opencode-go/deepseek-latest` | Newest DeepSeek Pro (e.g. `opencode-go/deepseek-v4-pro`) |
+| `codex-agent` | `latest` / `sol` / `gpt-sol` | Newest GPT Sol (e.g. `gpt-5.6-sol`) |
+| `claude-agent` | `opus` / `sonnet` / `latest` | Latest Anthropic model alias |
 
 Refresh or re-list available models before relying on snapshot lists:
 
 ```bash
-opencode-subagent --models --refresh
-antigravity-subagent --models
+opencode-agent --models --refresh
+antigravity-agent --models
 ```
 
 ### OpenCode
 
-`opencode-subagent --models` exposes supported providers:
+`opencode-agent --models` exposes supported providers:
 
 ```text
 opencode-go/deepseek-v4-flash
@@ -271,7 +271,7 @@ zai-coding-plan/glm-5.3-flash
 
 ### Antigravity
 
-`antigravity-subagent --models` lists the models available via Antigravity CLI:
+`antigravity-agent --models` lists the models available via Antigravity CLI:
 
 ```text
 gemini-3.8-flash-high
@@ -301,10 +301,10 @@ Codex selectors: `latest` (`gpt-5.6-sol`), `terra` (`gpt-5.6-terra`), `luna` (`g
 
 ```bash
 cd /path/to/repo
-opencode-subagent "Update the failing test and explain the change"
+opencode-agent "Update the failing test and explain the change"
 ```
 
-Useful when you want a direct code-editing subagent pass on the current repo without opening an interactive session.
+Useful when you want a direct code-editing agent pass on the current repo without opening an interactive session.
 
 This is the main pattern for use from Claude Code or Codex CLI: the primary agent stays in control and delegates a narrow task through a wrapper command.
 
@@ -312,7 +312,7 @@ This is the main pattern for use from Claude Code or Codex CLI: the primary agen
 
 ```bash
 cd /path/to/repo
-antigravity-subagent "Review the auth flow for obvious risks"
+antigravity-agent "Review the auth flow for obvious risks"
 ```
 
 Useful when you want an alternate model or toolchain to critique a change, review architecture, or sanity-check an approach.
@@ -324,7 +324,7 @@ printf '%s\n' \
   "Review the Docker setup" \
   "Check the auth middleware" \
   "Summarize the test gaps" \
-| xargs -I{} opencode-subagent "{}"
+| xargs -I{} opencode-agent "{}"
 ```
 
 Useful when another script or agent needs a simple command-shaped interface.
@@ -332,15 +332,15 @@ Useful when another script or agent needs a simple command-shaped interface.
 ### 4. Compare backends on the same prompt
 
 ```bash
-OPENCODE_MODEL='zai-coding-plan/glm-5.2' opencode-subagent "Review this diff"
-AGY_MODEL='Gemini 3.6 Flash (Low)' antigravity-subagent "Review this diff"
-CLAUDE_MODEL='sonnet' claude-subagent "Review this diff"
-CODEX_MODEL='gpt-5.6-terra' codex-subagent "Review this diff"
+OPENCODE_MODEL='zai-coding-plan/glm-5.2' opencode-agent "Review this diff"
+AGY_MODEL='Gemini 3.6 Flash (Low)' antigravity-agent "Review this diff"
+CLAUDE_MODEL='sonnet' claude-agent "Review this diff"
+CODEX_MODEL='gpt-5.6-terra' codex-agent "Review this diff"
 ```
 
 Useful when you want to compare speed, quality, or failure modes across providers.
 
-## opencode-subagent
+## opencode-agent
 
 Environment variables:
 
@@ -349,10 +349,10 @@ Environment variables:
 - `OPENCODE_AGENT` - optional agent name
 - `OPENCODE_TIMEOUT` - timeout in seconds, default `7200`
 - `OPENCODE_LOGS` - set to `0` to suppress wrapper log banner
-- `SUBAGENT_SESSION` - optional OpenCode session ID to resume
-- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/agent-relay/logs`
+- `AGENT_RELAY_SESSION` - optional OpenCode session ID to resume
+- `AGENT_RELAY_LOG_DIR` - directory for the run's tee'd log file, default `~/agent-relay/logs`
 
-Every subagent final answer is asked to end with a JSON task outcome contract:
+Every agent final answer is asked to end with a JSON task outcome contract:
 
 ```json
 {
@@ -370,17 +370,17 @@ Every subagent final answer is asked to end with a JSON task outcome contract:
 
 The JSON object must be the final non-whitespace output.
 
-`status=completed` only means the wrapper process finished. Automation should accept delegated work only when `outcome=done` and `attentionRequired=false` from `subagent-wait` or `/api/runs/<log>/result`.
+`status=completed` only means the wrapper process finished. Automation should accept delegated work only when `outcome=done` and `attentionRequired=false` from `agent-wait` or `/api/runs/<log>/result`.
 
-Do not tail logs to determine task completeness. Logs are diagnostic output; `subagent-wait` and `/api/runs/<log>/result` are the machine-readable acceptance surfaces.
-`subagent-wait` exits nonzero when any structured result has `accepted=false`.
+Do not tail logs to determine task completeness. Logs are diagnostic output; `agent-wait` and `/api/runs/<log>/result` are the machine-readable acceptance surfaces.
+`agent-wait` exits nonzero when any structured result has `accepted=false`.
 
 Behavior:
 
 - runs `opencode run --dir "$PWD" --auto`
 - enables `--print-logs` by default
 - prints a startup banner (including the run log path) so hung runs are easier to identify
-- tees combined stdout+stderr to a timestamped file under `SUBAGENT_LOG_DIR`
+- tees combined stdout+stderr to a timestamped file under `AGENT_RELAY_LOG_DIR`
   (default `~/agent-relay/logs/`) for diagnostics when a structured result
   reports a blocker or failure
 - preserves the underlying command's real exit code even though output goes
@@ -398,7 +398,7 @@ Model note: `opencode-go/glm-5.2` is token-heavy for the same work as
 a one-line notice to stderr when it does. Ask for `zai-coding-plan/glm-5.2`
 directly to skip the redirect notice.
 
-## opencode-subagent-fallback
+## opencode-agent-fallback
 
 Motivation: a model can hit its monthly quota or a rate limit mid-session with
 no warning — `opencode-go/glm-5.2` did exactly this once, several minutes into
@@ -413,11 +413,11 @@ Environment variables:
 - `OPENCODE_MODEL_CHAIN` - required, comma-separated `provider/model` list in priority order
 - `OPENCODE_PROBE_TIMEOUT` - seconds for the cheap probe call per candidate, default `30`
 - `OPENCODE_TIMEOUT` - seconds for the real task once a model is selected, default `7200`
-- `OPENCODE_VARIANT`, `OPENCODE_AGENT`, `OPENCODE_LOGS` - passed through to `opencode-subagent` for the real task
+- `OPENCODE_VARIANT`, `OPENCODE_AGENT`, `OPENCODE_LOGS` - passed through to `opencode-agent` for the real task
 
 Behavior:
 
-- for each model in the chain, sends a one-word probe prompt through `opencode-subagent` with a short timeout
+- for each model in the chain, sends a one-word probe prompt through `opencode-agent` with a short timeout
 - greps the probe output for known quota/rate-limit phrasing (`usage limit`, `quota`, `rate limit`, `429`, `insufficient_quota`, `AI_APICallError`)
 - skips a candidate on a quota/rate-limit match or any other probe failure, logging why to stderr
 - the first candidate that probes clean gets the real task, on the real `OPENCODE_TIMEOUT`
@@ -427,7 +427,7 @@ Example:
 
 ```bash
 OPENCODE_MODEL_CHAIN='opencode-go/glm-5.2,zai-coding-plan/glm-5.2,zai-coding-plan/glm-5-turbo' \
-  opencode-subagent-fallback "Build the UI described in TASK.md"
+  opencode-agent-fallback "Build the UI described in TASK.md"
 ```
 
 Best fit:
@@ -435,7 +435,7 @@ Best fit:
 - any dispatch where you'd otherwise hardcode one model and hope it's not exhausted
 - long delegation sessions (like a multi-task implementation plan) where quota can run out partway through
 
-## antigravity-subagent
+## antigravity-agent
 
 Environment variables:
 
@@ -443,8 +443,8 @@ Environment variables:
 - `AGY_PRINT_TIMEOUT` - print-mode timeout, default `120m`
 - `AGY_LOG_FILE` - optional path passed to `agy --log-file` (agy's own internal log, separate from the wrapper's run log)
 - `AGY_LOGS` - set to `0` to suppress wrapper log banner
-- `SUBAGENT_SESSION` - optional Antigravity conversation ID to resume
-- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/agent-relay/logs`
+- `AGENT_RELAY_SESSION` - optional Antigravity conversation ID to resume
+- `AGENT_RELAY_LOG_DIR` - directory for the run's tee'd log file, default `~/agent-relay/logs`
 
 Behavior:
 
@@ -455,7 +455,7 @@ Behavior:
   finishes), so the wrapper's own tee'd log is the only way to watch a
   backgrounded antigravity run mid-flight — `agy`'s own `--log-file`, if set,
   captures a separate internal debug log
-- tees combined stdout+stderr to a timestamped file under `SUBAGENT_LOG_DIR`
+- tees combined stdout+stderr to a timestamped file under `AGENT_RELAY_LOG_DIR`
 - preserves the underlying command's real exit code even though output goes
   through `tee`
 
@@ -465,7 +465,7 @@ Best fit:
 - alternative-model passes on the same prompt
 - simple one-shot tasks where a final printed response is enough
 
-## claude-subagent
+## claude-agent
 
 Environment variables:
 
@@ -474,8 +474,8 @@ Environment variables:
 - `CLAUDE_EFFORT` - optional `low`, `medium`, `high`, `xhigh`, or `max` reasoning effort
 - `CLAUDE_TIMEOUT` - timeout in seconds, default `7200`
 - `CLAUDE_LOGS` - set to `0` to suppress the wrapper log banner
-- `SUBAGENT_SESSION` - optional Claude Code session ID to resume
-- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/agent-relay/logs`
+- `AGENT_RELAY_SESSION` - optional Claude Code session ID to resume
+- `AGENT_RELAY_LOG_DIR` - directory for the run's tee'd log file, default `~/agent-relay/logs`
 
 Behavior:
 
@@ -483,10 +483,10 @@ Behavior:
 - uses non-persistent, non-interactive execution and passes model, fallback, and optional effort selection through
 - tees combined stdout+stderr to a timestamped log file and preserves the real exit code
 
-Claude Code has no live model-list command; `claude-subagent --models` prints
+Claude Code has no live model-list command; `claude-agent --models` prints
 the selectors documented by the installed CLI instead.
 
-## codex-subagent
+## codex-agent
 
 Environment variables:
 
@@ -494,32 +494,32 @@ Environment variables:
 - `CODEX_EFFORT` - optional `low`, `medium`, `high`, `xhigh`, `max`, or `ultra` reasoning effort
 - `CODEX_SANDBOX` - sandbox mode; defaults to `workspace-write`, with an automatic
   `danger-full-access` fallback only when the host blocks Bubblewrap user namespaces
-- `SUBAGENT_SESSION` - optional Codex session ID to resume
+- `AGENT_RELAY_SESSION` - optional Codex session ID to resume
 - `CODEX_TIMEOUT` - timeout in seconds, default `7200`
 - `CODEX_LOGS` - set to `0` to suppress the wrapper log banner
-- `SUBAGENT_LOG_DIR` - directory for the run's tee'd log file, default `~/agent-relay/logs`
+- `AGENT_RELAY_LOG_DIR` - directory for the run's tee'd log file, default `~/agent-relay/logs`
 
 Behavior:
 
 - runs `codex exec` in the current workspace with non-interactive approval handling
-- persists new sessions and resumes `SUBAGENT_SESSION` when provided; passes model and reasoning effort through
+- persists new sessions and resumes `AGENT_RELAY_SESSION` when provided; passes model and reasoning effort through
 - defaults to the `workspace-write` sandbox; on hosts that block Bubblewrap user namespaces,
   automatically falls back to `danger-full-access`; set `CODEX_SANDBOX` explicitly to prevent fallback
 - tees combined stdout+stderr to a timestamped log file and preserves the real exit code
 
-Codex has no live model-list command; `codex-subagent --models` prints the
+Codex has no live model-list command; `codex-agent --models` prints the
 selectors documented by the installed CLI instead.
 
 ## Observability
 
 The dashboard uses SQLite for durable run metadata and `logs/` for optional
 raw terminal streams. Wrappers tee combined stdout+stderr to a timestamped
-file under `~/agent-relay/logs/` (override with `SUBAGENT_LOG_DIR`). The path
+file under `~/agent-relay/logs/` (override with `AGENT_RELAY_LOG_DIR`). The path
 is printed in the startup banner, so a run launched in the background can be
 watched live:
 
 ```bash
-OPENCODE_MODEL='openai/gpt-5.5' opencode-subagent "long task" &
+OPENCODE_MODEL='openai/gpt-5.5' opencode-agent "long task" &
 tail -f ~/agent-relay/logs/<the-run-log-printed-above>.log
 ```
 
@@ -527,18 +527,18 @@ This exists because, unmodified, `opencode` streams tool/loop progress to
 stderr while `agy --print` and `claude --print` may not print incrementally — a
 backgrounded antigravity run looked identical whether it was working or
 hung. Teeing to a discoverable log file fixes that for all wrappers, uniformly,
-without depending on upstream CLI verbosity flags. `opencode-subagent-fallback`
-inherits this for free since it shells out to `opencode-subagent` for both
+without depending on upstream CLI verbosity flags. `opencode-agent-fallback`
+inherits this for free since it shells out to `opencode-agent` for both
 its probe and real task calls.
 
 The `logs/` directory is gitignored and not rotated. Clean it out periodically
 if it grows (`rm -rf ~/agent-relay/logs/*`); the dashboard keeps indexed run
-metadata in `data/subagents.db`, but full raw-log download/search is only
+metadata in `data/agents.db`, but full raw-log download/search is only
 available while the corresponding log file still exists.
 
 ## Process Cleanup
 
-A subagent can leave things running after it exits — a `npm run dev &`
+A agent can leave things running after it exits — a `npm run dev &`
 it forgot to stop, a background server started to "test" something. All
 wrapper types clean this up automatically:
 
@@ -556,8 +556,8 @@ fallback remains useful on hosts without systemd user services.
 ## Notes
 
 - These wrappers are intentionally thin. They normalize prompt shapes and runtime flags.
-- Executables are discovered via `PATH` by default. You can override individual binary paths via environment variables (`SUBAGENT_CLAUDE_BIN`, `SUBAGENT_AGY_BIN`, `SUBAGENT_OPENCODE_BIN`, `SUBAGENT_CODEX_BIN`).
-- They assume the current working directory is the repo or workspace you want the subagent to operate on.
+- Executables are discovered via `PATH` by default. You can override individual binary paths via environment variables (`AGENT_RELAY_CLAUDE_BIN`, `AGENT_RELAY_AGY_BIN`, `AGENT_RELAY_OPENCODE_BIN`, `AGENT_RELAY_CODEX_BIN`).
+- They assume the current working directory is the repo or workspace you want the agent to operate on.
 
 ## License
 
