@@ -62,7 +62,9 @@ Common cases:
 
 They are best for short, self-contained tasks where stdout is enough as the return channel.
 
-They are not a full orchestration layer. They do not manage retries, queueing, result parsing, session recovery, or multi-step workflows across runs.
+They are not a queueing system or autonomous workflow engine. `relay` provides
+run lookup, structured result parsing, continuation, and cross-harness takeover,
+but retries and multi-step planning still belong to the caller.
 
 ## Harness-friendly design
 
