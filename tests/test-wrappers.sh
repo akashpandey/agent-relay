@@ -123,7 +123,7 @@ assert_output_contains "claude-agent stdin task" "Mock claude done" bash -c "pri
 # Test relay CLI and takeover command
 assert_output_contains "relay help" "takeover" "$REPO_DIR/relay"
 assert_output_contains "relay takeover help" "Usage: relay takeover" "$REPO_DIR/relay" takeover
-assert_output_contains "relay takeover opencode" "transferring baton" "$REPO_DIR/relay" takeover opencode "Complete testing"
+assert_output_contains "relay opencode task" "Mock opencode done" "$REPO_DIR/relay" opencode "Complete testing"
 
 # Test log file creation
 log_count=$(find "$TEST_LOGS" -type f -name "*.log" | wc -l)
