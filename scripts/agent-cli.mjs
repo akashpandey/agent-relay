@@ -28,6 +28,7 @@ function usage() {
   ${cmdName} <workspace> <provider> [wrapper-args...] "task"
   ${cmdName} takeover [workspace] <provider> [instructions...]
   ${cmdName} init
+  ${cmdName} mcp install
   ${cmdName} workspaces
   ${cmdName} doctor
   ${cmdName} dashboard [restart]
@@ -105,6 +106,98 @@ async function initWorkspaces() {
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.writeFileSync(configPath, `${JSON.stringify(Object.fromEntries(workspaces.map(ws => [ws.name, ws.path])), null, 2)}\n`);
   console.log(`✓ Wrote ${workspaces.length} workspaces to ${configPath}`);
+}
+
+async function installMcp() {
+  const home = os.homedir();
+  const mcpBin = path.join(home, '.local', 'bin', 'agent-relay-mcp');
+  const fallbackBin = path.join(repoDir, 'agent-relay-mcp');
+  const targetBin = fs.existsSync(mcpBin) ? mcpBin : fallbackBin;
+
+  console.log(`Setting up agent-relay MCP server (${targetBin})...\n`);
+  let configuredCount = 0;
+
+  // 1. Claude Code (~/.claude.json)
+  try {
+    const claudePath = path.join(home, '.claude.json');
+    let claudeConfig = {};
+    if (fs.existsSync(claudePath)) {
+      try { claudeConfig = JSON.parse(fs.readFileSync(claudePath, 'utf8')); } catch {}
+    }
+    claudeConfig.mcpServers = claudeConfig.mcpServers || {};
+    claudeConfig.mcpServers['agent-relay'] = { command: targetBin };
+    fs.writeFileSync(claudePath, JSON.stringify(claudeConfig, null, 2) + '\n');
+    console.log(`✓ Configured Claude Code (${displayPath(claudePath)})`);
+    configuredCount++;
+  } catch (err) {
+    console.error(`✗ Claude Code: ${err.message}`);
+  }
+
+  // 2. OpenCode (~/.config/opencode/opencode.json)
+  try {
+    const opencodeDir = path.join(home, '.config', 'opencode');
+    const opencodePath = path.join(opencodeDir, 'opencode.json');
+    if (fs.existsSync(opencodeDir) || fs.existsSync(opencodePath)) {
+      let opencodeConfig = {};
+      if (fs.existsSync(opencodePath)) {
+        try { opencodeConfig = JSON.parse(fs.readFileSync(opencodePath, 'utf8')); } catch {}
+      }
+      opencodeConfig.mcp = opencodeConfig.mcp || {};
+      opencodeConfig.mcp['agent-relay'] = {
+        type: 'local',
+        command: [targetBin],
+        enabled: true,
+      };
+      fs.mkdirSync(opencodeDir, { recursive: true });
+      fs.writeFileSync(opencodePath, JSON.stringify(opencodeConfig, null, 2) + '\n');
+      console.log(`✓ Configured OpenCode (${displayPath(opencodePath)})`);
+      configuredCount++;
+    }
+  } catch (err) {
+    console.error(`✗ OpenCode: ${err.message}`);
+  }
+
+  // 3. Antigravity CLI (~/.gemini/antigravity-cli/mcp_config.json)
+  try {
+    const agyCliDir = path.join(home, '.gemini', 'antigravity-cli');
+    const agyConfigPath = path.join(agyCliDir, 'mcp_config.json');
+    if (fs.existsSync(path.join(home, '.gemini'))) {
+      let agyConfig = {};
+      if (fs.existsSync(agyConfigPath)) {
+        try { agyConfig = JSON.parse(fs.readFileSync(agyConfigPath, 'utf8')); } catch {}
+      }
+      agyConfig.mcpServers = agyConfig.mcpServers || {};
+      agyConfig.mcpServers['agent-relay'] = { command: targetBin };
+      fs.mkdirSync(agyCliDir, { recursive: true });
+      fs.writeFileSync(agyConfigPath, JSON.stringify(agyConfig, null, 2) + '\n');
+      console.log(`✓ Configured Antigravity CLI (${displayPath(agyConfigPath)})`);
+      configuredCount++;
+    }
+  } catch (err) {
+    console.error(`✗ Antigravity: ${err.message}`);
+  }
+
+  // 4. OpenAI Codex CLI (~/.codex/config.toml)
+  try {
+    const codexDir = path.join(home, '.codex');
+    const codexPath = path.join(codexDir, 'config.toml');
+    if (fs.existsSync(codexDir)) {
+      let content = fs.existsSync(codexPath) ? fs.readFileSync(codexPath, 'utf8') : '';
+      if (!content.includes('[mcp_servers.agent_relay]') && !content.includes('[mcp_servers.agent-relay]')) {
+        const tomlSnippet = `\n[mcp_servers.agent_relay]\ncommand = "${targetBin}"\nstartup_timeout_sec = 60\n`;
+        fs.appendFileSync(codexPath, tomlSnippet);
+        console.log(`✓ Configured OpenAI Codex (${displayPath(codexPath)})`);
+        configuredCount++;
+      } else {
+        console.log(`✓ OpenAI Codex already configured (${displayPath(codexPath)})`);
+        configuredCount++;
+      }
+    }
+  } catch (err) {
+    console.error(`✗ Codex: ${err.message}`);
+  }
+
+  console.log(`\nMCP setup complete across ${configuredCount} detected harness(es).`);
 }
 
 function resolveWorkspace(value) {
@@ -289,6 +382,15 @@ if (args[0] === 'workspaces') {
 if (args[0] === 'init') {
   await initWorkspaces();
   process.exit(0);
+}
+
+if (args[0] === 'mcp') {
+  if (args[1] === 'install' || !args[1]) {
+    await installMcp();
+    process.exit(0);
+  }
+  console.error(`${cmdName}: unknown mcp command: ${args[1]}`);
+  process.exit(2);
 }
 
 if (args[0] === 'doctor') {
