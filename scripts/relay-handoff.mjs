@@ -4,7 +4,6 @@ import path from 'node:path';
 import os from 'node:os';
 import { execSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
-import { canonicalWorkspacePath } from '../dashboard/workspaces.js';
 
 const homedir = os.homedir();
 
@@ -27,9 +26,13 @@ const GEMINI_BRAIN_DIR = process.env.GEMINI_BRAIN ||
  */
 function isWorkspaceMatch(sessionPath, workspace) {
   if (!sessionPath || !workspace) return false;
-  const normSession = canonicalWorkspacePath(sessionPath) || sessionPath.replace(/\/+$/, '');
-  const normWorkspace = canonicalWorkspacePath(workspace) || workspace.replace(/\/+$/, '');
-  return normSession.toLowerCase() === normWorkspace.toLowerCase();
+  try {
+    const normSession = fs.existsSync(sessionPath) ? fs.realpathSync(sessionPath) : path.resolve(sessionPath);
+    const normWorkspace = fs.existsSync(workspace) ? fs.realpathSync(workspace) : path.resolve(workspace);
+    return process.platform === 'win32'
+      ? normSession.toLowerCase() === normWorkspace.toLowerCase()
+      : normSession === normWorkspace;
+  } catch { return false; }
 }
 
 /**
@@ -173,9 +176,11 @@ export function getLatestClaudeSession(workspace) {
   for (const fileObj of candidateFiles) {
     try {
       const content = fs.readFileSync(fileObj.path, 'utf8');
-      if (!content.includes(workspace) && !fileObj.path.includes(slug)) continue;
-
       const lines = content.split('\n').filter(Boolean);
+      const workspaces = lines.flatMap(line => {
+        try { return JSON.parse(line).cwd || []; } catch { return []; }
+      });
+      if (workspaces.length ? !workspaces.some(p => isWorkspaceMatch(p, workspace)) : path.basename(path.dirname(fileObj.path)) !== slug) continue;
       let goal = null;
       let lastAssistantMessage = null;
       let sessionId = path.basename(fileObj.path, '.jsonl');
@@ -243,7 +248,9 @@ export function getLatestAntigravitySession(workspace) {
 
       try {
         const text = fs.readFileSync(transcript, 'utf8');
-        if (!text.includes(workspace)) continue;
+        const recordedWorkspace = text.match(/Workspace:\s*([^\r\n<\\"]+)/i)?.[1]?.trim()
+          || text.match(/Repo:\s*([^\r\n<\s\)]+)/i)?.[1]?.trim();
+        if (!isWorkspaceMatch(recordedWorkspace, workspace)) continue;
 
         const lines = text.split('\n').filter(Boolean);
         let goal = null;

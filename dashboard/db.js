@@ -346,11 +346,19 @@ export function getAllRunsFromDb(limit = 1000, offset = 0) {
   return rows.map(r => rowToRunMeta(r, r.status === 'running'));
 }
 
-export function getFilteredRuns({ provider, status, outcome, workspace, attention, q, since, until, limit = 50, offset = 0 }) {
+export function getFilteredRuns({ provider, status, outcome, workspace, rawWorkspace, sessionId, attention, q, since, until, limit = 50, offset = 0 }) {
   const db = getDatabase();
   let whereClauses = [];
   let params = [];
   const workspaceFilter = workspace && workspace !== 'all' ? workspace : null;
+  if (rawWorkspace) {
+    whereClauses.push('workspace = ?');
+    params.push(rawWorkspace);
+  }
+  if (sessionId) {
+    whereClauses.push('session_id = ?');
+    params.push(sessionId);
+  }
 
   if (provider && provider !== 'all') {
     whereClauses.push('LOWER(provider) = LOWER(?)');
@@ -381,7 +389,7 @@ export function getFilteredRuns({ provider, status, outcome, workspace, attentio
   const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
   
   if (workspaceFilter || attention === '1') {
-    const rows = db.prepare(`SELECT * FROM runs ${whereSql} ORDER BY start_time DESC`).all(...params);
+    const rows = db.prepare(`SELECT * FROM runs ${whereSql} ORDER BY start_time DESC, rowid DESC`).all(...params);
     const filtered = rows.filter(r => {
       const canonical = canonicalWorkspacePath(r.workspace) || r.workspace;
       if (workspaceFilter && canonical !== workspaceFilter) return false;
@@ -401,7 +409,7 @@ export function getFilteredRuns({ provider, status, outcome, workspace, attentio
   const total = countStmt.get(...params)?.count || 0;
   const dataStmt = db.prepare(`
     SELECT * FROM runs ${whereSql}
-    ORDER BY start_time DESC
+    ORDER BY start_time DESC, rowid DESC
     LIMIT ? OFFSET ?
   `);
   const rows = dataStmt.all(...params, limit, offset);

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { createInterface } from 'node:readline';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { getFilteredRuns, getRun, getWorkspacesFromDb, registerRunComplete } from '../dashboard/db.js';
+import { getFilteredRuns, getRun, getWorkspacesFromDb, upsertRun } from '../dashboard/db.js';
 import { buildRunCommands } from '../dashboard/commands.js';
 import { canonicalWorkspacePath, configuredWorkspaceEntries } from '../dashboard/workspaces.js';
 import { findLatestWorkspaceSession, buildRelayTakeoverPrompt, getWorkspaceGitContext } from './relay-handoff.mjs';
@@ -13,6 +13,7 @@ import {
   getClaudeSessionDetails,
   getCodexSessionDetails,
   findAntigravityTranscript,
+  parseLogMetadata,
 } from '../dashboard/parser.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -176,6 +177,7 @@ const tools = [
         target: { type: 'string', description: 'Run filename, workspace name, or --last.' },
         sessionId: { type: 'string', description: 'Provider session ID if known.' },
         provider: { type: 'string', enum: [...providers], description: 'Optional provider name if sessionId is provided directly.' },
+        workspace: { type: 'string', description: 'Optional exact workspace path or alias.' },
       },
       additionalProperties: false,
     },
@@ -235,8 +237,8 @@ function knownWorkspaces() {
   const byPath = new Map();
   for (const ws of getWorkspacesFromDb()) byPath.set(ws.path, ws);
   for (const ws of configuredWorkspaceEntries()) {
-    const canonical = canonicalWorkspacePath(ws.path) || ws.path.replace(/\/+$/, '');
-    if (!byPath.has(canonical)) byPath.set(canonical, { path: canonical, name: ws.name, totalRuns: 0, activeRuns: 0 });
+    const actual = path.resolve(ws.path);
+    byPath.set(actual, { totalRuns: 0, activeRuns: 0, ...byPath.get(actual), path: actual, name: ws.name });
   }
   return [...byPath.values()];
 }
@@ -244,24 +246,56 @@ function knownWorkspaces() {
 function resolveWorkspace(value) {
   if (!value || value === 'all') return null;
   const configured = configuredWorkspaceEntries().find(ws => ws.name.toLowerCase() === String(value).toLowerCase());
-  if (configured) return canonicalWorkspacePath(configured.path) || configured.path.replace(/\/+$/, '');
-  const direct = canonicalWorkspacePath(value) || (path.isAbsolute(value) ? value.replace(/\/+$/, '') : null);
-  if (direct) return direct;
+  if (configured) return fs.existsSync(configured.path) ? fs.realpathSync(configured.path) : path.resolve(configured.path);
+  if (path.isAbsolute(value) || value.startsWith('./') || value.startsWith('../')) {
+    const absolute = path.resolve(value);
+    return fs.existsSync(absolute) ? fs.realpathSync(absolute) : absolute;
+  }
   const lower = String(value).toLowerCase();
   return knownWorkspaces().find(ws => ws.name.toLowerCase() === lower || path.basename(ws.path).toLowerCase() === lower)?.path || null;
 }
 
+function executionWorkspace(value) {
+  const workspace = value ? resolveWorkspace(value) : process.cwd();
+  if (!workspace) throw new Error('unknown workspace: ' + value);
+  if (!fs.existsSync(workspace) || !fs.statSync(workspace).isDirectory()) {
+    throw new Error('workspace directory does not exist: ' + workspace);
+  }
+  return workspace;
+}
+
+function refreshRun(run) {
+  if (!run) return null;
+  const file = path.join(logsDir, run.filename);
+  if (!fs.existsSync(file)) return run;
+  const meta = parseLogMetadata(run.filename, file);
+  if (!meta) return run;
+  upsertRun(meta);
+  return { ...run, ...meta, rawWorkspace: meta.workspace };
+}
+
 function latestRun(workspaceArg = null) {
   const workspace = resolveWorkspace(workspaceArg);
-  const result = getFilteredRuns({ workspace: workspace || 'all', limit: 200, offset: 0 });
-  return result.runs.find(run => run.sessionId && run.sessionId !== 'new') || result.runs[0] || null;
+  if (workspaceArg && !workspace) throw new Error('unknown workspace: ' + workspaceArg);
+  return refreshRun(getFilteredRuns({ rawWorkspace: workspace, limit: 1, offset: 0 }).runs[0]);
 }
 
 function resolveRunTarget(target = '--last') {
   if (!target || target === '--last') return latestRun(null);
+  const indexed = getRun(path.basename(target));
+  if (indexed) return refreshRun(indexed);
+  if (/^\d+$/.test(target)) {
+    for (const provider of providers) {
+      const run = launchedRun(Number(target), provider);
+      if (run) return run;
+    }
+    return null;
+  }
+  const file = path.join(logsDir, path.basename(target));
+  if (fs.existsSync(file)) return refreshRun({ filename: path.basename(target) });
   const workspace = resolveWorkspace(target);
   if (workspace) return latestRun(workspace);
-  return getRun(path.basename(target)) || null;
+  return null;
 }
 
 function runResult(run) {
@@ -277,7 +311,7 @@ function runResult(run) {
     exitCode: run.exitCode ?? null,
     outcome,
     attentionRequired,
-    accepted: outcome === 'done' && !attentionRequired,
+    accepted: run.status === 'completed' && (run.exitCode == null || run.exitCode === 0) && outcome === 'done' && !attentionRequired,
     blockers: result?.blockers || [],
     incomplete: result?.incomplete || [],
     verification: result?.verification || [],
@@ -294,17 +328,62 @@ function runResult(run) {
   };
 }
 
-function shellQuote(s) {
-  return `'${String(s).replace(/'/g, `'"'"'`)}'`;
+function processIdentity(pid) {
+  try {
+    if (fs.existsSync('/proc')) {
+      const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8').split(') ').at(-1).split(' ');
+      if (stat[0] === 'Z') return null;
+      return stat[19] + ' ' + fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').replace(/\0/g, ' ');
+    }
+    const info = spawnSync('ps', ['-p', String(pid), '-o', 'lstart=', '-o', 'args='], { encoding: 'utf8' });
+    return info.status === 0 ? info.stdout.trim() || null : null;
+  } catch { return null; }
 }
 
-function maybeExecute(command, execute) {
-  if (!execute) return { command, executed: false };
-  const child = spawnSync(command[0], command.slice(1), { cwd: repoDir, encoding: 'utf8', env: process.env });
-  return { command: command.map(shellQuote).join(' '), executed: true, status: child.status, stdout: child.stdout, stderr: child.stderr };
+function startCommand(command, options = {}) {
+  const child = spawn(command[0], command.slice(1), {
+    cwd: repoDir, env: process.env, stdio: ['ignore', 'pipe', 'pipe'], ...options,
+  });
+  // Keep only the output tail; the wrappers persist the full log themselves.
+  let stdout = '', stderr = '';
+  child.stdout?.on('data', chunk => { stdout = (stdout + chunk.toString()).slice(-65536); });
+  child.stderr?.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-65536); });
+  const completion = new Promise(resolve => {
+    child.once('error', error => resolve({ status: null, error: error.message, stdout, stderr }));
+    child.once('close', (status, signal) => resolve({ status, signal, stdout, stderr }));
+  });
+  return { child, completion };
+}
+
+function launchedRun(pid, provider, previousLogs = new Set()) {
+  if (!pid || !fs.existsSync(logsDir)) return null;
+  const filename = fs.readdirSync(logsDir).sort().reverse().find(f => !previousLogs.has(f) && f.endsWith(`-${provider}-${pid}.log`));
+  return filename ? refreshRun(getRun(filename) || { filename }) : null;
 }
 
 async function callTool(name, args = {}) {
+  const tool = tools.find(tool => tool.name === name);
+  if (!tool) throw new Error(`unknown tool: ${name}`);
+  if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('arguments must be an object');
+  for (const key of tool.inputSchema.required || []) {
+    if (args[key] === undefined) throw new Error(`${key} is required`);
+  }
+  for (const [key, value] of Object.entries(args)) {
+    const schema = tool.inputSchema.properties[key];
+    if (!schema) throw new Error(`unknown argument: ${key}`);
+    if (schema.type === 'integer' ? !Number.isSafeInteger(value) : typeof value !== schema.type) {
+      throw new Error(`${key} must be ${schema.type}`);
+    }
+    if (schema.enum && !schema.enum.includes(value)) throw new Error(`unknown ${key}: ${value}`);
+    if ((schema.minimum != null && value < schema.minimum) || (schema.maximum != null && value > schema.maximum)) {
+      throw new Error(`${key} is outside the allowed range`);
+    }
+  }
+  if ('prompt' in args && !args.prompt.trim()) throw new Error('prompt is required');
+  if (args.sessionId && !/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(args.sessionId)) {
+    throw new Error('invalid sessionId');
+  }
+  if (args.sessionId && args.continueLatest) throw new Error('sessionId and continueLatest cannot be combined');
   if (name === 'run_agent') {
     if (!args.provider || !providers.has(args.provider)) {
       throw new Error(`unknown provider: ${args.provider}. Supported: ${[...providers].join(', ')}`);
@@ -313,10 +392,7 @@ async function callTool(name, args = {}) {
       throw new Error('prompt is required');
     }
 
-    const targetWorkspace = resolveWorkspace(args.workspace) || (args.workspace ? path.resolve(args.workspace) : process.cwd());
-    if (!fs.existsSync(targetWorkspace)) {
-      throw new Error(`workspace directory does not exist: ${targetWorkspace}`);
-    }
+    const targetWorkspace = executionWorkspace(args.workspace);
 
     let wrapperName = `${args.provider}-agent`;
     const env = { ...process.env };
@@ -346,6 +422,9 @@ async function callTool(name, args = {}) {
     }
     if (args.sessionId) {
       env.AGENT_RELAY_SESSION = args.sessionId;
+    } else {
+      delete env.AGENT_RELAY_SESSION;
+      delete env.SUBAGENT_SESSION;
     }
     if (args.timeoutSeconds) {
       if (args.provider === 'opencode') env.OPENCODE_TIMEOUT = String(args.timeoutSeconds);
@@ -360,54 +439,76 @@ async function callTool(name, args = {}) {
     }
     wrapperArgs.push(args.prompt);
 
-    const wait = args.wait !== false;
-    if (!wait) {
-      const child = spawn(wrapperBin, wrapperArgs, {
-        cwd: targetWorkspace,
-        env,
-        stdio: 'ignore',
-        detached: true,
-      });
+    const previousLogs = new Set(fs.existsSync(logsDir) ? fs.readdirSync(logsDir) : []);
+    const { child, completion } = startCommand([wrapperBin, ...wrapperArgs], {
+      cwd: targetWorkspace, env, detached: true,
+      ...(args.wait === false ? { stdio: 'ignore' } : {}),
+    });
+    await new Promise((resolve, reject) => {
+      child.once('spawn', resolve);
+      child.once('error', reject);
+    });
+    if (args.wait === false) {
+      // Background runs must not keep the MCP process alive through their pipes.
       child.unref();
-
-      // Brief delay to allow wrapper to initialize and record run start in SQLite
-      await new Promise(resolve => setTimeout(resolve, 600));
-      const run = latestRun(targetWorkspace);
+      let run = null;
+      for (let i = 0; i < 20 && !run; i++) {
+        run = launchedRun(child.pid, args.provider, previousLogs);
+        if (!run) await new Promise(resolve => setTimeout(resolve, 100));
+      }
       return {
         status: 'launched',
         pid: child.pid,
         workspace: targetWorkspace,
         provider: args.provider,
         filename: run?.filename || null,
+        target: run?.filename || String(child.pid),
         message: 'Agent launched in background. Use wait_for_run or get_run_result to check status.',
       };
     }
 
-    const timeoutMs = (args.timeoutSeconds || 7200) * 1000;
-    const child = spawnSync(wrapperBin, wrapperArgs, {
-      cwd: targetWorkspace,
-      env,
-      encoding: 'utf8',
-      timeout: timeoutMs,
-    });
-
-    const run = latestRun(targetWorkspace);
+    let cancellation = null;
+    let escalation = null;
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      const stopChild = () => {
+        child.kill('SIGTERM');
+        escalation = setTimeout(() => child.kill('SIGKILL'), 5000);
+      };
+      try {
+        const run = launchedRun(child.pid, args.provider, previousLogs);
+        if (run) {
+          cancellation = callTool('kill_run', { target: run.filename })
+            .then(result => { if (!result.killed && child.exitCode === null) stopChild(); })
+            .catch(() => { if (child.exitCode === null) stopChild(); });
+        } else stopChild();
+      } catch {
+        stopChild();
+      }
+    }, (args.timeoutSeconds ?? 7200) * 1000);
+    const finished = await completion;
+    clearTimeout(timer);
+    if (cancellation) await cancellation;
+    if (escalation) clearTimeout(escalation);
+    const run = launchedRun(child.pid, args.provider, previousLogs);
     if (run) {
-      return runResult(run);
+      return { ...runResult(run), timedOut };
     }
     return {
-      status: child.status === 0 ? 'completed' : 'failed',
-      exitCode: child.status,
-      stdout: child.stdout,
-      stderr: child.stderr,
+      ...finished,
+      status: finished.status === 0 ? 'completed' : 'failed',
+      exitCode: finished.status,
+      accepted: false,
+      timedOut,
     };
   }
   if (name === 'list_workspaces') return { workspaces: knownWorkspaces() };
   if (name === 'list_runs') {
-    const workspace = args.workspace ? resolveWorkspace(args.workspace) : 'all';
-    if (args.workspace && !workspace) throw new Error('unknown workspace: ' + args.workspace);
+    const workspace = args.workspace && args.workspace !== 'all' ? resolveWorkspace(args.workspace) : null;
+    if (args.workspace && args.workspace !== 'all' && !workspace) throw new Error('unknown workspace: ' + args.workspace);
     return getFilteredRuns({
-      workspace,
+      workspace: workspace ? canonicalWorkspacePath(workspace) || workspace : 'all',
       provider: args.provider || 'all',
       status: args.status || 'all',
       outcome: args.outcome || 'all',
@@ -423,25 +524,27 @@ async function callTool(name, args = {}) {
     let provider = args.provider;
     let sessionId = args.sessionId;
     let workspace = args.workspace ? resolveWorkspace(args.workspace) : null;
-    let startTime = null;
+    if (args.workspace && !workspace) throw new Error('unknown workspace: ' + args.workspace);
 
     if (args.target) {
       const run = resolveRunTarget(args.target);
+      if (!run) throw new Error('run not found: ' + args.target);
+      if (args.provider && args.provider !== run.provider || args.sessionId && args.sessionId !== run.sessionId) {
+        throw new Error('target does not match the requested provider/session');
+      }
       if (run) {
         provider = provider || run.provider;
         sessionId = sessionId || run.sessionId;
-        workspace = workspace || run.workspace;
-        startTime = run.startTime;
+        workspace = workspace || run.rawWorkspace || run.workspace;
       }
     }
 
     if (!sessionId && !args.target) {
-      const run = latestRun(workspace || null);
+      const run = refreshRun(getFilteredRuns({ provider, rawWorkspace: workspace, limit: 1 }).runs[0]);
       if (run) {
         provider = provider || run.provider;
         sessionId = sessionId || run.sessionId;
-        workspace = workspace || run.workspace;
-        startTime = run.startTime;
+        workspace = workspace || run.rawWorkspace || run.workspace;
       }
     }
 
@@ -453,16 +556,16 @@ async function callTool(name, args = {}) {
     try {
       if (provider === 'opencode' && sessionId) {
         details = getOpenCodeSessionDetails(sessionId);
-      } else if (provider === 'claude') {
-        details = getClaudeSessionDetails(sessionId, startTime, workspace);
-      } else if (provider === 'codex') {
-        details = getCodexSessionDetails(sessionId, startTime, workspace);
-      } else if (provider === 'antigravity') {
-        details = findAntigravityTranscript(sessionId, startTime, workspace);
+      } else if (provider === 'claude' && sessionId && sessionId !== 'new') {
+        details = getClaudeSessionDetails(sessionId, null, workspace);
+      } else if (provider === 'codex' && sessionId && sessionId !== 'new') {
+        details = getCodexSessionDetails(sessionId, null, workspace);
+      } else if (provider === 'antigravity' && sessionId && sessionId !== 'new') {
+        details = findAntigravityTranscript(sessionId, null, workspace);
       }
     } catch {}
 
-    if (details) {
+    if (details && (details.markdownSummary || details.task || details.tokens || details.toolCalls?.length || details.conversationId)) {
       return {
         provider,
         sessionId,
@@ -472,12 +575,15 @@ async function callTool(name, args = {}) {
     }
 
     // Fallback to indexed SQLite run metadata and summary
-    const run = resolveRunTarget(args.target || '--last');
+    const run = args.sessionId
+      ? refreshRun(getFilteredRuns({ sessionId: args.sessionId, provider, rawWorkspace: workspace, limit: 1 }).runs[0])
+      : args.target ? resolveRunTarget(args.target)
+        : refreshRun(getFilteredRuns({ provider, rawWorkspace: workspace, limit: 1 }).runs[0]);
     if (run) {
       return {
         provider: run.provider,
         sessionId: run.sessionId,
-        workspace: run.workspace,
+        workspace: run.rawWorkspace || run.workspace,
         task: run.task,
         model: run.model,
         startTime: run.startTime,
@@ -498,9 +604,9 @@ async function callTool(name, args = {}) {
     let run = resolveRunTarget(args.target || '--last');
     while (run?.status === 'running' && Date.now() < deadline) {
       await new Promise(resolve => setTimeout(resolve, 500));
-      run = getRun(run.filename) || run;
+      run = refreshRun(getRun(run.filename) || run);
     }
-    return runResult(run);
+    return { ...runResult(run), timedOut: run?.status === 'running' };
   }
   if (name === 'get_log_tail') {
     const run = resolveRunTarget(args.target || '--last');
@@ -522,26 +628,36 @@ async function callTool(name, args = {}) {
     if (!fs.existsSync(file)) throw new Error('log file not found: ' + file);
     const q = String(args.q || '').toLowerCase();
     const limit = args.limit || 50;
-    const lines = fs.readFileSync(file, 'utf8').split('\n');
     const matches = [];
-    for (let i = 0; i < lines.length && matches.length < limit; i++) {
-      if (lines[i].toLowerCase().includes(q)) matches.push({ line: i + 1, text: lines[i].slice(0, 1000) });
+    const stream = fs.createReadStream(file, { encoding: 'utf8' });
+    const lines = createInterface({ input: stream, crlfDelay: Infinity });
+    let lineNumber = 0;
+    try {
+      for await (const line of lines) {
+        lineNumber++;
+        if (line.toLowerCase().includes(q)) matches.push({ line: lineNumber, text: line.slice(0, 1000) });
+        if (matches.length >= limit) break;
+      }
+    } finally {
+      lines.close();
+      stream.destroy();
     }
     return { filename: run.filename, q: args.q, count: matches.length, matches };
   }
   if (name === 'continue_run') {
-    const workspace = args.workspace ? resolveWorkspace(args.workspace) : null;
-    const command = [path.join(repoDir, 'relay'), 'continue'];
-    if (workspace) command.push(path.basename(workspace));
-    if (args.provider) command.push('--to', args.provider);
-    command.push(args.prompt);
-    return maybeExecute(command, Boolean(args.execute));
+    const workspace = args.workspace ? executionWorkspace(args.workspace) : null;
+    if (args.provider) return callTool('takeover_run', {
+      workspace: workspace || process.cwd(), provider: args.provider, instructions: args.prompt, execute: Boolean(args.execute),
+    });
+    const run = latestRun(workspace);
+    if (!run?.sessionId || run.sessionId === 'new') throw new Error('no resumable matching run found');
+    const actual = executionWorkspace(run.rawWorkspace || run.workspace);
+    const command = [path.join(repoDir, `${run.provider}-agent`), '--resume', run.sessionId, args.prompt];
+    if (!args.execute) return { command, workspace: actual, executed: false };
+    return callTool('run_agent', { provider: run.provider, prompt: args.prompt, workspace: actual, sessionId: run.sessionId });
   }
   if (name === 'takeover_run') {
-    const targetWorkspace = resolveWorkspace(args.workspace) || (args.workspace ? path.resolve(args.workspace) : process.cwd());
-    if (!fs.existsSync(targetWorkspace)) {
-      throw new Error(`workspace directory does not exist: ${targetWorkspace}`);
-    }
+    const targetWorkspace = executionWorkspace(args.workspace);
 
     const session = findLatestWorkspaceSession(targetWorkspace);
     if (!session) {
@@ -582,15 +698,15 @@ async function callTool(name, args = {}) {
     });
   }
   if (name === 'doctor') {
-    const child = spawnSync(path.join(repoDir, 'agent-doctor'), [], { cwd: repoDir, encoding: 'utf8', env: process.env });
-    return { status: child.status, stdout: child.stdout, stderr: child.stderr };
+    return await startCommand([path.join(repoDir, 'agent-doctor')]).completion;
   }
   if (name === 'list_models') {
     const targetProvider = args.provider || 'all';
-    const queryProvider = (prov) => {
+    const queryProvider = async (prov) => {
       const bin = path.join(repoDir, `${prov}-agent`);
       if (!fs.existsSync(bin)) return { provider: prov, error: 'wrapper not found' };
-      const res = spawnSync(bin, ['--models'], { encoding: 'utf8', env: process.env });
+      const res = await startCommand([bin, '--models']).completion;
+      if (res.status !== 0) return { provider: prov, models: [], error: res.error || res.stderr || `exited ${res.status}` };
       const models = (res.stdout || '')
         .split('\n')
         .map(s => s.trim())
@@ -600,13 +716,16 @@ async function callTool(name, args = {}) {
 
     if (targetProvider !== 'all') {
       if (!providers.has(targetProvider)) throw new Error(`unknown provider: ${targetProvider}`);
-      return queryProvider(targetProvider);
+      return await queryProvider(targetProvider);
     }
     const result = {};
+    const errors = {};
     for (const p of providers) {
-      result[p] = queryProvider(p).models;
+      const response = await queryProvider(p);
+      result[p] = response.models || [];
+      if (response.error) errors[p] = response.error;
     }
-    return { providers: result };
+    return { providers: result, ...(Object.keys(errors).length ? { errors } : {}) };
   }
   if (name === 'kill_run') {
     const run = resolveRunTarget(args.target || '--last');
@@ -618,96 +737,46 @@ async function callTool(name, args = {}) {
       return { filename: run.filename, killed: false, message: 'Run has no recorded PID' };
     }
 
+    const identity = processIdentity(run.pid);
+    const logFile = path.join(logsDir, run.filename);
+    const started = spawnSync('ps', ['-p', String(run.pid), '-o', 'lstart='], {
+      encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' },
+    });
+    const startedAt = Date.parse(started.stdout?.trim());
+    const logCreatedAt = fs.existsSync(logFile) ? fs.statSync(logFile).birthtimeMs : 0;
+    if (!identity || !identity.includes(`${run.provider}-agent`) || !Number.isFinite(startedAt)
+      || !logCreatedAt || startedAt > logCreatedAt + 2000) {
+      return { filename: run.filename, killed: false, message: "PID no longer identifies the recorded wrapper" };
+    }
     try {
-      spawnSync('pkill', ['-TERM', '-P', String(run.pid)]);
-      process.kill(run.pid, 'SIGTERM');
-      setTimeout(() => {
-        try {
-          spawnSync('pkill', ['-KILL', '-P', String(run.pid)]);
-          process.kill(run.pid, 'SIGKILL');
-        } catch {}
-      }, 500);
-
-function extractSessionIdFromLog(logFilePath) {
-  if (!fs.existsSync(logFilePath)) return null;
-  try {
-    const fd = fs.openSync(logFilePath, 'r');
-    const stat = fs.fstatSync(fd);
-    const size = stat.size;
-    const READ_SIZE = 65536;
-    let buffer = '';
-
-    const headBuf = Buffer.alloc(Math.min(size, READ_SIZE));
-    fs.readSync(fd, headBuf, 0, headBuf.length, 0);
-    buffer += headBuf.toString('utf8');
-
-    if (size > READ_SIZE) {
-      const tailBuf = Buffer.alloc(Math.min(size - READ_SIZE, READ_SIZE));
-      fs.readSync(fd, tailBuf, 0, tailBuf.length, size - tailBuf.length);
-      buffer += '\n' + tailBuf.toString('utf8');
-    }
-    fs.closeSync(fd);
-
-    const m = buffer.match(/session\.id=([^\s]+)/i) ||
-              buffer.match(/"conversation_id":"([^"]+)"/i) ||
-              buffer.match(/"session_id":"([^"]+)"/i) ||
-              buffer.match(/session id:\s*([^\r\n]+)/i) ||
-              buffer.match(/created id=([^\s]+)/i) ||
-              buffer.match(/thread_id=([^\s,]+)/i) ||
-              buffer.match(/claude_session_id=([^\s,]+)/i) ||
-              buffer.match(/session=(?!new\b)([^\s,]+)/i) ||
-              buffer.match(/(ses_[a-zA-Z0-9]+)/);
-    if (m) {
-      const sid = m[1].trim();
-      return (sid && sid !== 'new') ? sid : null;
-    }
-  } catch {}
-  return null;
-}
-
-      // Extract session ID from log file if missing
-      let sessionId = (run.sessionId && run.sessionId !== 'new') ? run.sessionId : null;
-      const logFilePath = path.join(logsDir, run.filename);
-      const doneFilePath = logFilePath.replace(/\.log$/, '.done');
-      if (!sessionId && fs.existsSync(logFilePath)) {
-        sessionId = extractSessionIdFromLog(logFilePath);
+      process.kill(run.pid, "SIGTERM");
+      const deadline = Date.now() + 5000;
+      while (processIdentity(run.pid) === identity && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
-
-      if (!fs.existsSync(doneFilePath) && fs.existsSync(logFilePath)) {
-        try {
-          fs.writeFileSync(doneFilePath, JSON.stringify({
-            status: 'failed',
-            exitCode: 143,
-            provider: run.provider,
-            workspace: run.workspace,
-            model: run.model,
-            sessionId: sessionId || 'new',
-            logFile: logFilePath,
-            completedAt: new Date().toISOString()
-          }, null, 2) + '\n');
-        } catch {}
+      let forced = false;
+      if (processIdentity(run.pid) === identity) {
+        forced = true;
+        spawnSync("pkill", ["-KILL", "-P", String(run.pid)]);
+        try { process.kill(-run.pid, "SIGKILL"); } catch {}
+        try { process.kill(run.pid, "SIGKILL"); } catch (error) { if (error.code !== "ESRCH") throw error; }
+        for (let i = 0; i < 10 && processIdentity(run.pid) === identity; i++) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
       }
-
-      try {
-        registerRunComplete({
-          filename: run.filename,
-          exitCode: 143,
-          status: 'failed',
-          sessionId: sessionId || null,
-        });
-      } catch {}
-
-      const { continuation } = buildRunCommands(run, sessionId);
-      return {
-        filename: run.filename,
-        pid: run.pid,
-        killed: true,
-        sessionId: sessionId || null,
-        continuation,
-        message: `Killed process tree of PID ${run.pid}. Session ID ${sessionId ? `captured (${sessionId})` : 'not found'}.`
-      };
-    } catch (err) {
-      return { filename: run.filename, pid: run.pid, killed: false, error: err.message };
+      if (processIdentity(run.pid) === identity) throw new Error("wrapper did not exit after cancellation");
+      if (!fs.existsSync(logFile.replace(/\.log$/, ".done")) && fs.existsSync(logFile)) {
+        const saved = await startCommand([process.execPath, path.join(repoDir, "scripts/write-done.mjs"),
+          logFile, run.provider, run.rawWorkspace || run.workspace, run.model,
+          run.sessionId || "new", forced ? "137" : "143"]).completion;
+        if (saved.status !== 0) throw new Error(saved.error || saved.stderr || "failed to persist cancellation");
+      }
+      const final = refreshRun(run);
+      const sessionId = final.sessionId || null;
+      const { continuation } = buildRunCommands(final, sessionId);
+      return { filename: run.filename, pid: run.pid, killed: true, forced, sessionId, continuation };
+    } catch (error) {
+      return { filename: run.filename, pid: run.pid, killed: false, error: error.message };
     }
   }
   throw new Error(`unknown tool: ${name}`);

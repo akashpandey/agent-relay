@@ -42,6 +42,7 @@ const mockModules = {
       return [{ name: 'mock', path: '/tmp/agent-relay-mock', totalRuns: 1, activeRuns: 0 }];
     }
     export function registerRunComplete() {}
+    export function upsertRun() {}
   `,
   '/dashboard/commands.js': `
     export function buildRunCommands(run, sessionId) {
