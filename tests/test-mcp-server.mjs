@@ -12,6 +12,7 @@ const tools = [
   'get_log_tail',
   'search_log',
   'continue_run',
+  'get_session_history',
   'takeover_run',
   'doctor',
   'list_models',
@@ -223,7 +224,7 @@ describe('MCP tool listing', () => {
       server.write({ jsonrpc: '2.0', id: 10, method: 'tools/list' });
       const [response] = await server.waitForResponses(1);
 
-      assert.equal(response.result.tools.length, 12);
+      assert.equal(response.result.tools.length, 13);
       assert.deepEqual(response.result.tools.map(tool => tool.name), tools);
       for (const tool of response.result.tools) {
         assert.equal(typeof tool.name, 'string');
@@ -299,6 +300,28 @@ describe('MCP tool errors', () => {
       const [, response2] = await server.waitForResponses(2);
       assert.equal(response2.result.isError, true);
       assert.match(response2.result.content[0].text, /run not found/);
+
+      server.write({
+        jsonrpc: '2.0',
+        id: 25,
+        method: 'tools/call',
+        params: { name: 'get_session_history', arguments: { target: 'mock-run.log' } },
+      });
+      const [, , response3] = await server.waitForResponses(3);
+      assert.equal(response3.error, undefined);
+      const data3 = JSON.parse(response3.result.content[0].text);
+      assert.equal(data3.provider, 'codex');
+      assert.equal(data3.sessionId, 'mock-session');
+
+      server.write({
+        jsonrpc: '2.0',
+        id: 26,
+        method: 'tools/call',
+        params: { name: 'takeover_run', arguments: { workspace: 'does-not-exist', provider: 'codex' } },
+      });
+      const [, , , response4] = await server.waitForResponses(4);
+      assert.equal(response4.result.isError, true);
+      assert.match(response4.result.content[0].text, /workspace/);
     });
   });
 });

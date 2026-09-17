@@ -7,6 +7,13 @@ import { fileURLToPath } from 'node:url';
 import { getFilteredRuns, getRun, getWorkspacesFromDb } from '../dashboard/db.js';
 import { buildRunCommands } from '../dashboard/commands.js';
 import { canonicalWorkspacePath, configuredWorkspaceEntries } from '../dashboard/workspaces.js';
+import { findLatestWorkspaceSession, buildRelayTakeoverPrompt, getWorkspaceGitContext } from './relay-handoff.mjs';
+import {
+  getOpenCodeSessionDetails,
+  getClaudeSessionDetails,
+  getCodexSessionDetails,
+  findAntigravityTranscript,
+} from '../dashboard/parser.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const repoDir = path.resolve(path.dirname(__filename), '..');
@@ -90,6 +97,8 @@ const tools = [
         status: { type: 'string', enum: ['all', 'running', 'completed', 'failed', 'empty'] },
         outcome: { type: 'string', enum: ['all', 'done', 'partial', 'blocked', 'failed', 'unknown'] },
         attention: { type: 'boolean' },
+        since: { type: 'string', description: 'Filter runs started on or after this ISO date/time (e.g. 2026-09-16).' },
+        until: { type: 'string', description: 'Filter runs started on or before this ISO date/time.' },
         q: { type: 'string' },
         limit: { type: 'integer', minimum: 1, maximum: 200 },
       },
@@ -159,15 +168,28 @@ const tools = [
     },
   },
   {
-    name: 'takeover_run',
-    description: 'Build or execute a cross-harness relay takeover command.',
+    name: 'get_session_history',
+    description: 'Retrieve detailed conversation history, goals, touched files, tokens, and assistant reasoning for a past session or run.',
     inputSchema: {
       type: 'object',
       properties: {
-        workspace: { type: 'string' },
-        provider: { type: 'string', enum: [...providers] },
-        instructions: { type: 'string' },
-        execute: { type: 'boolean', description: 'Default false. When false, returns the command only.' },
+        target: { type: 'string', description: 'Run filename, workspace name, or --last.' },
+        sessionId: { type: 'string', description: 'Provider session ID if known.' },
+        provider: { type: 'string', enum: [...providers], description: 'Optional provider name if sessionId is provided directly.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'takeover_run',
+    description: 'Synthesize or execute a cross-harness relay handoff baton prompt (goal, touched files, last activity, uncommitted diffs) to transition tasks between agents.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspace: { type: 'string', description: 'Target workspace directory or alias. Defaults to current directory.' },
+        provider: { type: 'string', enum: [...providers], description: 'Target provider that will receive the baton.' },
+        instructions: { type: 'string', description: 'Additional instructions for the takeover agent.' },
+        execute: { type: 'boolean', description: 'Default false. When false, returns the complete baton prompt and context. When true, immediately executes the takeover.' },
       },
       required: ['provider'],
       additionalProperties: false,
@@ -390,10 +412,84 @@ async function callTool(name, args = {}) {
       status: args.status || 'all',
       outcome: args.outcome || 'all',
       attention: args.attention ? '1' : undefined,
+      since: args.since,
+      until: args.until,
       q: args.q || '',
       limit: args.limit || 50,
       offset: 0,
     });
+  }
+  if (name === 'get_session_history') {
+    let provider = args.provider;
+    let sessionId = args.sessionId;
+    let workspace = args.workspace ? resolveWorkspace(args.workspace) : null;
+    let startTime = null;
+
+    if (args.target) {
+      const run = resolveRunTarget(args.target);
+      if (run) {
+        provider = provider || run.provider;
+        sessionId = sessionId || run.sessionId;
+        workspace = workspace || run.workspace;
+        startTime = run.startTime;
+      }
+    }
+
+    if (!sessionId && !args.target) {
+      const run = latestRun(workspace || null);
+      if (run) {
+        provider = provider || run.provider;
+        sessionId = sessionId || run.sessionId;
+        workspace = workspace || run.workspace;
+        startTime = run.startTime;
+      }
+    }
+
+    if (!sessionId && !provider && !args.target) {
+      throw new Error('target, sessionId, or provider is required to retrieve session history');
+    }
+
+    let details = null;
+    try {
+      if (provider === 'opencode' && sessionId) {
+        details = getOpenCodeSessionDetails(sessionId);
+      } else if (provider === 'claude') {
+        details = getClaudeSessionDetails(sessionId, startTime, workspace);
+      } else if (provider === 'codex') {
+        details = getCodexSessionDetails(sessionId, startTime, workspace);
+      } else if (provider === 'antigravity') {
+        details = findAntigravityTranscript(sessionId, startTime, workspace);
+      }
+    } catch {}
+
+    if (details) {
+      return {
+        provider,
+        sessionId,
+        workspace,
+        ...details,
+      };
+    }
+
+    // Fallback to indexed SQLite run metadata and summary
+    const run = resolveRunTarget(args.target || '--last');
+    if (run) {
+      return {
+        provider: run.provider,
+        sessionId: run.sessionId,
+        workspace: run.workspace,
+        task: run.task,
+        model: run.model,
+        startTime: run.startTime,
+        status: run.status,
+        outcome: run.outcome,
+        summary: run.markdownSummary || run.result?.summary || '',
+        filesModified: run.filesModified || run.result?.changedFiles || [],
+        source: 'subagents.db',
+      };
+    }
+
+    throw new Error(`session history not found for session: ${sessionId || args.target}`);
   }
   if (name === 'get_run_result') return runResult(resolveRunTarget(args.target || '--last'));
   if (name === 'wait_for_run') {
@@ -442,15 +538,48 @@ async function callTool(name, args = {}) {
     return maybeExecute(command, Boolean(args.execute));
   }
   if (name === 'takeover_run') {
-    const command = [path.join(repoDir, 'relay'), 'takeover'];
-    if (args.workspace) {
-      const workspace = resolveWorkspace(args.workspace);
-      if (!workspace) throw new Error(`unknown workspace: ${args.workspace}`);
-      command.push(workspace);
+    const targetWorkspace = resolveWorkspace(args.workspace) || (args.workspace ? path.resolve(args.workspace) : process.cwd());
+    if (!fs.existsSync(targetWorkspace)) {
+      throw new Error(`workspace directory does not exist: ${targetWorkspace}`);
     }
-    command.push(args.provider);
-    if (args.instructions) command.push(args.instructions);
-    return maybeExecute(command, Boolean(args.execute));
+
+    const session = findLatestWorkspaceSession(targetWorkspace);
+    if (!session) {
+      throw new Error(`no previous session found for workspace: ${targetWorkspace}`);
+    }
+
+    const handoff = buildRelayTakeoverPrompt({
+      sourceProvider: session.provider,
+      goal: session.goal,
+      lastAssistantMessage: session.lastAssistantMessage,
+      touchedFiles: session.touchedFiles,
+      workspace: targetWorkspace,
+      userInstruction: args.instructions || '',
+    });
+
+    const git = getWorkspaceGitContext(targetWorkspace);
+
+    if (!args.execute) {
+      return {
+        sourceProvider: session.provider,
+        targetProvider: args.provider,
+        workspace: targetWorkspace,
+        goal: session.goal,
+        reason: handoff.reason,
+        touchedFiles: session.touchedFiles,
+        lastAssistantMessage: session.lastAssistantMessage ? String(session.lastAssistantMessage).slice(-1000) : null,
+        prompt: handoff.prompt,
+        git,
+        executed: false,
+      };
+    }
+
+    return await callTool('run_agent', {
+      provider: args.provider,
+      prompt: handoff.prompt,
+      workspace: targetWorkspace,
+      wait: true,
+    });
   }
   if (name === 'doctor') {
     const child = spawnSync(path.join(repoDir, 'agent-doctor'), [], { cwd: repoDir, encoding: 'utf8', env: process.env });

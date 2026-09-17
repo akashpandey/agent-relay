@@ -346,7 +346,7 @@ export function getAllRunsFromDb(limit = 1000, offset = 0) {
   return rows.map(r => rowToRunMeta(r, r.status === 'running'));
 }
 
-export function getFilteredRuns({ provider, status, outcome, workspace, attention, q, limit = 50, offset = 0 }) {
+export function getFilteredRuns({ provider, status, outcome, workspace, attention, q, since, until, limit = 50, offset = 0 }) {
   const db = getDatabase();
   let whereClauses = [];
   let params = [];
@@ -363,6 +363,14 @@ export function getFilteredRuns({ provider, status, outcome, workspace, attentio
   if (outcome && outcome !== 'all') {
     whereClauses.push('LOWER(outcome) = LOWER(?)');
     params.push(outcome);
+  }
+  if (since) {
+    whereClauses.push('datetime(start_time) >= datetime(?)');
+    params.push(since);
+  }
+  if (until) {
+    whereClauses.push('datetime(start_time) <= datetime(?)');
+    params.push(until);
   }
   if (q) {
     whereClauses.push('(filename LIKE ? OR workspace LIKE ? OR model LIKE ? OR task LIKE ? OR CAST(pid AS TEXT) LIKE ?)');

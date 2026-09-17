@@ -222,10 +222,12 @@ Example MCP command:
 agent-relay-mcp
 ```
 
-Available tools include `run_agent`, `list_workspaces`, `list_runs`, `get_run_result`,
-`wait_for_run`, `get_log_tail`, `search_log`, `continue_run`, `takeover_run`,
+Available tools include `run_agent`, `list_workspaces`, `list_runs`, `get_session_history`,
+`get_run_result`, `wait_for_run`, `get_log_tail`, `search_log`, `continue_run`, `takeover_run`,
 `doctor`, `list_models`, and `kill_run`. Use `run_agent` to launch tasks directly without shell syntax,
-`list_models` to inspect available provider model selectors, and `kill_run` to terminate runaway processes.
+`list_runs` with `q` and `since`/`until` to search past tasks, `get_session_history` to inspect
+conversation turns and reasoning from prior sessions, `takeover_run` to inspect or pass the baton,
+`list_models` to inspect available model selectors, and `kill_run` to terminate runaway processes.
 Use `get_run_result` or `wait_for_run` for acceptance checks; raw log tools are diagnostic only.
 
 ## Cross-Harness Relay Takeover (Token Exhaustion Handoff)

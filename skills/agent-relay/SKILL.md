@@ -209,9 +209,15 @@ Do not use `/api/logs/<log-filename>`, `tail`, or the Live Terminal as the norma
 
 ### MCP Tool Surface
 
-When the host supports MCP, prefer the local `agent-relay-mcp` server over ad-hoc shell parsing. It exposes structured tools: `run_agent`, `list_workspaces`, `list_runs`, `get_run_result`, `wait_for_run`, `get_log_tail`, `search_log`, `continue_run`, `takeover_run`, `doctor`, `list_models`, and `kill_run`.
+When the host supports MCP, prefer the local `agent-relay-mcp` server over ad-hoc shell parsing. It exposes structured tools: `run_agent`, `list_workspaces`, `list_runs`, `get_session_history`, `get_run_result`, `wait_for_run`, `get_log_tail`, `search_log`, `continue_run`, `takeover_run`, `doctor`, `list_models`, and `kill_run`.
 
-Use `run_agent` to delegate tasks directly without shell syntax (`provider`, `prompt`, `workspace`, `model`, `sessionId`, `timeoutSeconds`, `wait`). Use `list_models` to inspect available model selectors and aliases for each provider. Use `kill_run` to safely terminate an agent process tree. Use `get_run_result` / `wait_for_run` for acceptance. Use `get_log_tail` / `search_log` only for diagnostics after a result reports `attentionRequired=true`, `accepted=false`, or `outcome=unknown|partial|blocked|failed`.
+- Use `run_agent` to delegate tasks directly without shell syntax (`provider`, `prompt`, `workspace`, `model`, `effort`, `sessionId`, `continueLatest`, `sandbox`, `fallbackChain`, `wait`).
+- Use `list_runs` with keyword search `q` and date filters `since` / `until` (e.g. `since: "2026-09-16"`) to find past tasks across any provider or workspace.
+- Use `get_session_history` to inspect the full conversational context, original goals, touched files, tokens, and assistant reasoning from past sessions.
+- Use `takeover_run` with `execute: false` (default) to synthesize a complete cross-harness baton handoff prompt (original goal, touched files in flight, uncommitted git diffs, previous reasoning), or `execute: true` to immediately run the takeover on another harness.
+- Use `list_models` to inspect available model selectors and family aliases for each provider.
+- Use `kill_run` to safely terminate an agent process tree.
+- Use `get_run_result` / `wait_for_run` for acceptance contracts. Use `get_log_tail` / `search_log` only for diagnostics.
 
 ---
 
