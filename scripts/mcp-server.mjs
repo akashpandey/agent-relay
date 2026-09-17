@@ -160,6 +160,35 @@ const tools = [
     description: 'Run agent-doctor and return its output.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
+  {
+    name: 'list_models',
+    description: 'List available models and dynamic family aliases for coding agent providers.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        provider: {
+          type: 'string',
+          enum: ['all', ...providers],
+          description: 'Optional provider to query (opencode, codex, claude, antigravity, or all). Defaults to all.',
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'kill_run',
+    description: 'Safely terminate a running agent process tree by filename, workspace, or --last.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        target: {
+          type: 'string',
+          description: 'Run filename, workspace name, or --last. Defaults to --last.',
+        },
+      },
+      additionalProperties: false,
+    },
+  },
 ];
 
 function knownWorkspaces() {
@@ -388,6 +417,53 @@ async function callTool(name, args = {}) {
   if (name === 'doctor') {
     const child = spawnSync(path.join(repoDir, 'agent-doctor'), [], { cwd: repoDir, encoding: 'utf8', env: process.env });
     return { status: child.status, stdout: child.stdout, stderr: child.stderr };
+  }
+  if (name === 'list_models') {
+    const targetProvider = args.provider || 'all';
+    const queryProvider = (prov) => {
+      const bin = path.join(repoDir, `${prov}-agent`);
+      if (!fs.existsSync(bin)) return { provider: prov, error: 'wrapper not found' };
+      const res = spawnSync(bin, ['--models'], { encoding: 'utf8', env: process.env });
+      const models = (res.stdout || '')
+        .split('\n')
+        .map(s => s.trim())
+        .filter(s => s && !s.startsWith('#') && !s.toLowerCase().includes('usage:') && !s.toLowerCase().includes('selectors:'));
+      return { provider: prov, models };
+    };
+
+    if (targetProvider !== 'all') {
+      if (!providers.has(targetProvider)) throw new Error(`unknown provider: ${targetProvider}`);
+      return queryProvider(targetProvider);
+    }
+    const result = {};
+    for (const p of providers) {
+      result[p] = queryProvider(p).models;
+    }
+    return { providers: result };
+  }
+  if (name === 'kill_run') {
+    const run = resolveRunTarget(args.target || '--last');
+    if (!run) throw new Error('run not found');
+    if (run.status !== 'running') {
+      return { filename: run.filename, killed: false, message: `Run is not running (status: ${run.status})` };
+    }
+    if (!run.pid) {
+      return { filename: run.filename, killed: false, message: 'Run has no recorded PID' };
+    }
+
+    try {
+      spawnSync('pkill', ['-TERM', '-P', String(run.pid)]);
+      process.kill(run.pid, 'SIGTERM');
+      setTimeout(() => {
+        try {
+          spawnSync('pkill', ['-KILL', '-P', String(run.pid)]);
+          process.kill(run.pid, 'SIGKILL');
+        } catch {}
+      }, 500);
+      return { filename: run.filename, pid: run.pid, killed: true, message: `Sent SIGTERM to process tree of PID ${run.pid}` };
+    } catch (err) {
+      return { filename: run.filename, pid: run.pid, killed: false, error: err.message };
+    }
   }
   throw new Error(`unknown tool: ${name}`);
 }

@@ -174,7 +174,8 @@ agent-relay-mcp
 
 Available tools include `run_agent`, `list_workspaces`, `list_runs`, `get_run_result`,
 `wait_for_run`, `get_log_tail`, `search_log`, `continue_run`, `takeover_run`,
-and `doctor`. Use `run_agent` to launch tasks directly without shell syntax.
+`doctor`, `list_models`, and `kill_run`. Use `run_agent` to launch tasks directly without shell syntax,
+`list_models` to inspect available provider model selectors, and `kill_run` to terminate runaway processes.
 Use `get_run_result` or `wait_for_run` for acceptance checks; raw log tools are diagnostic only.
 
 ## Cross-Harness Relay Takeover (Token Exhaustion Handoff)

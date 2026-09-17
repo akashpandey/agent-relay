@@ -14,6 +14,8 @@ const tools = [
   'continue_run',
   'takeover_run',
   'doctor',
+  'list_models',
+  'kill_run',
 ];
 
 const mockModules = {
@@ -221,7 +223,7 @@ describe('MCP tool listing', () => {
       server.write({ jsonrpc: '2.0', id: 10, method: 'tools/list' });
       const [response] = await server.waitForResponses(1);
 
-      assert.equal(response.result.tools.length, 10);
+      assert.equal(response.result.tools.length, 12);
       assert.deepEqual(response.result.tools.map(tool => tool.name), tools);
       for (const tool of response.result.tools) {
         assert.equal(typeof tool.name, 'string');
@@ -273,6 +275,30 @@ describe('MCP tool errors', () => {
       assert.equal(response.error, undefined);
       assert.equal(response.result.isError, true);
       assert.match(response.result.content[0].text, /unknown provider/);
+    });
+  });
+
+  it('supports list_models and kill_run', async () => {
+    await withServer(async server => {
+      server.write({
+        jsonrpc: '2.0',
+        id: 23,
+        method: 'tools/call',
+        params: { name: 'list_models', arguments: { provider: 'invalid-provider' } },
+      });
+      const [response] = await server.waitForResponses(1);
+      assert.equal(response.result.isError, true);
+      assert.match(response.result.content[0].text, /unknown provider/);
+
+      server.write({
+        jsonrpc: '2.0',
+        id: 24,
+        method: 'tools/call',
+        params: { name: 'kill_run', arguments: { target: 'missing-run' } },
+      });
+      const [, response2] = await server.waitForResponses(2);
+      assert.equal(response2.result.isError, true);
+      assert.match(response2.result.content[0].text, /run not found/);
     });
   });
 });
