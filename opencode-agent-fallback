@@ -2,6 +2,9 @@
 set -eu
 
 workspace="$(pwd -P)"
+script_path="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
+repo_dir="$(cd "$(dirname "$script_path")" && pwd -P)"
+opencode_agent_bin="${AGENT_RELAY_OPENCODE_AGENT_BIN:-$(command -v opencode-agent 2>/dev/null || echo "$repo_dir/opencode-agent")}"
 
 # Prevent hanging network commands from blocking subprocess cleanup
 export PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-5}"
@@ -86,7 +89,7 @@ for candidate in "$@"; do
   probe_log="$(mktemp)"
   probe_ok=1
   if AGENT_RELAY_SESSION= OPENCODE_MODEL="$candidate" OPENCODE_TIMEOUT="$probe_timeout" OPENCODE_LOGS=1 \
-      "$HOME/.local/bin/opencode-agent" "Reply with exactly one word: OK" \
+      "$opencode_agent_bin" "Reply with exactly one word: OK" \
       >"$probe_log" 2>&1; then
     probe_ok=0
   fi
@@ -119,4 +122,4 @@ echo "opencode-agent-fallback: selected model=$selected_model" >&2
 exec env OPENCODE_MODEL="$selected_model" OPENCODE_TIMEOUT="$real_timeout" \
   OPENCODE_VARIANT="${OPENCODE_VARIANT:-}" OPENCODE_AGENT="${OPENCODE_AGENT:-}" \
   OPENCODE_LOGS="${OPENCODE_LOGS:-1}" AGENT_RELAY_SESSION="$resume_session" \
-  "$HOME/.local/bin/opencode-agent" "$user_prompt"
+  "$opencode_agent_bin" "$user_prompt"

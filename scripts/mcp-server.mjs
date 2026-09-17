@@ -47,6 +47,24 @@ const tools = [
           maximum: 86400,
           description: 'Timeout in seconds (default 7200).',
         },
+        effort: {
+          type: 'string',
+          enum: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+          description: 'Optional reasoning effort for supported providers (codex, claude).',
+        },
+        continueLatest: {
+          type: 'boolean',
+          description: 'Continue/resume the latest session in target workspace without specifying sessionId.',
+        },
+        sandbox: {
+          type: 'string',
+          enum: ['workspace-write', 'danger-full-access'],
+          description: 'Sandbox mode for Codex (defaults to workspace-write).',
+        },
+        fallbackChain: {
+          type: 'string',
+          description: 'Comma-separated model chain for OpenCode fallback (e.g. zai-coding-plan/glm-5.3,openai/gpt-5.4-mini).',
+        },
         wait: {
           type: 'boolean',
           description: 'Wait for completion and return structured result contract (default true). If false, launches in background.',
@@ -278,17 +296,31 @@ async function callTool(name, args = {}) {
       throw new Error(`workspace directory does not exist: ${targetWorkspace}`);
     }
 
-    const wrapperBin = path.join(repoDir, `${args.provider}-agent`);
+    let wrapperName = `${args.provider}-agent`;
+    const env = { ...process.env };
+
+    if (args.provider === 'opencode' && args.fallbackChain) {
+      wrapperName = 'opencode-agent-fallback';
+      env.OPENCODE_MODEL_CHAIN = args.fallbackChain;
+    }
+
+    const wrapperBin = path.join(repoDir, wrapperName);
     if (!fs.existsSync(wrapperBin)) {
       throw new Error(`agent wrapper not found: ${wrapperBin}`);
     }
 
-    const env = { ...process.env };
     if (args.model) {
       if (args.provider === 'opencode') env.OPENCODE_MODEL = args.model;
       else if (args.provider === 'codex') env.CODEX_MODEL = args.model;
       else if (args.provider === 'claude') env.CLAUDE_MODEL = args.model;
       else if (args.provider === 'antigravity') env.AGY_MODEL = args.model;
+    }
+    if (args.effort) {
+      if (args.provider === 'codex') env.CODEX_EFFORT = args.effort;
+      else if (args.provider === 'claude') env.CLAUDE_EFFORT = args.effort;
+    }
+    if (args.sandbox && args.provider === 'codex') {
+      env.CODEX_SANDBOX = args.sandbox;
     }
     if (args.sessionId) {
       env.AGENT_RELAY_SESSION = args.sessionId;
@@ -300,9 +332,15 @@ async function callTool(name, args = {}) {
       else if (args.provider === 'antigravity') env.AGY_PRINT_TIMEOUT = `${args.timeoutSeconds}s`;
     }
 
+    const wrapperArgs = [];
+    if (args.continueLatest) {
+      wrapperArgs.push('--continue');
+    }
+    wrapperArgs.push(args.prompt);
+
     const wait = args.wait !== false;
     if (!wait) {
-      const child = spawn(wrapperBin, [args.prompt], {
+      const child = spawn(wrapperBin, wrapperArgs, {
         cwd: targetWorkspace,
         env,
         stdio: 'ignore',
@@ -324,7 +362,7 @@ async function callTool(name, args = {}) {
     }
 
     const timeoutMs = (args.timeoutSeconds || 7200) * 1000;
-    const child = spawnSync(wrapperBin, [args.prompt], {
+    const child = spawnSync(wrapperBin, wrapperArgs, {
       cwd: targetWorkspace,
       env,
       encoding: 'utf8',
