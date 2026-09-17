@@ -18,20 +18,20 @@ Show
 
 Sleep 800ms
 
-Type "relay doctor"
-Sleep 400ms
-Enter
-Sleep 2s
-
 Type "relay workspaces"
 Sleep 400ms
 Enter
 Sleep 2s
 
-Type "relay opencode 'Review auth flow for token expiry'"
+Type "relay claude 'Refactor auth middleware to JWT'"
 Sleep 400ms
 Enter
 Sleep 2500ms
+
+Type "relay takeover codex 'Finish the tests and verify'"
+Sleep 400ms
+Enter
+Sleep 3s
 
 Type "relay result --last"
 Sleep 400ms
