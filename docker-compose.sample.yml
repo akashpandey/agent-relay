@@ -35,6 +35,7 @@ services:
       - CLAUDE_DATA=/claude_data
       - CODEX_DATA=/codex_data
       - AGENT_RELAY_DATA_DIR=/app/data
+      - NODE_OPTIONS=--no-warnings=ExperimentalWarning
     volumes:
       # ── agent-relay data & logs ──────────────────────────────────────
       # These paths are relative to docker-compose.yml and usually work as-is.
