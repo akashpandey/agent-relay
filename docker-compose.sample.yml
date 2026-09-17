@@ -35,6 +35,7 @@ services:
       - CLAUDE_DATA=/claude_data
       - CODEX_DATA=/codex_data
       - AGENT_RELAY_DATA_DIR=/app/data
+      - AGENT_RELAY_CODE_ROOT=${AGENT_RELAY_CODE_ROOT:-/home/node/Code}
       - NODE_OPTIONS=--no-warnings=ExperimentalWarning
     volumes:
       # ── agent-relay data & logs ──────────────────────────────────────

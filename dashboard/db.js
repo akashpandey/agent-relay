@@ -383,7 +383,8 @@ export function getFilteredRuns({ provider, status, outcome, workspace, attentio
   if (workspaceFilter || attention === '1') {
     const rows = db.prepare(`SELECT * FROM runs ${whereSql} ORDER BY start_time DESC`).all(...params);
     const filtered = rows.filter(r => {
-      if (workspaceFilter && canonicalWorkspacePath(r.workspace) !== workspaceFilter) return false;
+      const canonical = canonicalWorkspacePath(r.workspace) || r.workspace;
+      if (workspaceFilter && canonical !== workspaceFilter) return false;
       if (attention === '1' && !rowNeedsAttention(r)) return false;
       return true;
     });
@@ -520,8 +521,8 @@ export function getWorkspacesFromDb() {
 
   const byPath = new Map();
   for (const row of rows) {
-    const canonical = canonicalWorkspacePath(row.path);
-    if (!canonical) continue;
+    const canonical = canonicalWorkspacePath(row.path) || row.path;
+    if (!canonical || canonical === 'Unknown') continue;
     const existing = byPath.get(canonical) || {
       path: canonical,
       name: path.basename(canonical),

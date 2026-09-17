@@ -21,19 +21,42 @@ export function configuredWorkspaceEntries() {
 
 export function canonicalWorkspacePath(workspace) {
   if (!workspace || workspace === 'Unknown') return null;
-  const clean = workspace.replace(/\/+$/, '');
+  const clean = String(workspace).replace(/\/+$/, '');
+  if (!clean) return null;
 
-  // Match against user-configured workspace entries
+  // 1. Match against user-configured workspace entries
   for (const configured of configuredWorkspaceEntries()) {
     const root = configured.path.replace(/\/+$/, '');
     if (clean === root || clean.startsWith(`${root}/`)) return root;
   }
 
-  // Auto-detect workspaces under CODE_ROOT by first path segment
-  if (clean.startsWith(`${CODE_ROOT}/`)) {
-    const [, name] = clean.slice(CODE_ROOT.length + 1).match(/^([^/]+)(?:\/|$)/) || [];
-    return name ? `${CODE_ROOT}/${name}` : null;
+  // 2. Explicit CODE_ROOT check if provided via environment
+  const envCodeRoot = process.env.AGENT_RELAY_CODE_ROOT || process.env.SUBAGENT_CODE_ROOT;
+  if (envCodeRoot) {
+    const normRoot = envCodeRoot.replace(/\/+$/, '');
+    if (clean === normRoot) return normRoot;
+    if (clean.startsWith(`${normRoot}/`)) {
+      const [, name] = clean.slice(normRoot.length + 1).match(/^([^/]+)(?:\/|$)/) || [];
+      return name ? `${normRoot}/${name}` : normRoot;
+    }
   }
 
-  return null;
+  // 3. Auto-detect common developer repository parent directories (Linux / macOS / container)
+  // e.g. /home/<user>/Code/<project>, /Users/<user>/Projects/<project>, /root/Code/<project>
+  const devRootMatch = clean.match(/^((?:\/(?:home|Users)\/[^/]+|\/root)\/(?:Code|Projects|projects|src|repos|workspace|workspaces))(?:\/([^/]+))?/);
+  if (devRootMatch) {
+    const [, parentDir, projectName] = devRootMatch;
+    return projectName ? `${parentDir}/${projectName}` : parentDir;
+  }
+
+  // 4. If under homedir Code
+  const homeCodeRoot = path.join(os.homedir(), 'Code');
+  if (clean === homeCodeRoot) return homeCodeRoot;
+  if (clean.startsWith(`${homeCodeRoot}/`)) {
+    const [, name] = clean.slice(homeCodeRoot.length + 1).match(/^([^/]+)(?:\/|$)/) || [];
+    return name ? `${homeCodeRoot}/${name}` : homeCodeRoot;
+  }
+
+  // 5. Fallback: If it is an absolute path, treat as canonical
+  return clean.startsWith('/') ? clean : null;
 }
