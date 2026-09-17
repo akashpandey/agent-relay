@@ -4,7 +4,7 @@ import path from 'node:path';
 import { createInterface } from 'node:readline';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { getFilteredRuns, getRun, getWorkspacesFromDb } from '../dashboard/db.js';
+import { getFilteredRuns, getRun, getWorkspacesFromDb, registerRunComplete } from '../dashboard/db.js';
 import { buildRunCommands } from '../dashboard/commands.js';
 import { canonicalWorkspacePath, configuredWorkspaceEntries } from '../dashboard/workspaces.js';
 import { findLatestWorkspaceSession, buildRelayTakeoverPrompt, getWorkspaceGitContext } from './relay-handoff.mjs';
@@ -627,7 +627,55 @@ async function callTool(name, args = {}) {
           process.kill(run.pid, 'SIGKILL');
         } catch {}
       }, 500);
-      return { filename: run.filename, pid: run.pid, killed: true, message: `Sent SIGTERM to process tree of PID ${run.pid}` };
+
+      // Extract session ID from log file if missing
+      let sessionId = (run.sessionId && run.sessionId !== 'new') ? run.sessionId : null;
+      const logFilePath = path.join(logsDir, run.filename);
+      const doneFilePath = logFilePath.replace(/\.log$/, '.done');
+      if (!sessionId && fs.existsSync(logFilePath)) {
+        try {
+          const content = fs.readFileSync(logFilePath, 'utf8');
+          const m = content.match(/session\.id=([^\s]+)/i) ||
+                    content.match(/"conversation_id":"([^"]+)"/i) ||
+                    content.match(/"session_id":"([^"]+)"/i) ||
+                    content.match(/session id:\s*([^\r\n]+)/i);
+          if (m) sessionId = m[1].trim();
+        } catch {}
+      }
+
+      if (!fs.existsSync(doneFilePath) && fs.existsSync(logFilePath)) {
+        try {
+          fs.writeFileSync(doneFilePath, JSON.stringify({
+            status: 'failed',
+            exitCode: 143,
+            provider: run.provider,
+            workspace: run.workspace,
+            model: run.model,
+            sessionId: sessionId || 'new',
+            logFile: logFilePath,
+            completedAt: new Date().toISOString()
+          }, null, 2) + '\n');
+        } catch {}
+      }
+
+      try {
+        registerRunComplete({
+          filename: run.filename,
+          exitCode: 143,
+          status: 'failed',
+          sessionId: sessionId || null,
+        });
+      } catch {}
+
+      const { continuation } = buildRunCommands(run, sessionId);
+      return {
+        filename: run.filename,
+        pid: run.pid,
+        killed: true,
+        sessionId: sessionId || null,
+        continuation,
+        message: `Killed process tree of PID ${run.pid}. Session ID ${sessionId ? `captured (${sessionId})` : 'not found'}.`
+      };
     } catch (err) {
       return { filename: run.filename, pid: run.pid, killed: false, error: err.message };
     }
