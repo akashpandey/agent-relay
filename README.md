@@ -5,6 +5,54 @@
 
 > **Pass the baton between Claude Code, Codex, Antigravity, and OpenCode with a single Unix command.**
 
+[📖 **Getting Started Guide**](./docs/GETTING_STARTED.md) — 5-minute setup from zero to running delegated agents.
+
+```mermaid
+flowchart TD
+    User["Developer / AI Coding Session"]
+    
+    subgraph Harnesses ["Supported AI Harnesses"]
+        Claude["Claude Code"]
+        Codex["OpenAI Codex"]
+        OpenCode["OpenCode"]
+        Agy["Antigravity / Gemini"]
+    end
+
+    subgraph RelayCore ["agent-relay Core"]
+        CLI["relay / agent CLI"]
+        MCP["agent-relay-mcp Server"]
+        Takeover["Relay Takeover Engine"]
+    end
+
+    subgraph Wrappers ["Execution Wrappers"]
+        WClaude["claude-agent"]
+        WCodex["codex-agent"]
+        WOpen["opencode-agent / fallback"]
+        WAgy["antigravity-agent"]
+    end
+
+    subgraph Observability ["Observability & Storage"]
+        DB[("subagents.db (SQLite WAL)")]
+        Logs["Run Logs (~/agent-relay/logs/)"]
+        Dashboard["Web Visualizer (http://localhost:4242)"]
+    end
+
+    User --> Harnesses
+    User --> CLI
+    Harnesses -.->|MCP (run_agent / tools)| MCP
+    Harnesses -.->|Shell Commands| CLI
+    
+    MCP --> Wrappers
+    CLI --> Wrappers
+    CLI --> Takeover
+    Takeover --> Wrappers
+
+    Wrappers --> DB
+    Wrappers --> Logs
+    DB --> Dashboard
+    Logs --> Dashboard
+```
+
 Small, harness-agnostic shell wrappers and local-first orchestration for running coding agents in non-interactive mode.
 
 ![agent-relay demo](./docs/assets/demo.gif)
@@ -138,20 +186,22 @@ printf '%s\n' "Review this repo" | ./codex-agent
 `./relay` (or `./agent`) is the preferred front door when you want workspace aliases or quick continuation:
 
 ```bash
+./relay init             # Auto-discover git repos and configure workspaces
+./relay mcp install      # Auto-wire MCP server into Claude, OpenCode, Codex, Antigravity
 ./relay workspaces
 ./relay doctor
 ./relay dashboard
 ./relay dashboard restart
-./relay fitschool opencode "Review this repo"
+./relay my-app opencode "Review this repo"
 ./relay codex "Review the current directory"
-./relay attention fitschool
+./relay attention my-app
 ./relay prune --dry-run --older-than 30d
-./relay result fitschool
-./relay open fitschool
-./relay last fitschool
-./relay continue fitschool "Fix the issue from the previous run"
-./relay continue fitschool --to opencode "Finish tests using another harness"
-./relay takeover fitschool codex "Pick up where Claude/OpenCode left off"
+./relay result my-app
+./relay open my-app
+./relay last my-app
+./relay continue my-app "Fix the issue from the previous run"
+./relay continue my-app --to opencode "Finish tests using another harness"
+./relay takeover my-app codex "Pick up where Claude/OpenCode left off"
 ```
 
 Provider wrappers still work directly and use the current working directory as the workspace root. When a launch directory maps to a canonical project workspace, the startup banner also prints `canonical_workspace=...`; the run still executes in the original directory.
