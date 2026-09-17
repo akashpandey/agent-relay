@@ -19,6 +19,9 @@ const ICONS = {
   info: '<svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6.5"></circle><line x1="8" y1="7.5" x2="8" y2="11.5"></line><circle cx="8" cy="4.75" r="0.75" fill="currentColor"></circle></svg>',
   fullscreen: '<svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 5.5V2h3.5M14 5.5V2h-3.5M2 10.5V14h3.5M14 10.5V14h-3.5"></path></svg>',
   exitFullscreen: '<svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5.5 2v3.5H2M10.5 2v3.5H14M5.5 14v-3.5H2M10.5 14v-3.5H14"></path></svg>',
+  alertTriangle: '<svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7.13 2.5a1 1 0 0 1 1.74 0l5.5 9.5A1 1 0 0 1 13.5 13.5h-11a1 1 0 0 1-.87-1.5l5.5-9.5z"></path><line x1="8" y1="6" x2="8" y2="9"></line><circle cx="8" cy="11.25" r="0.75" fill="currentColor"></circle></svg>',
+  x: '<svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="3.5" y1="3.5" x2="12.5" y2="12.5"></line><line x1="12.5" y1="3.5" x2="3.5" y2="12.5"></line></svg>',
+  arrowRight: '<svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3.5 8h9M9 4.5l3.5 3.5L9 11.5"></path></svg>',
 };
 
 // --- Application State ---
@@ -662,7 +665,7 @@ function applyModalMetadata(meta) {
         btn.className = 'btn btn-sm btn-secondary';
         const label = formatProviderName(targetProvider);
         btn.title = `Copy takeover command for ${label}: ${cmd}`;
-        btn.innerHTML = `<span style="opacity: 0.7">➜</span> ${escapeHtml(label)}`;
+        btn.innerHTML = `${ICONS.arrowRight} ${escapeHtml(label)}`;
         btn.onclick = () => copyToClipboard(cmd, `Relay takeover command for ${label} copied!`);
         el.modalRelayActions.appendChild(btn);
       }
@@ -929,7 +932,7 @@ async function startLogStream(filename) {
       appendLogChunk(fullText, true);
       renderTerminalLines();
     } else if (res.status === 404) {
-      el.modalTerminalContent.innerHTML = '<div style="padding: 2.5rem; color: var(--text-dim); text-align: center; font-size: 0.9rem;">⚠️ Log file not found on disk (may have been pruned or was a test run).</div>';
+      el.modalTerminalContent.innerHTML = `<div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 2.5rem; color: var(--text-dim); text-align: center; font-size: 0.9rem;">${ICONS.alertTriangle} <span>Log file not found on disk (may have been pruned or was a test run).</span></div>`;
       el.streamStatusBadge.innerHTML = '<span>●</span> Log Unavailable';
       el.streamStatusBadge.style.color = 'var(--text-dim)';
       return;
@@ -956,7 +959,7 @@ async function startLogStream(filename) {
       const data = JSON.parse(e.data);
       if (data.type === 'error') {
         if (!state.rawLogLines.length) {
-          el.modalTerminalContent.innerHTML = `<div style="padding: 2.5rem; color: var(--text-dim); text-align: center; font-size: 0.9rem;">⚠️ ${escapeHtml(data.error || 'Log unavailable')}</div>`;
+          el.modalTerminalContent.innerHTML = `<div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 2.5rem; color: var(--text-dim); text-align: center; font-size: 0.9rem;">${ICONS.alertTriangle} <span>${escapeHtml(data.error || 'Log unavailable')}</span></div>`;
         }
         el.streamStatusBadge.innerHTML = '<span>●</span> Log Unavailable';
         el.streamStatusBadge.style.color = 'var(--text-dim)';

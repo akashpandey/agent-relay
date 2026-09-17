@@ -32,14 +32,22 @@ export function canonicalWorkspacePath(workspace) {
 
   const codeRoot = process.env.AGENT_RELAY_CODE_ROOT || process.env.SUBAGENT_CODE_ROOT || path.join(os.homedir(), 'Code');
 
+  // Helper to collapse ephemeral feature folders into base repo
+  const resolveProjectFolder = (parentDir, projectName) => {
+    if (projectName.startsWith('fitschool-') && projectName !== 'fitschool-waitlist') {
+      return `${parentDir}/fitschool`;
+    }
+    return `${parentDir}/${projectName}`;
+  };
+
   // 2. Tmp worktrees: /tmp/<proj>-worktrees/* or /tmp/worktrees/<proj>/*
   const tmpMatch = clean.match(/^\/tmp\/([^/]+)-worktrees(?:\/.*)?$/);
   if (tmpMatch) {
-    return `${codeRoot}/${tmpMatch[1]}`;
+    return resolveProjectFolder(codeRoot, tmpMatch[1]);
   }
   const tmpWorktreeMatch = clean.match(/^\/tmp\/worktrees\/([^/]+)(?:\/.*)?$/);
   if (tmpWorktreeMatch) {
-    return `${codeRoot}/${tmpWorktreeMatch[1]}`;
+    return resolveProjectFolder(codeRoot, tmpWorktreeMatch[1]);
   }
 
   // 3. Embedded worktrees (.worktrees or .claude/worktrees)
@@ -48,18 +56,17 @@ export function canonicalWorkspacePath(workspace) {
     return canonicalWorkspacePath(embeddedWorktree[1]);
   }
 
-  // 4. Scratch & Test paths
-  if (clean.includes('test-subagent') || clean.includes('local-subagents') || clean.endsWith('/subagents')) {
+  // 4. Scratch & Test paths: any path under /tmp that wasn't a project worktree, or test/scratchpad paths
+  if (
+    clean.startsWith('/tmp/') ||
+    clean === '/tmp' ||
+    clean.includes('test-subagent') ||
+    clean.includes('local-subagents') ||
+    clean.endsWith('/subagents') ||
+    /\b(?:scratch|scratchpad)\b/i.test(clean)
+  ) {
     return 'Other / Scratch';
   }
-
-  // Helper to collapse ephemeral feature folders into base repo
-  const resolveProjectFolder = (parentDir, projectName) => {
-    if (projectName.startsWith('fitschool-') && projectName !== 'fitschool-waitlist') {
-      return `${parentDir}/fitschool`;
-    }
-    return `${parentDir}/${projectName}`;
-  };
 
   // 5. Explicit CODE_ROOT check if provided via environment
   const envCodeRoot = process.env.AGENT_RELAY_CODE_ROOT || process.env.SUBAGENT_CODE_ROOT;

@@ -324,7 +324,9 @@
               <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
             </svg>
           </button>
-          <button class="btn-close" id="btn-close-workspace-modal" title="Close (Esc)">✕</button>
+          <button class="btn-close" id="btn-close-workspace-modal" title="Close (Esc)" aria-label="Close">
+            <svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="3.5" y1="3.5" x2="12.5" y2="12.5"></line><line x1="12.5" y1="3.5" x2="3.5" y2="12.5"></line></svg>
+          </button>
         </div>
       </div>
 
@@ -547,7 +549,9 @@
           </svg>
           <h3>Keyboard Shortcuts</h3>
         </div>
-        <button class="btn-close" id="btn-close-shortcuts-modal">✕</button>
+        <button class="btn-close" id="btn-close-shortcuts-modal" title="Close (Esc)" aria-label="Close">
+          <svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="3.5" y1="3.5" x2="12.5" y2="12.5"></line><line x1="12.5" y1="3.5" x2="3.5" y2="12.5"></line></svg>
+        </button>
       </div>
       <div class="modal-body">
         <div class="shortcut-list">
@@ -598,7 +602,9 @@
           <span class="status-dot failed"></span>
           <h3>Dangling Subagent Processes</h3>
         </div>
-        <button class="btn-close" id="btn-close-dangling-modal">✕</button>
+        <button class="btn-close" id="btn-close-dangling-modal" title="Close (Esc)" aria-label="Close">
+          <svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="3.5" y1="3.5" x2="12.5" y2="12.5"></line><line x1="12.5" y1="3.5" x2="3.5" y2="12.5"></line></svg>
+        </button>
       </div>
       <div class="modal-body">
         <p class="modal-desc">These processes match background agent runners or child CLI instances that are still alive in the process tree.</p>

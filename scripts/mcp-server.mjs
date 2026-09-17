@@ -628,19 +628,49 @@ async function callTool(name, args = {}) {
         } catch {}
       }, 500);
 
+function extractSessionIdFromLog(logFilePath) {
+  if (!fs.existsSync(logFilePath)) return null;
+  try {
+    const fd = fs.openSync(logFilePath, 'r');
+    const stat = fs.fstatSync(fd);
+    const size = stat.size;
+    const READ_SIZE = 65536;
+    let buffer = '';
+
+    const headBuf = Buffer.alloc(Math.min(size, READ_SIZE));
+    fs.readSync(fd, headBuf, 0, headBuf.length, 0);
+    buffer += headBuf.toString('utf8');
+
+    if (size > READ_SIZE) {
+      const tailBuf = Buffer.alloc(Math.min(size - READ_SIZE, READ_SIZE));
+      fs.readSync(fd, tailBuf, 0, tailBuf.length, size - tailBuf.length);
+      buffer += '\n' + tailBuf.toString('utf8');
+    }
+    fs.closeSync(fd);
+
+    const m = buffer.match(/session\.id=([^\s]+)/i) ||
+              buffer.match(/"conversation_id":"([^"]+)"/i) ||
+              buffer.match(/"session_id":"([^"]+)"/i) ||
+              buffer.match(/session id:\s*([^\r\n]+)/i) ||
+              buffer.match(/created id=([^\s]+)/i) ||
+              buffer.match(/thread_id=([^\s,]+)/i) ||
+              buffer.match(/claude_session_id=([^\s,]+)/i) ||
+              buffer.match(/session=(?!new\b)([^\s,]+)/i) ||
+              buffer.match(/(ses_[a-zA-Z0-9]+)/);
+    if (m) {
+      const sid = m[1].trim();
+      return (sid && sid !== 'new') ? sid : null;
+    }
+  } catch {}
+  return null;
+}
+
       // Extract session ID from log file if missing
       let sessionId = (run.sessionId && run.sessionId !== 'new') ? run.sessionId : null;
       const logFilePath = path.join(logsDir, run.filename);
       const doneFilePath = logFilePath.replace(/\.log$/, '.done');
       if (!sessionId && fs.existsSync(logFilePath)) {
-        try {
-          const content = fs.readFileSync(logFilePath, 'utf8');
-          const m = content.match(/session\.id=([^\s]+)/i) ||
-                    content.match(/"conversation_id":"([^"]+)"/i) ||
-                    content.match(/"session_id":"([^"]+)"/i) ||
-                    content.match(/session id:\s*([^\r\n]+)/i);
-          if (m) sessionId = m[1].trim();
-        } catch {}
+        sessionId = extractSessionIdFromLog(logFilePath);
       }
 
       if (!fs.existsSync(doneFilePath) && fs.existsSync(logFilePath)) {
