@@ -877,7 +877,7 @@ function extractFilesAndDiffs(rawContent) {
   };
 }
 
-function parseOutcomeJson(text) {
+export function parseOutcomeJson(text) {
   if (!text) return null;
   const contractKeywords = ['outcome', 'verification', 'blockers', 'incomplete', 'changedFiles', 'changed_files'];
   if (!contractKeywords.some(kw => text.includes(kw))) return null;
@@ -889,7 +889,16 @@ function parseOutcomeJson(text) {
   for (let i = 0; i < text.length; i++) {
     if (text[i] !== '{') continue;
     let depth = 0;
+    let inString = false;
+    let escaped = false;
     for (let j = i; j < text.length; j++) {
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (text[j] === '\\') escaped = true;
+        else if (text[j] === '"') inString = false;
+        continue;
+      }
+      if (text[j] === '"') { inString = true; continue; }
       if (text[j] === '{') depth++;
       if (text[j] === '}') depth--;
       if (depth === 0) {
@@ -900,7 +909,7 @@ function parseOutcomeJson(text) {
     }
   }
 
-  for (const candidate of candidates) {
+  for (const candidate of candidates.reverse()) {
     try {
       const parsed = JSON.parse(candidate.trim());
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
@@ -1338,7 +1347,10 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
     status = 'completed';
   }
 
-  let result = extractStructuredOutcome(markdownSummary, tailContent, status);
+  if (doneMeta && !isAlive) status = doneMeta.status || status;
+  let result = doneMeta?.result
+    ? extractStructuredOutcome(JSON.stringify(doneMeta.result))
+    : extractStructuredOutcome(markdownSummary, tailContent, status);
   if (!isAlive && !doneMeta) {
     status = 'failed';
     result = {
@@ -1389,6 +1401,7 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
     isAlive,
     processCmd,
     status,
+    exitCode: doneMeta?.exitCode ?? null,
     workspace: workspace || 'Unknown',
     workspaceName: workspace ? path.basename(workspace) : 'workspace',
     model: formatModelName(model, parsedName.provider),

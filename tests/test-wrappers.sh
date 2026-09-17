@@ -126,6 +126,20 @@ assert_output_contains "relay takeover help" "Usage: relay takeover" "$REPO_DIR/
 assert_output_contains "relay opencode task" "Mock opencode done" "$REPO_DIR/relay" opencode "Complete testing"
 
 # Test log file creation
+assert_success "all runs persist result payloads" node --input-type=module -e '
+  import fs from "node:fs";
+  import assert from "node:assert/strict";
+  const dir = process.env.AGENT_RELAY_LOG_DIR;
+  const logs = fs.readdirSync(dir).filter(f => f.endsWith(".log"));
+  assert.ok(logs.length >= 4);
+  for (const log of logs) {
+    const done = JSON.parse(fs.readFileSync(`${dir}/${log.replace(/\.log$/, ".done")}`, "utf8"));
+    assert.equal(done.exitCode, 0);
+    assert.equal(done.result.outcome, "done");
+    assert.match(done.result.summary, /^Mock /);
+    assert.ok(Array.isArray(done.result.verification));
+  }
+'
 log_count=$(find "$TEST_LOGS" -type f -name "*.log" | wc -l)
 echo -n "Verifying run logs were written ($log_count found) ... "
 if [ "$log_count" -ge 4 ]; then

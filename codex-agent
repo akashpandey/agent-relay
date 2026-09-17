@@ -136,8 +136,9 @@ stop_subagent() {
     pkill -KILL -g "$cmd_pid" >/dev/null 2>&1 || true
   fi
 }
-trap 'stop_subagent' EXIT
-trap 'stop_subagent; exit 143' HUP INT TERM
+done_provider="codex"
+done_model="${CODEX_MODEL:-default}"
+. "$repo_dir/scripts/finalize-run.sh"
 
 resolve_codex_model() {
   raw_model="${1:-}"
@@ -304,7 +305,7 @@ sess_id="$(grep -oE '"session_id":"[^"]+"' "$log_file" 2>/dev/null | head -n 1 |
 if [ -z "$sess_id" ]; then
   sess_id="$(grep -iE '^session id:' "$log_file" 2>/dev/null | head -n 1 | awk '{print $3}' || echo "${resume_session:-new}")"
 fi
-DONE_FILE="$done_file" DONE_STATUS="$([ "$status" -eq 0 ] && echo "completed" || echo "failed")" DONE_EXIT_CODE="$status" DONE_PROVIDER="codex" DONE_WORKSPACE="$workspace" DONE_MODEL="${CODEX_MODEL:-default}" DONE_SESSION_ID="$sess_id" DONE_LOG_FILE="$log_file" DONE_COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" node -e 'const fs=require("node:fs"); fs.writeFileSync(process.env.DONE_FILE, JSON.stringify({status:process.env.DONE_STATUS, exitCode:Number(process.env.DONE_EXIT_CODE), provider:process.env.DONE_PROVIDER, workspace:process.env.DONE_WORKSPACE, model:process.env.DONE_MODEL, sessionId:process.env.DONE_SESSION_ID, logFile:process.env.DONE_LOG_FILE, completedAt:process.env.DONE_COMPLETED_AT}, null, 2) + "\n")'
+write_done "$status"
 
 # Automatically ingest subagent session to claude-mem (non-blocking)
 if [ -f "$done_file" ] && command -v bun >/dev/null 2>&1; then
