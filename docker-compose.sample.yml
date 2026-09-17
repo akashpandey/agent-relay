@@ -1,0 +1,75 @@
+# docker-compose.sample.yml — Copy to docker-compose.yml and adjust paths for your machine.
+#
+#   cp docker-compose.sample.yml docker-compose.yml
+#   # Edit volume paths below, then:
+#   docker compose up -d
+#
+# The dashboard reads agent run logs, SQLite databases, and provider session
+# data to render the real-time web UI at http://localhost:4242.
+
+x-default-logging: &default-logging
+  driver: local
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  agent-dashboard:
+    container_name: agent-relay-dashboard
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    image: agent-relay-dashboard:latest
+    logging: *default-logging
+    pid: "host"
+    mem_limit: 256m
+    pids_limit: 128
+    cpus: 0.5
+    environment:
+      - PORT=4242
+      - HOST=0.0.0.0
+      - LOGS_DIR=/app/logs
+      - PROC_DIR=/host_proc
+      - OPENCODE_DB=/opencode_data/opencode.db
+      - GEMINI_BRAIN=/gemini_brain
+      - CLAUDE_DATA=/claude_data
+      - CODEX_DATA=/codex_data
+      - AGENT_RELAY_DATA_DIR=/app/data
+    volumes:
+      # ── agent-relay data & logs ──────────────────────────────────────
+      # These paths are relative to docker-compose.yml and usually work as-is.
+      - ./data:/app/data
+      - ./logs:/app/logs:ro
+
+      # ── dashboard source (bind-mount for live reload during dev) ────
+      - ./dashboard/server.js:/app/server.js:ro
+      - ./dashboard/parser.js:/app/parser.js:ro
+      - ./dashboard/db.js:/app/db.js:ro
+      - ./dashboard/sync-logs.js:/app/sync-logs.js:ro
+      - ./dashboard/workspaces.js:/app/workspaces.js:ro
+      - ./dashboard/commands.js:/app/commands.js:ro
+      - ./dashboard/public:/app/public:ro
+
+      # ── host /proc (for PID-based run status detection) ────────────
+      - /proc:/host_proc:ro
+
+      # ── provider session data ──────────────────────────────────────
+      # Uncomment and adjust paths below for each provider you use.
+      # The dashboard uses these read-only to enrich run metadata with
+      # token counts, costs, tool calls, and session details.
+      #
+      # OpenCode (usually ~/.local/share/opencode)
+      # - ${HOME}/.local/share/opencode:/opencode_data:ro
+      #
+      # Antigravity / Gemini CLI (usually ~/.gemini/antigravity-cli/brain)
+      # - ${HOME}/.gemini/antigravity-cli/brain:/gemini_brain:ro
+      #
+      # Claude Code (usually ~/.claude)
+      # - ${HOME}/.claude:/claude_data:ro
+      #
+      # Codex CLI (usually ~/.codex)
+      # - ${HOME}/.codex:/codex_data:ro
+
+    ports:
+      - "4242:4242"
+    restart: unless-stopped
