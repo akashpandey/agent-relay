@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { getFilteredRuns, getRun, getWorkspacesFromDb } from '../dashboard/db.js';
 import { buildRunCommands } from '../dashboard/commands.js';
@@ -14,6 +14,48 @@ const logsDir = process.env.AGENT_RELAY_LOG_DIR || process.env.SUBAGENT_LOG_DIR 
 const providers = new Set(['opencode', 'codex', 'claude', 'antigravity']);
 
 const tools = [
+  {
+    name: 'run_agent',
+    description: 'Run a delegated coding agent (opencode, codex, claude, antigravity) in a target workspace.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        provider: {
+          type: 'string',
+          enum: [...providers],
+          description: 'The agent provider to run (opencode, codex, claude, antigravity).',
+        },
+        prompt: {
+          type: 'string',
+          description: 'The task instructions for the delegated agent.',
+        },
+        workspace: {
+          type: 'string',
+          description: 'Target workspace directory or alias. Defaults to current directory.',
+        },
+        model: {
+          type: 'string',
+          description: 'Optional model selector or family alias (e.g. latest, gemini-flash, opus).',
+        },
+        sessionId: {
+          type: 'string',
+          description: 'Optional session ID to resume or continue an existing session.',
+        },
+        timeoutSeconds: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 86400,
+          description: 'Timeout in seconds (default 7200).',
+        },
+        wait: {
+          type: 'boolean',
+          description: 'Wait for completion and return structured result contract (default true). If false, launches in background.',
+        },
+      },
+      required: ['provider', 'prompt'],
+      additionalProperties: false,
+    },
+  },
   {
     name: 'list_workspaces',
     description: 'List known agent-relay workspaces from configured aliases and run history.',
@@ -194,6 +236,83 @@ function maybeExecute(command, execute) {
 }
 
 async function callTool(name, args = {}) {
+  if (name === 'run_agent') {
+    if (!args.provider || !providers.has(args.provider)) {
+      throw new Error(`unknown provider: ${args.provider}. Supported: ${[...providers].join(', ')}`);
+    }
+    if (!args.prompt || typeof args.prompt !== 'string') {
+      throw new Error('prompt is required');
+    }
+
+    const targetWorkspace = resolveWorkspace(args.workspace) || (args.workspace ? path.resolve(args.workspace) : process.cwd());
+    if (!fs.existsSync(targetWorkspace)) {
+      throw new Error(`workspace directory does not exist: ${targetWorkspace}`);
+    }
+
+    const wrapperBin = path.join(repoDir, `${args.provider}-agent`);
+    if (!fs.existsSync(wrapperBin)) {
+      throw new Error(`agent wrapper not found: ${wrapperBin}`);
+    }
+
+    const env = { ...process.env };
+    if (args.model) {
+      if (args.provider === 'opencode') env.OPENCODE_MODEL = args.model;
+      else if (args.provider === 'codex') env.CODEX_MODEL = args.model;
+      else if (args.provider === 'claude') env.CLAUDE_MODEL = args.model;
+      else if (args.provider === 'antigravity') env.AGY_MODEL = args.model;
+    }
+    if (args.sessionId) {
+      env.AGENT_RELAY_SESSION = args.sessionId;
+    }
+    if (args.timeoutSeconds) {
+      if (args.provider === 'opencode') env.OPENCODE_TIMEOUT = String(args.timeoutSeconds);
+      else if (args.provider === 'codex') env.CODEX_TIMEOUT = String(args.timeoutSeconds);
+      else if (args.provider === 'claude') env.CLAUDE_TIMEOUT = String(args.timeoutSeconds);
+      else if (args.provider === 'antigravity') env.AGY_PRINT_TIMEOUT = `${args.timeoutSeconds}s`;
+    }
+
+    const wait = args.wait !== false;
+    if (!wait) {
+      const child = spawn(wrapperBin, [args.prompt], {
+        cwd: targetWorkspace,
+        env,
+        stdio: 'ignore',
+        detached: true,
+      });
+      child.unref();
+
+      // Brief delay to allow wrapper to initialize and record run start in SQLite
+      await new Promise(resolve => setTimeout(resolve, 600));
+      const run = latestRun(targetWorkspace);
+      return {
+        status: 'launched',
+        pid: child.pid,
+        workspace: targetWorkspace,
+        provider: args.provider,
+        filename: run?.filename || null,
+        message: 'Agent launched in background. Use wait_for_run or get_run_result to check status.',
+      };
+    }
+
+    const timeoutMs = (args.timeoutSeconds || 7200) * 1000;
+    const child = spawnSync(wrapperBin, [args.prompt], {
+      cwd: targetWorkspace,
+      env,
+      encoding: 'utf8',
+      timeout: timeoutMs,
+    });
+
+    const run = latestRun(targetWorkspace);
+    if (run) {
+      return runResult(run);
+    }
+    return {
+      status: child.status === 0 ? 'completed' : 'failed',
+      exitCode: child.status,
+      stdout: child.stdout,
+      stderr: child.stderr,
+    };
+  }
   if (name === 'list_workspaces') return { workspaces: knownWorkspaces() };
   if (name === 'list_runs') {
     const workspace = args.workspace ? resolveWorkspace(args.workspace) : 'all';

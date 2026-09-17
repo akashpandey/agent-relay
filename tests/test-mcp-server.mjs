@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { describe, it } from 'node:test';
 
 const tools = [
+  'run_agent',
   'list_workspaces',
   'list_runs',
   'get_run_result',
@@ -220,7 +221,7 @@ describe('MCP tool listing', () => {
       server.write({ jsonrpc: '2.0', id: 10, method: 'tools/list' });
       const [response] = await server.waitForResponses(1);
 
-      assert.equal(response.result.tools.length, 9);
+      assert.equal(response.result.tools.length, 10);
       assert.deepEqual(response.result.tools.map(tool => tool.name), tools);
       for (const tool of response.result.tools) {
         assert.equal(typeof tool.name, 'string');
@@ -256,6 +257,22 @@ describe('MCP tool errors', () => {
       assert.equal(response.error, undefined);
       assert.equal(response.result.isError, true);
       assert.match(response.result.content[0].text, /unknown workspace/);
+    });
+  });
+
+  it('returns validation errors for run_agent invalid parameters', async () => {
+    await withServer(async server => {
+      server.write({
+        jsonrpc: '2.0',
+        id: 22,
+        method: 'tools/call',
+        params: { name: 'run_agent', arguments: { provider: 'invalid-provider', prompt: 'test' } },
+      });
+      const [response] = await server.waitForResponses(1);
+
+      assert.equal(response.error, undefined);
+      assert.equal(response.result.isError, true);
+      assert.match(response.result.content[0].text, /unknown provider/);
     });
   });
 });
