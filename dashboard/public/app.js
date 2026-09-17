@@ -725,6 +725,12 @@ async function refreshOpenModalData(filename) {
   } catch (err) {}
 }
 
+function updateModalBodyLock() {
+  const isAnyModalOpen = Boolean(document.querySelector('.fullscreen-modal.open, .modal-card.open, .modal-overlay.open'));
+  document.body.classList.toggle('modal-open', isAnyModalOpen);
+  document.documentElement.classList.toggle('modal-open', isAnyModalOpen);
+}
+
 async function openWorkspaceModal(filename) {
   state.selectedRun = filename;
   state.rawLogLines = [];
@@ -741,6 +747,7 @@ async function openWorkspaceModal(filename) {
   // Open Fullscreen Modal
   el.workspaceModalOverlay.classList.add('open');
   el.workspaceModal.classList.add('open');
+  updateModalBodyLock();
 
   try {
     const res = await fetch(`/api/runs/${encodeURIComponent(filename)}`);
@@ -873,6 +880,7 @@ function closeWorkspaceModal() {
   }
   el.workspaceModalOverlay.classList.remove('open');
   el.workspaceModal.classList.remove('open');
+  updateModalBodyLock();
   if (state.activeLogStream) {
     state.activeLogStream.close();
     state.activeLogStream = null;
@@ -1209,21 +1217,25 @@ function openDanglingModal() {
 
   el.danglingModalOverlay.classList.add('open');
   el.danglingModal.classList.add('open');
+  updateModalBodyLock();
 }
 
 function closeDanglingModal() {
   el.danglingModalOverlay.classList.remove('open');
   el.danglingModal.classList.remove('open');
+  updateModalBodyLock();
 }
 
 function openShortcutsModal() {
   el.shortcutsModalOverlay.classList.add('open');
   el.shortcutsModal.classList.add('open');
+  updateModalBodyLock();
 }
 
 function closeShortcutsModal() {
   el.shortcutsModalOverlay.classList.remove('open');
   el.shortcutsModal.classList.remove('open');
+  updateModalBodyLock();
 }
 
 // --- Formatters & Parsers ---

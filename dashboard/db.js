@@ -112,7 +112,7 @@ export function rowToRunMeta(row, isAlive = false) {
     model: row.model || 'default',
     workspace,
     rawWorkspace: row.workspace || 'Unknown',
-    workspaceName: workspace === 'Unknown' ? 'Unknown' : path.basename(workspace),
+    workspaceName: workspace === 'Other / Scratch' ? 'Other / Scratch' : (workspace === 'Unknown' ? 'Unknown' : path.basename(workspace)),
     session: row.session_id || 'new',
     sessionId: row.session_id || null,
     task: row.task || '',
@@ -523,9 +523,10 @@ export function getWorkspacesFromDb() {
   for (const row of rows) {
     const canonical = canonicalWorkspacePath(row.path) || row.path;
     if (!canonical || canonical === 'Unknown') continue;
+    const name = canonical === 'Other / Scratch' ? 'Other / Scratch' : path.basename(canonical);
     const existing = byPath.get(canonical) || {
       path: canonical,
-      name: path.basename(canonical),
+      name,
       totalRuns: 0,
       activeRuns: 0,
       lastRun: null
@@ -536,7 +537,11 @@ export function getWorkspacesFromDb() {
     byPath.set(canonical, existing);
   }
 
-  return [...byPath.values()].sort((a, b) => b.totalRuns - a.totalRuns);
+  return [...byPath.values()].sort((a, b) => {
+    if (a.name === 'Other / Scratch') return 1;
+    if (b.name === 'Other / Scratch') return -1;
+    return b.totalRuns - a.totalRuns;
+  });
 }
 
 export function getRun(filename) {
