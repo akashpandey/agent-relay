@@ -19,8 +19,11 @@ fi
 
 for remote in origin gitea; do
   if git -C "$repo_dir" remote get-url "\$remote" >/dev/null 2>&1; then
-    ( git -C "$repo_dir" push "\$remote" HEAD:main ) >/dev/null 2>&1 &
-    echo "agent-relay push to \$remote queued"
+    if git -C "$repo_dir" push "\$remote" HEAD:main >/dev/null 2>&1; then
+      echo "agent-relay pushed to \$remote"
+    else
+      echo "agent-relay push to \$remote failed" >&2
+    fi
   fi
 done
 HOOK

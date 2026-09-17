@@ -44,7 +44,8 @@
     "scripts/",
     "dashboard/",
     "skills/",
-    "docker-compose.yml",
+    "docs/",
+    "docker-compose.sample.yml",
     "README.md",
     "LICENSE"
   ],
