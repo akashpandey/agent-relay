@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { canonicalWorkspacePath, configuredWorkspaceEntries } from '../dashboard/workspaces.js';
+import { resolveWorkspacePath, configuredWorkspaceEntries } from '../dashboard/workspaces.js';
 import { deleteRun, getFilteredRuns, getRun, getWorkspacesFromDb } from '../dashboard/db.js';
 import { findLatestWorkspaceSession, buildRelayTakeoverPrompt } from './relay-handoff.mjs';
 
@@ -47,8 +47,8 @@ function knownWorkspaces() {
   const byPath = new Map();
   for (const ws of getWorkspacesFromDb()) byPath.set(ws.path, ws);
   for (const ws of configuredWorkspaceEntries()) {
-    const canonical = canonicalWorkspacePath(ws.path) || ws.path.replace(/\/+$/, '');
-    if (!byPath.has(canonical)) byPath.set(canonical, { path: canonical, name: ws.name, totalRuns: 0, activeRuns: 0 });
+    const actual = path.resolve(ws.path);
+    byPath.set(actual, { totalRuns: 0, activeRuns: 0, ...byPath.get(actual), path: actual, name: ws.name });
   }
   return [...byPath.values()];
 }
@@ -201,24 +201,19 @@ async function installMcp() {
 }
 
 function resolveWorkspace(value) {
-  if (!value) return null;
-  const configured = configuredWorkspaceEntries().find(ws => ws.name.toLowerCase() === value.toLowerCase());
-  if (configured) return canonicalWorkspacePath(configured.path) || configured.path.replace(/\/+$/, '');
-  const direct = canonicalWorkspacePath(value) || (path.isAbsolute(value) ? value.replace(/\/+$/, '') : null);
-  if (direct) return direct;
-  const lower = value.toLowerCase();
-  return knownWorkspaces().find(ws => ws.name.toLowerCase() === lower || path.basename(ws.path).toLowerCase() === lower)?.path || null;
+  return resolveWorkspacePath(value, knownWorkspaces());
 }
 
 function latestRun(workspaceArg = null) {
   const workspace = resolveWorkspace(workspaceArg);
-  const result = getFilteredRuns({ workspace: workspace || 'all', limit: 200, offset: 0 });
-  return result.runs.find(run => run.sessionId && run.sessionId !== 'new') || result.runs[0] || null;
+  if (workspaceArg && workspaceArg !== 'all' && !workspace) throw new Error('unknown workspace: ' + workspaceArg);
+  return getFilteredRuns({ rawWorkspace: workspace, limit: 1, offset: 0 }).runs[0] || null;
 }
 
 function listAttention(workspaceArg = null) {
   const workspace = resolveWorkspace(workspaceArg);
-  const result = getFilteredRuns({ workspace: workspace || 'all', attention: '1', limit: 200, offset: 0 });
+  if (workspaceArg && workspaceArg !== 'all' && !workspace) throw new Error('unknown workspace: ' + workspaceArg);
+  const result = getFilteredRuns({ rawWorkspace: workspace, attention: '1', limit: 200, offset: 0 });
   for (const run of result.runs) {
     const workspaceName = run.workspaceName || run.workspace || 'workspace';
     const continueCommand = run.sessionId && run.sessionId !== 'new'
@@ -276,7 +271,7 @@ function pruneRuns(argv) {
     }
   }
 
-  const result = getFilteredRuns({ workspace: workspace || 'all', outcome, limit: 5000, offset: 0 });
+  const result = getFilteredRuns({ rawWorkspace: workspace === 'all' ? null : workspace, outcome, limit: 5000, offset: 0 });
   const cutoff = olderThan ? Date.now() - olderThan : null;
   const targets = result.runs.filter(run => {
     if (run.status === 'running') return false;
@@ -326,7 +321,7 @@ function showResult(target = '--last') {
       target = run.filename;
     }
   }
-  runScript('subagent-wait', [target]);
+  runScript('agent-wait', [target]);
 }
 
 function resolveRunTarget(target = '--last') {
@@ -534,7 +529,7 @@ if (args[0] === 'continue') {
     console.error(`${cmdName}: no resumable matching run found`);
     process.exit(1);
   }
-  runProvider(run.provider, ['--resume', run.sessionId, task], maybeWorkspace || run.workspace);
+  runProvider(run.provider, ['--resume', run.sessionId, task], maybeWorkspace || run.rawWorkspace || run.workspace);
 }
 
 if (providers.has(args[0])) runProvider(args[0], args.slice(1));

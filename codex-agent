@@ -170,7 +170,7 @@ if [ -n "${CODEX_MODEL:-}" ]; then
   fi
 fi
 
-set -- --ask-for-approval never exec --cd "$workspace" --sandbox "$sandbox" --skip-git-repo-check
+set -- --ask-for-approval never exec --json --cd "$workspace" --sandbox "$sandbox" --skip-git-repo-check
 if [ "$resume_session" = "--last" ] || [ "$resume_session" = "last" ]; then
   set -- "$@" resume --last
 elif [ -n "$resume_session" ] && [ "$resume_session" != "new" ]; then
@@ -189,10 +189,11 @@ fi
 
 # ponytail: a separate process group makes timeout cleanup cover ordinary children.
 before_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
-printf 'agent: provider=codex workspace=%s model=%s session=%s\nTask:\n%s\n\n---\n\n' \
-  "$workspace" "${CODEX_MODEL:-default}" "${resume_session:-new}" "$user_prompt" > "$log_file"
+printf 'agent: provider=codex workspace=%s model=%s session=%s\nagent-unit: %s\nTask:\n%s\n\n---\n\n' \
+  "$workspace" "${CODEX_MODEL:-default}" "${resume_session:-new}" "$done_unit" "$user_prompt" > "$log_file"
 
 # Register run start in SQLite database immediately
+mark_output_start
 if command -v node >/dev/null 2>&1; then
   node "$repo_dir/scripts/subagent-tracker.js" start "$(basename "$log_file")" "$$" "codex" "${CODEX_MODEL:-default}" "$workspace" "${resume_session:-new}" "$user_prompt" >/dev/null 2>&1 || true
 fi

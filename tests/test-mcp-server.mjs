@@ -50,6 +50,12 @@ const mockModules = {
     }
   `,
   '/dashboard/workspaces.js': `
+    export function resolveWorkspacePath(value, known = []) {
+      if (!value || value === 'all') return null;
+      if (value === 'mock') return '/tmp/agent-relay-mock';
+      if (value.startsWith('/')) return value.replace(/\\/+$/, '');
+      return known.find(ws => ws.name === value)?.path || null;
+    }
     export function canonicalWorkspacePath(value) {
       if (!value) return null;
       if (String(value).startsWith('/')) return String(value).replace(/\\/+$/, '');

@@ -15,7 +15,7 @@ cat << 'EOF' > "$TEST_BIN/claude"
 #!/usr/bin/env bash
 sleep 0.1
 echo "Mock Claude executed: $@"
-echo '{"outcome":"done","summary":"Mock claude done","changedFiles":[],"verification":[{"command":"test","status":"passed"}],"blockers":[],"incomplete":[],"nextSteps":[]}'
+echo '{"type":"result","result":"{\"outcome\":\"done\",\"summary\":\"Mock claude done\",\"changedFiles\":[],\"verification\":[{\"command\":\"test\",\"status\":\"passed\"}],\"blockers\":[],\"incomplete\":[],\"nextSteps\":[]}"}'
 exit 0
 EOF
 
@@ -28,7 +28,7 @@ if [ "${1:-}" = "models" ]; then
 fi
 sleep 0.1
 echo "Mock Antigravity executed: $@"
-echo '{"outcome":"done","summary":"Mock agy done","changedFiles":[],"verification":[],"blockers":[],"incomplete":[],"nextSteps":[]}'
+echo '{"type":"result","result":"{\"outcome\":\"done\",\"summary\":\"Mock agy done\",\"changedFiles\":[],\"verification\":[],\"blockers\":[],\"incomplete\":[],\"nextSteps\":[]}"}'
 exit 0
 EOF
 
@@ -36,7 +36,7 @@ cat << 'EOF' > "$TEST_BIN/codex"
 #!/usr/bin/env bash
 sleep 0.1
 echo "Mock Codex executed: $@"
-echo '{"outcome":"done","summary":"Mock codex done","changedFiles":[],"verification":[],"blockers":[],"incomplete":[],"nextSteps":[]}'
+echo '{"type":"result","result":"{\"outcome\":\"done\",\"summary\":\"Mock codex done\",\"changedFiles\":[],\"verification\":[],\"blockers\":[],\"incomplete\":[],\"nextSteps\":[]}"}'
 exit 0
 EOF
 
@@ -50,7 +50,7 @@ if [ "${1:-}" = "models" ]; then
 fi
 sleep 0.1
 echo "Mock OpenCode executed: $@"
-echo '{"outcome":"done","summary":"Mock opencode done","changedFiles":[],"verification":[],"blockers":[],"incomplete":[],"nextSteps":[]}'
+echo '{"type":"result","result":"{\"outcome\":\"done\",\"summary\":\"Mock opencode done\",\"changedFiles\":[],\"verification\":[],\"blockers\":[],\"incomplete\":[],\"nextSteps\":[]}"}'
 exit 0
 EOF
 

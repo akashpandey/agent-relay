@@ -6,7 +6,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { getFilteredRuns, getRun, getWorkspacesFromDb, upsertRun } from '../dashboard/db.js';
 import { buildRunCommands } from '../dashboard/commands.js';
-import { canonicalWorkspacePath, configuredWorkspaceEntries } from '../dashboard/workspaces.js';
+import { resolveWorkspacePath, configuredWorkspaceEntries } from '../dashboard/workspaces.js';
 import { findLatestWorkspaceSession, buildRelayTakeoverPrompt, getWorkspaceGitContext } from './relay-handoff.mjs';
 import {
   getOpenCodeSessionDetails,
@@ -244,15 +244,7 @@ function knownWorkspaces() {
 }
 
 function resolveWorkspace(value) {
-  if (!value || value === 'all') return null;
-  const configured = configuredWorkspaceEntries().find(ws => ws.name.toLowerCase() === String(value).toLowerCase());
-  if (configured) return fs.existsSync(configured.path) ? fs.realpathSync(configured.path) : path.resolve(configured.path);
-  if (path.isAbsolute(value) || value.startsWith('./') || value.startsWith('../')) {
-    const absolute = path.resolve(value);
-    return fs.existsSync(absolute) ? fs.realpathSync(absolute) : absolute;
-  }
-  const lower = String(value).toLowerCase();
-  return knownWorkspaces().find(ws => ws.name.toLowerCase() === lower || path.basename(ws.path).toLowerCase() === lower)?.path || null;
+  return resolveWorkspacePath(value, knownWorkspaces());
 }
 
 function executionWorkspace(value) {
@@ -268,8 +260,11 @@ function refreshRun(run) {
   if (!run) return null;
   const file = path.join(logsDir, run.filename);
   if (!fs.existsSync(file)) return run;
-  const meta = parseLogMetadata(run.filename, file);
+  const meta = parseLogMetadata(run.filename, file, '/proc', { enrich: false });
   if (!meta) return run;
+  for (const key of ['tokens', 'cost', 'toolCalls', 'diffs', 'filesModified', 'markdownSummary']) {
+    if (run[key] != null) meta[key] = run[key];
+  }
   upsertRun(meta);
   return { ...run, ...meta, rawWorkspace: meta.workspace };
 }
@@ -508,7 +503,7 @@ async function callTool(name, args = {}) {
     const workspace = args.workspace && args.workspace !== 'all' ? resolveWorkspace(args.workspace) : null;
     if (args.workspace && args.workspace !== 'all' && !workspace) throw new Error('unknown workspace: ' + args.workspace);
     return getFilteredRuns({
-      workspace: workspace ? canonicalWorkspacePath(workspace) || workspace : 'all',
+      rawWorkspace: workspace,
       provider: args.provider || 'all',
       status: args.status || 'all',
       outcome: args.outcome || 'all',
@@ -757,9 +752,19 @@ async function callTool(name, args = {}) {
       let forced = false;
       if (processIdentity(run.pid) === identity) {
         forced = true;
-        spawnSync("pkill", ["-KILL", "-P", String(run.pid)]);
-        try { process.kill(-run.pid, "SIGKILL"); } catch {}
-        try { process.kill(run.pid, "SIGKILL"); } catch (error) { if (error.code !== "ESRCH") throw error; }
+        if (run.systemdUnit) {
+          if (run.systemdUnit !== `local-agent-${run.provider}-${run.pid}`) throw new Error('unexpected recorded systemd unit');
+          const stopped = await startCommand(['systemctl', '--user', 'stop', run.systemdUnit], { timeout: 5000 }).completion;
+          const state = await startCommand(['systemctl', '--user', 'show', run.systemdUnit, '--property=ActiveState', '--property=LoadState'], { timeout: 5000 }).completion;
+          if (state.status !== 0 || /ActiveState=(active|activating|deactivating)/.test(state.stdout)) {
+            throw new Error(stopped.stderr || state.stderr || 'systemd unit did not stop');
+          }
+        }
+        if (processIdentity(run.pid) === identity) {
+          spawnSync("pkill", ["-KILL", "-P", String(run.pid)]);
+          try { process.kill(-run.pid, "SIGKILL"); } catch {}
+          try { process.kill(run.pid, "SIGKILL"); } catch (error) { if (error.code !== "ESRCH") throw error; }
+        }
         for (let i = 0; i < 10 && processIdentity(run.pid) === identity; i++) {
           await new Promise(resolve => setTimeout(resolve, 100));
         }

@@ -226,10 +226,11 @@ fi
 # how a forgotten dev server survives the wrapper exiting.
 before_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
 
-printf 'agent: provider=antigravity workspace=%s model=%s session=%s\nTask:\n%s\n\n---\n\n' \
-  "$workspace" "${AGY_MODEL:-default}" "${resume_session:-new}" "$user_prompt" > "$log_file"
+printf 'agent: provider=antigravity workspace=%s model=%s session=%s\nagent-unit: %s\nTask:\n%s\n\n---\n\n' \
+  "$workspace" "${AGY_MODEL:-default}" "${resume_session:-new}" "$done_unit" "$user_prompt" > "$log_file"
 
 # Register run start in SQLite database immediately
+mark_output_start
 if command -v node >/dev/null 2>&1; then
   node "$repo_dir/scripts/subagent-tracker.js" start "$(basename "$log_file")" "$$" "antigravity" "${AGY_MODEL:-default}" "$workspace" "${resume_session:-new}" "$user_prompt" >/dev/null 2>&1 || true
 fi

@@ -1031,7 +1031,7 @@ export function extractStructuredOutcome(markdownSummary, tailContent = '', proc
 /**
  * Parse metadata from a single log file
  */
-export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
+export function parseLogMetadata(filename, logFilePath, procDir = '/proc', { enrich = true } = {}) {
   const parsedName = parseLogFilename(filename);
   if (!parsedName) return null;
 
@@ -1164,7 +1164,7 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
     if (!session && headerMatch[4].trim() !== 'new') session = headerMatch[4].trim();
   }
 
-  const canEnrich = !isAlive && doneMeta;
+  const canEnrich = enrich && !isAlive && doneMeta;
 
   // If Antigravity provider, resolve transcript for workspace, model, prompt, summary, and tool calls
   if (canEnrich && parsedName.provider === 'antigravity') {
@@ -1402,6 +1402,7 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc') {
     processCmd,
     status,
     exitCode: doneMeta?.exitCode ?? null,
+    systemdUnit: doneMeta?.systemdUnit || headContent.match(/^agent-unit: ([^\r\n]+)$/m)?.[1] || null,
     workspace: workspace || 'Unknown',
     workspaceName: workspace ? path.basename(workspace) : 'workspace',
     model: formatModelName(model, parsedName.provider),

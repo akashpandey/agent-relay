@@ -19,6 +19,18 @@ export function configuredWorkspaceEntries() {
   return [];
 }
 
+export function resolveWorkspacePath(value, known = []) {
+  if (!value || value === 'all') return null;
+  const configured = configuredWorkspaceEntries().find(ws => ws.name.toLowerCase() === value.toLowerCase());
+  const direct = configured?.path || (path.isAbsolute(value) || value.startsWith('./') || value.startsWith('../') ? value : null);
+  if (direct) {
+    const absolute = path.resolve(direct);
+    return fs.existsSync(absolute) ? fs.realpathSync(absolute) : absolute;
+  }
+  const lower = value.toLowerCase();
+  return known.find(ws => ws.name.toLowerCase() === lower || path.basename(ws.path).toLowerCase() === lower)?.path || null;
+}
+
 export function canonicalWorkspacePath(workspace) {
   if (!workspace || workspace === 'Unknown') return null;
   const clean = String(workspace).replace(/\/+$/, '');
