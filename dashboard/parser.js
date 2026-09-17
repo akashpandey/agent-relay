@@ -878,7 +878,10 @@ function extractFilesAndDiffs(rawContent) {
 }
 
 function parseOutcomeJson(text) {
-  if (!text || !text.includes('outcome')) return null;
+  if (!text) return null;
+  const contractKeywords = ['outcome', 'verification', 'blockers', 'incomplete', 'changedFiles', 'changed_files'];
+  if (!contractKeywords.some(kw => text.includes(kw))) return null;
+
   const candidates = [];
   const fenced = text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi);
   for (const m of fenced) candidates.push(m[1]);
@@ -891,7 +894,7 @@ function parseOutcomeJson(text) {
       if (text[j] === '}') depth--;
       if (depth === 0) {
         const chunk = text.slice(i, j + 1);
-        if (chunk.includes('outcome')) candidates.push(chunk);
+        if (contractKeywords.some(kw => chunk.includes(kw))) candidates.push(chunk);
         break;
       }
     }
@@ -900,7 +903,32 @@ function parseOutcomeJson(text) {
   for (const candidate of candidates) {
     try {
       const parsed = JSON.parse(candidate.trim());
-      if (parsed && typeof parsed === 'object' && parsed.outcome) return parsed;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        if (parsed.outcome) return parsed;
+
+        // Infer outcome if contract fields are present
+        const hasBlockers = Array.isArray(parsed.blockers) || parsed.blockers != null;
+        const hasIncomplete = Array.isArray(parsed.incomplete) || parsed.incomplete != null;
+        const hasVerification = Array.isArray(parsed.verification) || parsed.verification != null;
+        const hasChangedFiles = Array.isArray(parsed.changedFiles) || Array.isArray(parsed.changed_files);
+
+        if (hasBlockers || hasIncomplete || hasVerification || hasChangedFiles) {
+          const blockers = asStringArray(parsed.blockers);
+          const incomplete = asStringArray(parsed.incomplete);
+          const verification = asVerificationArray(parsed.verification);
+
+          if (blockers.length > 0) {
+            parsed.outcome = 'blocked';
+          } else if (incomplete.length > 0) {
+            parsed.outcome = 'partial';
+          } else if (verification.some(v => v.status === 'failed')) {
+            parsed.outcome = 'failed';
+          } else {
+            parsed.outcome = 'done';
+          }
+          return parsed;
+        }
+      }
     } catch {}
   }
   return null;
@@ -935,7 +963,6 @@ function verificationNeedsAttention(item) {
 
 export function extractStructuredOutcome(markdownSummary, tailContent = '', processStatus = 'completed') {
   const text = [markdownSummary, tailContent].filter(Boolean).join('\n');
-  const lower = text.toLowerCase();
   const explicit = parseOutcomeJson(text);
   const allowed = new Set(['done', 'partial', 'blocked', 'failed', 'unknown']);
 
@@ -947,19 +974,38 @@ export function extractStructuredOutcome(markdownSummary, tailContent = '', proc
     return {
       outcome,
       summary: explicit.summary || '',
-      changedFiles: asStringArray(explicit.changedFiles),
+      changedFiles: asStringArray(explicit.changedFiles || explicit.changed_files),
       verification,
       blockers,
       incomplete,
-      nextSteps: asStringArray(explicit.nextSteps),
+      nextSteps: asStringArray(explicit.nextSteps || explicit.next_steps),
       attentionRequired: outcome !== 'done' || blockers.length > 0 || incomplete.length > 0 || verification.some(verificationNeedsAttention),
     };
   }
 
+  // Sanitize text for heuristic matching:
+  // 1. Strip fenced code blocks (```...```)
+  // 2. Strip inline code (`...`)
+  // 3. Neutralize common false positives (e.g., "0 failed", "no errors", "error handling", "error-checked")
+  const prose = text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`]*`/g, ' ');
+
+  const proseLower = prose.toLowerCase();
+
+  const sanitized = proseLower
+    .replace(/\b(?:0|zero|no)\s+(?:failures?|failed|errors?|issues?|blockers?|incomplete|remaining|skipped)\b/gi, ' ')
+    .replace(/\berror(?:-|\s+)(?:checked|checking|handling|handler|boundaries|boundary|free)\b/gi, ' ')
+    .replace(/\bprocess\.exit\(\s*[01]\s*\)/gi, ' ');
+
   let outcome = processStatus === 'failed' ? 'failed' : 'unknown';
-  if (/\b(blocked|blocker|cannot proceed|can't proceed|unable to continue)\b/i.test(text)) outcome = 'blocked';
-  else if (/\b(partial|partially|not done|incomplete|remaining|todo|could not|unable to|skipped)\b/i.test(text)) outcome = 'partial';
-  else if (processStatus === 'completed' && lower && !/\b(error|failed|blocked|incomplete|not done|remaining|todo|skipped)\b/i.test(text)) outcome = 'done';
+  if (/\b(blocked|blocker|cannot proceed|can't proceed|unable to continue)\b/i.test(sanitized)) {
+    outcome = 'blocked';
+  } else if (/\b(partial|partially|not done|incomplete|remaining|todo|could not|unable to|skipped)\b/i.test(sanitized)) {
+    outcome = 'partial';
+  } else if (processStatus === 'completed' && proseLower.trim() && !/\b(error|failed|blocked|incomplete|not done|remaining|todo|skipped)\b/i.test(sanitized)) {
+    outcome = 'done';
+  }
 
   return {
     outcome,
