@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const CODE_ROOT = process.env.AGENT_RELAY_CODE_ROOT || process.env.SUBAGENT_CODE_ROOT || '/home/akey/Code';
+const CODE_ROOT = process.env.AGENT_RELAY_CODE_ROOT || process.env.SUBAGENT_CODE_ROOT || path.join(os.homedir(), 'Code');
 
 export function configuredWorkspaceEntries() {
   const configPath = process.env.AGENT_RELAY_WORKSPACES_CONFIG || process.env.SUBAGENT_WORKSPACES_CONFIG ||
@@ -23,26 +23,13 @@ export function canonicalWorkspacePath(workspace) {
   if (!workspace || workspace === 'Unknown') return null;
   const clean = workspace.replace(/\/+$/, '');
 
+  // Match against user-configured workspace entries
   for (const configured of configuredWorkspaceEntries()) {
     const root = configured.path.replace(/\/+$/, '');
     if (clean === root || clean.startsWith(`${root}/`)) return root;
   }
 
-  if (clean === '/home/akey/agent-relay' || clean.startsWith('/home/akey/agent-relay/')) {
-    return `${CODE_ROOT}/agent-relay`;
-  }
-  if (clean === `${CODE_ROOT}/OfdcParser` || clean.startsWith(`${CODE_ROOT}/OfdcParser/`)) {
-    return `${CODE_ROOT}/OfdcApplication`;
-  }
-  if (clean.startsWith('/tmp/fitschool-worktrees/') ||
-      clean.startsWith(`${CODE_ROOT}/fitschool/.worktrees/`) ||
-      clean.startsWith(`${CODE_ROOT}/fitschool/.claude/worktrees/`) ||
-      clean.startsWith(`${CODE_ROOT}/fitschool/`)) {
-    return `${CODE_ROOT}/fitschool`;
-  }
-  if (clean.startsWith(`${CODE_ROOT}/fitschool-`) && clean !== `${CODE_ROOT}/fitschool-waitlist` && !clean.startsWith(`${CODE_ROOT}/fitschool-waitlist/`)) {
-    return `${CODE_ROOT}/fitschool`;
-  }
+  // Auto-detect workspaces under CODE_ROOT by first path segment
   if (clean.startsWith(`${CODE_ROOT}/`)) {
     const [, name] = clean.slice(CODE_ROOT.length + 1).match(/^([^/]+)(?:\/|$)/) || [];
     return name ? `${CODE_ROOT}/${name}` : null;

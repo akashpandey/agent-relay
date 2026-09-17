@@ -24,6 +24,22 @@ jobs:
         run: |
           sh -n antigravity-agent claude-agent codex-agent opencode-agent opencode-agent-fallback agent agent-wait agent-doctor install-skill
 
+      - name: Node.js syntax check
+        run: |
+          node --check scripts/mcp-server.mjs scripts/agent-cli.mjs scripts/relay-handoff.mjs scripts/workspace-canonical.mjs scripts/agent-result.js scripts/subagent-tracker.js
+
+      - name: MCP server smoke test
+        run: |
+          printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | timeout 5 node scripts/mcp-server.mjs 2>/dev/null | head -1 | node -e 'const d=JSON.parse(require("fs").readFileSync("/dev/stdin","utf8")); if(d.result?.serverInfo?.name!=="agent-relay") process.exit(1);'
+
+      - name: Run Node.js Test Suite
+        run: |
+          if test -n "$(find tests -name '*.mjs' -print -quit)"; then
+            node --test tests/*.mjs
+          else
+            echo "No Node.js tests found"
+          fi
+
       - name: Run ShellCheck
         uses: ludeeus/action-shellcheck@master
         with:

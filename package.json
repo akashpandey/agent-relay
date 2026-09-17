@@ -1,0 +1,73 @@
+{
+  "name": "agent-relay",
+  "version": "1.0.0",
+  "description": "Pass the baton between Claude Code, Codex, Antigravity, and OpenCode with a single Unix command.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Akash Pandey",
+  "homepage": "https://github.com/akashpandey/agent-relay",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akashpandey/agent-relay.git"
+  },
+  "bugs": {
+    "url": "https://github.com/akashpandey/agent-relay/issues"
+  },
+  "bin": {
+    "relay": "./agent",
+    "agent-relay": "./agent",
+    "agent-relay-mcp": "./agent-relay-mcp",
+    "opencode-agent": "./opencode-agent",
+    "opencode-agent-fallback": "./opencode-agent-fallback",
+    "antigravity-agent": "./antigravity-agent",
+    "claude-agent": "./claude-agent",
+    "codex-agent": "./codex-agent",
+    "agent-doctor": "./agent-doctor",
+    "agent-wait": "./agent-wait"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "files": [
+    "agent",
+    "relay",
+    "agent-relay-mcp",
+    "agent-dashboard",
+    "agent-doctor",
+    "agent-wait",
+    "opencode-agent",
+    "opencode-agent-fallback",
+    "antigravity-agent",
+    "claude-agent",
+    "codex-agent",
+    "install-skill",
+    "scripts/",
+    "dashboard/",
+    "skills/",
+    "docker-compose.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "ai",
+    "agents",
+    "coding-agents",
+    "mcp",
+    "orchestration",
+    "claude-code",
+    "codex",
+    "opencode",
+    "antigravity",
+    "relay",
+    "delegation",
+    "multi-agent"
+  ],
+  "scripts": {
+    "test": "node --test tests/*.mjs",
+    "test:mcp": "node --test tests/test-mcp-server.mjs",
+    "test:wrappers": "./tests/test-wrappers.sh",
+    "doctor": "./agent-doctor",
+    "dashboard": "./agent-dashboard start",
+    "dashboard:dev": "npm --prefix dashboard run dev"
+  }
+}

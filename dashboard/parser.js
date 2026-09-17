@@ -6,8 +6,7 @@ import { execSync } from 'node:child_process';
 const opencodeDbPaths = [
   process.env.OPENCODE_DB,
   '/opencode_data/opencode.db',
-  path.join(process.env.HOME || '/home/akey', '.local/share/opencode/opencode.db'),
-  '/home/akey/.local/share/opencode/opencode.db',
+  path.join(os.homedir(), '.local/share/opencode/opencode.db'),
 ].filter(Boolean);
 
 /**
@@ -216,8 +215,7 @@ export function getOpenCodeSessionDetails(sessionId) {
 const geminiBrainDirs = [
   process.env.GEMINI_BRAIN,
   '/gemini_brain',
-  path.join(process.env.HOME || '/home/akey', '.gemini/antigravity-cli/brain'),
-  '/home/akey/.gemini/antigravity-cli/brain',
+  path.join(os.homedir(), '.gemini/antigravity-cli/brain'),
 ].filter(Boolean);
 
 /**
@@ -431,8 +429,7 @@ export function formatModelName(model, provider) {
 const claudeDataDirs = [
   process.env.CLAUDE_DATA,
   '/claude_data',
-  path.join(process.env.HOME || '/home/akey', '.claude'),
-  '/home/akey/.claude',
+  path.join(os.homedir(), '.claude'),
 ].filter(Boolean);
 
 /**
@@ -637,7 +634,6 @@ const codexDataDirs = [
   process.env.CODEX_DATA,
   '/codex_data',
   path.join(os.homedir(), '.codex'),
-  '/home/akey/.codex',
 ].filter(Boolean);
 
 /**

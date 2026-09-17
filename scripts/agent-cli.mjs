@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { canonicalWorkspacePath, configuredWorkspaceEntries } from '../dashboard/workspaces.js';
 import { deleteRun, getFilteredRuns, getRun, getWorkspacesFromDb } from '../dashboard/db.js';
@@ -25,6 +27,7 @@ function usage() {
   ${cmdName} <provider> [wrapper-args...] "task"
   ${cmdName} <workspace> <provider> [wrapper-args...] "task"
   ${cmdName} takeover [workspace] <provider> [instructions...]
+  ${cmdName} init
   ${cmdName} workspaces
   ${cmdName} doctor
   ${cmdName} dashboard [restart]
@@ -47,6 +50,61 @@ function knownWorkspaces() {
     if (!byPath.has(canonical)) byPath.set(canonical, { path: canonical, name: ws.name, totalRuns: 0, activeRuns: 0 });
   }
   return [...byPath.values()];
+}
+
+function displayPath(value) {
+  const home = os.homedir();
+  return value === home || value.startsWith(`${home}/`) ? `~${value.slice(home.length)}` : value;
+}
+
+function discoverWorkspaces(codeRoot) {
+  try {
+    return fs.readdirSync(codeRoot, { withFileTypes: true })
+      .filter(entry => entry.isDirectory())
+      .map(entry => ({ name: entry.name, path: path.join(codeRoot, entry.name) }))
+      .filter(entry => fs.existsSync(path.join(entry.path, '.git')))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  } catch (err) {
+    console.error(`${cmdName}: cannot scan ${codeRoot}: ${err.message}`);
+    process.exit(1);
+  }
+}
+
+function ask(question) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise(resolve => rl.question(question, answer => {
+    rl.close();
+    resolve(answer.trim());
+  }));
+}
+
+async function initWorkspaces() {
+  const configPath = process.env.AGENT_RELAY_WORKSPACES_CONFIG || process.env.SUBAGENT_WORKSPACES_CONFIG ||
+    path.join(os.homedir(), '.config', 'agent-relay', 'workspaces.json');
+  if (fs.existsSync(configPath)) {
+    console.log(`${cmdName}: ${configPath} already exists`);
+    return;
+  }
+
+  const codeRoot = path.resolve(process.env.CODE_ROOT || process.env.AGENT_RELAY_CODE_ROOT || process.env.SUBAGENT_CODE_ROOT || path.join(os.homedir(), 'Code'));
+  console.log(`Scanning ${displayPath(codeRoot)} for git repositories...`);
+  const workspaces = discoverWorkspaces(codeRoot);
+  console.log(`Found ${workspaces.length} workspaces:`);
+  const width = String(workspaces.length).length;
+  const nameWidth = Math.max(1, ...workspaces.map(ws => ws.name.length));
+  workspaces.forEach((ws, index) => {
+    console.log(`  ${String(index + 1).padStart(width)}. ${ws.name.padEnd(nameWidth)}  ${ws.path}`);
+  });
+
+  const answer = await ask(`\nWrite these to ${configPath}? [Y/n] `);
+  if (answer && !['y', 'yes'].includes(answer.toLowerCase())) {
+    console.log('Cancelled');
+    return;
+  }
+
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  fs.writeFileSync(configPath, `${JSON.stringify(Object.fromEntries(workspaces.map(ws => [ws.name, ws.path])), null, 2)}\n`);
+  console.log(`✓ Wrote ${workspaces.length} workspaces to ${configPath}`);
 }
 
 function resolveWorkspace(value) {
@@ -225,6 +283,11 @@ if (args[0] === 'workspaces') {
   for (const ws of knownWorkspaces()) {
     console.log(`${ws.name}\t${ws.path}\t${ws.totalRuns || 0} runs`);
   }
+  process.exit(0);
+}
+
+if (args[0] === 'init') {
+  await initWorkspaces();
   process.exit(0);
 }
 
