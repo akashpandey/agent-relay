@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
+import { createInterface } from 'node:readline';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { getFilteredRuns, getRun, getWorkspacesFromDb } from '../dashboard/db.js';
@@ -195,7 +196,8 @@ function maybeExecute(command, execute) {
 async function callTool(name, args = {}) {
   if (name === 'list_workspaces') return { workspaces: knownWorkspaces() };
   if (name === 'list_runs') {
-    const workspace = resolveWorkspace(args.workspace) || 'all';
+    const workspace = args.workspace ? resolveWorkspace(args.workspace) : 'all';
+    if (args.workspace && !workspace) throw new Error('unknown workspace: ' + args.workspace);
     return getFilteredRuns({
       workspace,
       provider: args.provider || 'all',
@@ -222,6 +224,7 @@ async function callTool(name, args = {}) {
     const run = resolveRunTarget(args.target || '--last');
     if (!run) throw new Error('run not found');
     const file = path.join(logsDir, run.filename);
+    if (!fs.existsSync(file)) throw new Error('log file not found: ' + file);
     const stat = fs.statSync(file);
     const bytes = Math.min(args.bytes || 65536, stat.size);
     const fd = fs.openSync(file, 'r');
@@ -234,6 +237,7 @@ async function callTool(name, args = {}) {
     const run = resolveRunTarget(args.target || '--last');
     if (!run) throw new Error('run not found');
     const file = path.join(logsDir, run.filename);
+    if (!fs.existsSync(file)) throw new Error('log file not found: ' + file);
     const q = String(args.q || '').toLowerCase();
     const limit = args.limit || 50;
     const lines = fs.readFileSync(file, 'utf8').split('\n');
@@ -245,14 +249,14 @@ async function callTool(name, args = {}) {
   }
   if (name === 'continue_run') {
     const workspace = args.workspace ? resolveWorkspace(args.workspace) : null;
-    const command = ['relay', 'continue'];
+    const command = [path.join(repoDir, 'relay'), 'continue'];
     if (workspace) command.push(path.basename(workspace));
     if (args.provider) command.push('--to', args.provider);
     command.push(args.prompt);
     return maybeExecute(command, Boolean(args.execute));
   }
   if (name === 'takeover_run') {
-    const command = ['relay', 'takeover'];
+    const command = [path.join(repoDir, 'relay'), 'takeover'];
     if (args.workspace) {
       const workspace = resolveWorkspace(args.workspace);
       if (!workspace) throw new Error(`unknown workspace: ${args.workspace}`);
@@ -270,8 +274,7 @@ async function callTool(name, args = {}) {
 }
 
 function send(message) {
-  const json = JSON.stringify(message);
-  process.stdout.write(`Content-Length: ${Buffer.byteLength(json)}\r\n\r\n${json}`);
+  process.stdout.write(JSON.stringify(message) + '\n');
 }
 
 function result(id, value) {
@@ -302,27 +305,12 @@ async function handle(message) {
       error(message.id, `unsupported method: ${message.method}`, -32601);
     }
   } catch (err) {
-    error(message.id, err);
+    result(message.id, { isError: true, content: [{ type: 'text', text: err?.message || String(err) }] });
   }
 }
 
-let buffer = Buffer.alloc(0);
-process.stdin.on('data', chunk => {
-  buffer = Buffer.concat([buffer, chunk]);
-  while (true) {
-    const sep = buffer.indexOf('\r\n\r\n');
-    if (sep === -1) return;
-    const header = buffer.slice(0, sep).toString('utf8');
-    const match = header.match(/Content-Length:\s*(\d+)/i);
-    if (!match) {
-      buffer = buffer.slice(sep + 4);
-      continue;
-    }
-    const length = Number(match[1]);
-    const start = sep + 4;
-    if (buffer.length < start + length) return;
-    const body = buffer.slice(start, start + length).toString('utf8');
-    buffer = buffer.slice(start + length);
-    try { handle(JSON.parse(body)); } catch (err) { error(null, err, -32700); }
-  }
+const rl = createInterface({ input: process.stdin, terminal: false });
+rl.on('line', line => {
+  if (!line.trim()) return;
+  try { handle(JSON.parse(line)); } catch (err) { error(null, err, -32700); }
 });
