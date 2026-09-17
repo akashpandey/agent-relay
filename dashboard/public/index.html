@@ -3,13 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Subagent Visualizer · Local LLM Observability</title>
+  <title>Agent Relay · Cross-Harness AI Observability</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=2.0.8">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤖</text></svg>">
+  <link rel="stylesheet" href="style.css?v=2.1.0">
 </head>
 <body>
   <div class="app-layout">
@@ -25,8 +24,8 @@
             <circle cx="6" cy="16" r="1.5" fill="var(--badge-claude)"/>
           </svg>
           <div>
-            <h1 class="nav-title">Subagents Monitor</h1>
-            <span class="nav-subtitle">Local LLM Observability & Orchestration · IST (UTC+5:30)</span>
+            <h1 class="nav-title">Agent Relay</h1>
+            <span class="nav-subtitle">Cross-Harness AI Observability & Orchestration · IST (UTC+5:30)</span>
           </div>
         </div>
       </div>
@@ -56,12 +55,12 @@
         <!-- Theme Selector -->
         <div class="theme-selector-wrap">
           <select id="theme-selector" class="theme-select" title="Change Theme">
-            <option value="midnight">🌙 Midnight</option>
-            <option value="light">☀️ Clean Light</option>
-            <option value="latte">☕ Latte Light</option>
-            <option value="catppuccin">🐱 Catppuccin</option>
-            <option value="tokyo">🌸 Tokyo Night</option>
-            <option value="oled">🖤 OLED Black</option>
+            <option value="midnight">Midnight</option>
+            <option value="light">Clean Light</option>
+            <option value="latte">Latte Light</option>
+            <option value="catppuccin">Catppuccin Mocha</option>
+            <option value="tokyo">Tokyo Night</option>
+            <option value="oled">OLED Black</option>
           </select>
         </div>
 
@@ -103,7 +102,11 @@
         <div class="kpi-card">
           <div class="kpi-header">
             <span class="kpi-title">Active Calls</span>
-            <span class="kpi-icon pulse-icon">⚡</span>
+            <span class="kpi-icon pulse-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+              </svg>
+            </span>
           </div>
           <div class="kpi-val" id="kpi-active-val">0</div>
           <div class="kpi-sub" id="kpi-active-sub">0 tasks executing</div>
@@ -111,7 +114,13 @@
         <div class="kpi-card">
           <div class="kpi-header">
             <span class="kpi-title">Token Volume</span>
-            <span class="kpi-icon">📊</span>
+            <span class="kpi-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="4" width="20" height="4" rx="1"></rect>
+                <rect x="2" y="10" width="20" height="4" rx="1"></rect>
+                <rect x="2" y="16" width="20" height="4" rx="1"></rect>
+              </svg>
+            </span>
           </div>
           <div class="kpi-val" id="kpi-tokens-val">0</div>
           <div class="kpi-sub" id="kpi-tokens-sub">Across recorded sessions</div>
@@ -119,7 +128,12 @@
         <div class="kpi-card">
           <div class="kpi-header">
             <span class="kpi-title">Avg Duration</span>
-            <span class="kpi-icon">⏱️</span>
+            <span class="kpi-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+            </span>
           </div>
           <div class="kpi-val" id="kpi-duration-val">0s</div>
           <div class="kpi-sub" id="kpi-duration-sub">Average runtime</div>
@@ -127,7 +141,12 @@
         <div class="kpi-card">
           <div class="kpi-header">
             <span class="kpi-title">Success Rate</span>
-            <span class="kpi-icon">🎯</span>
+            <span class="kpi-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9"></circle>
+                <polyline points="9 12 11 14 15 10"></polyline>
+              </svg>
+            </span>
           </div>
           <div class="kpi-val" id="kpi-success-val">100%</div>
           <div class="kpi-sub" id="kpi-success-sub">Completed runs</div>
@@ -147,40 +166,25 @@
         <div class="active-grid" id="active-container">
           <!-- Populated by JS -->
           <div class="empty-active-state">
-            <div class="sentinel-radar-wrap">
-              <div class="sentinel-radar">
-                <div class="radar-ring radar-ring-1"></div>
-                <div class="radar-ring radar-ring-2"></div>
-                <div class="radar-ring radar-ring-3"></div>
-                <div class="radar-sweep"></div>
-                <div class="radar-blip blip-1" title="OpenCode"></div>
-                <div class="radar-blip blip-2" title="Antigravity"></div>
-                <div class="radar-blip blip-3" title="Codex"></div>
-                <div class="radar-blip blip-4" title="Claude"></div>
-                <div class="radar-core"></div>
+            <div class="standby-indicator">
+              <div class="standby-badge">
+                <span class="pulse-dot"></span>
+                <span>STANDBY · LISTENING ON /PROC & LOGS</span>
               </div>
-            </div>
-            <div class="empty-active-content">
-              <div class="empty-active-header">
-                <div class="sentinel-status-pill">
-                  <span class="sentinel-dot"></span>
-                  <span>SENTINEL ACTIVE · LISTENING FOR RUNNERS</span>
-                </div>
-                <h3>No Active Subagent Calls</h3>
-              </div>
-              <p>Processes currently running in your terminal will stream live progress, tokens, and diffs here automatically. Quick launch:</p>
+              <h3 class="standby-title">No Active Agent Runs</h3>
+              <p class="standby-desc">Terminal processes dispatched with the CLI stream live progress, tokens, and diffs here automatically.</p>
               <div class="quick-cmd-pills">
-                <button class="quick-cmd-pill" data-cmd='opencode-agent "Task..."' title="Click to copy CLI command">
-                  <span class="pill-dot dot-opencode"></span><code>opencode-agent "..."</code>
+                <button class="quick-cmd-pill" data-cmd='relay claude "..."' title="Click to copy CLI command">
+                  <span class="pill-dot dot-claude"></span><code>relay claude "..."</code>
                 </button>
-                <button class="quick-cmd-pill" data-cmd='antigravity-agent "Task..."' title="Click to copy CLI command">
-                  <span class="pill-dot dot-antigravity"></span><code>antigravity-agent "..."</code>
+                <button class="quick-cmd-pill" data-cmd='relay codex "..."' title="Click to copy CLI command">
+                  <span class="pill-dot dot-codex"></span><code>relay codex "..."</code>
                 </button>
-                <button class="quick-cmd-pill" data-cmd='codex-agent "Task..."' title="Click to copy CLI command">
-                  <span class="pill-dot dot-codex"></span><code>codex-agent "..."</code>
+                <button class="quick-cmd-pill" data-cmd='relay opencode "..."' title="Click to copy CLI command">
+                  <span class="pill-dot dot-opencode"></span><code>relay opencode "..."</code>
                 </button>
-                <button class="quick-cmd-pill" data-cmd='claude-agent "Task..."' title="Click to copy CLI command">
-                  <span class="pill-dot dot-claude"></span><code>claude-agent "..."</code>
+                <button class="quick-cmd-pill" data-cmd='relay antigravity "..."' title="Click to copy CLI command">
+                  <span class="pill-dot dot-antigravity"></span><code>relay antigravity "..."</code>
                 </button>
               </div>
             </div>
@@ -296,15 +300,15 @@
         </div>
 
         <div class="fs-header-meta">
-          <span class="fs-meta-item" id="modal-workspace">📁 ~/Code/fitschool</span>
+          <span class="fs-meta-item" id="modal-workspace">~/Code/fitschool</span>
           <span class="fs-meta-sep">•</span>
-          <span class="fs-meta-item" id="modal-model">🤖 glm-5.2</span>
+          <span class="fs-meta-item" id="modal-model">glm-5.2</span>
           <span class="fs-meta-sep">•</span>
           <span class="fs-meta-item" id="modal-pid">PID: 1123377</span>
           <span class="fs-meta-sep">•</span>
-          <span class="fs-meta-item" id="modal-start-time">🕒 07:09:41 PM IST</span>
+          <span class="fs-meta-item" id="modal-start-time">07:09:41 PM IST</span>
           <span class="fs-meta-sep">•</span>
-          <span class="fs-meta-item" id="modal-duration">⏱️ 1m 20s</span>
+          <span class="fs-meta-item" id="modal-duration">1m 20s</span>
         </div>
 
         <div class="fs-header-actions">
@@ -315,7 +319,11 @@
           <button class="btn btn-sm btn-secondary" id="btn-modal-copy-prompt" title="Copy initial prompt">Copy Prompt</button>
           <button class="btn btn-sm btn-secondary" id="btn-modal-copy-log" title="Copy log content">Copy Log</button>
           <a class="btn btn-sm btn-secondary" id="btn-modal-download-log" download target="_blank">Raw Log</a>
-          <button class="btn-icon" id="btn-toggle-fullscreen" title="Toggle Fullscreen Width">⛶</button>
+          <button class="btn-icon" id="btn-toggle-fullscreen" title="Toggle Fullscreen Width">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+            </svg>
+          </button>
           <button class="btn-close" id="btn-close-workspace-modal" title="Close (Esc)">✕</button>
         </div>
       </div>
@@ -388,7 +396,16 @@
           <!-- Cross-Harness Relay Takeover Card -->
           <div class="fs-relay-card" id="fs-relay-card" style="display: none;">
             <div class="fs-card-header">
-              <span class="fs-card-title">🔀 Relay Takeover</span>
+              <span class="fs-card-title" style="display: flex; align-items: center; gap: 6px;">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
+                  <polyline points="16 3 21 3 21 8"></polyline>
+                  <line x1="4" y1="20" x2="21" y2="3"></line>
+                  <polyline points="21 16 21 21 16 21"></polyline>
+                  <line x1="15" y1="15" x2="21" y2="21"></line>
+                  <line x1="4" y1="4" x2="9" y2="9"></line>
+                </svg>
+                Relay Takeover
+              </span>
             </div>
             <p style="font-size: 0.75rem; color: var(--text-dim); margin-top: 0.35rem; margin-bottom: 0.6rem; line-height: 1.35;">
               Tokens exhausted? Transfer session context & git state to another harness:
@@ -402,17 +419,36 @@
           <!-- Workspace Tab Bar -->
           <div class="fs-tabs-bar">
             <button class="fs-tab active" data-tab="terminal">
-              <span class="tab-icon">🖥️</span> Live Terminal
+              <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                <path d="m7 9 3 3-3 3M13 15h4"></path>
+              </svg>
+              Terminal
             </button>
             <button class="fs-tab" data-tab="tools">
-              <span class="tab-icon">🛠️</span> Tools & Commands
+              <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
+              </svg>
+              Tools & Commands
               <span class="tab-badge" id="tab-modal-tools-count" style="display: none;">0</span>
             </button>
             <button class="fs-tab" data-tab="markdown">
-              <span class="tab-icon">📝</span> Output & Markdown Summary
+              <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+              </svg>
+              Output Summary
             </button>
             <button class="fs-tab" data-tab="diffs">
-              <span class="tab-icon">🔀</span> Changed Files & Diffs
+              <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="6" cy="6" r="3"></circle>
+                <circle cx="6" cy="18" r="3"></circle>
+                <circle cx="18" cy="12" r="3"></circle>
+                <path d="M6 9v6M9 6h4a5 5 0 0 1 5 5"></path>
+              </svg>
+              Changed Files & Diffs
               <span class="tab-badge" id="tab-modal-diffs-count" style="display: none;">0</span>
             </button>
           </div>
@@ -451,10 +487,22 @@
             <div class="tools-toolbar">
               <div class="tools-filter-pills" id="tools-filter-pills">
                 <button class="tool-pill active" data-tool-type="all">All (<span id="count-tools-all">0</span>)</button>
-                <button class="tool-pill" data-tool-type="command">💻 Shell Commands (<span id="count-tools-cmd">0</span>)</button>
-                <button class="tool-pill" data-tool-type="edit">✏️ File Edits (<span id="count-tools-edit">0</span>)</button>
-                <button class="tool-pill" data-tool-type="read">📄 File Reads (<span id="count-tools-read">0</span>)</button>
-                <button class="tool-pill" data-tool-type="grep">🔍 Searches (<span id="count-tools-grep">0</span>)</button>
+                <button class="tool-pill" data-tool-type="command">
+                  <svg class="tool-pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+                  Commands (<span id="count-tools-cmd">0</span>)
+                </button>
+                <button class="tool-pill" data-tool-type="edit">
+                  <svg class="tool-pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                  File Edits (<span id="count-tools-edit">0</span>)
+                </button>
+                <button class="tool-pill" data-tool-type="read">
+                  <svg class="tool-pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                  File Reads (<span id="count-tools-read">0</span>)
+                </button>
+                <button class="tool-pill" data-tool-type="grep">
+                  <svg class="tool-pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                  Searches (<span id="count-tools-grep">0</span>)
+                </button>
               </div>
               <div class="tools-toolbar-right">
                 <input type="text" id="tool-search-input" placeholder="Filter commands or files..." class="log-filter-input">
@@ -487,7 +535,16 @@
     <div class="modal-card" id="shortcuts-modal">
       <div class="modal-header">
         <div class="modal-title-row">
-          <span style="font-size: 1.25rem;">⌨️</span>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
+            <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+            <line x1="6" y1="9" x2="6.01" y2="9"></line>
+            <line x1="10" y1="9" x2="10.01" y2="9"></line>
+            <line x1="14" y1="9" x2="14.01" y2="9"></line>
+            <line x1="18" y1="9" x2="18.01" y2="9"></line>
+            <line x1="6" y1="13" x2="6.01" y2="13"></line>
+            <line x1="18" y1="13" x2="18.01" y2="13"></line>
+            <line x1="9" y1="15" x2="15" y2="15"></line>
+          </svg>
           <h3>Keyboard Shortcuts</h3>
         </div>
         <button class="btn-close" id="btn-close-shortcuts-modal">✕</button>

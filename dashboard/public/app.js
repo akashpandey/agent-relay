@@ -1,8 +1,25 @@
 /**
- * Subagents Monitor - Client Application
- * Features: Full-Page Modal Workspace, Real-time SSE streaming, Multi-theme support,
- * Markdown & Diff viewer, Sound & Desktop notifications, Keyboard shortcuts, Workspace filtering, Analytics.
+ * Agent Relay - Client Application
+ * Observability, live telemetry, and handoff orchestration for AI coding agents.
  */
+
+// Bespoke SVG icon set for high-craft developer UX (Linear / Raycast aesthetic)
+const ICONS = {
+  folder: '<svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1.5 3.5A1.5 1.5 0 0 1 3 2h3.172a1.5 1.5 0 0 1 1.06.44l1.328 1.328a1.5 1.5 0 0 0 1.06.44H13A1.5 1.5 0 0 1 14.5 5.707V12.5A1.5 1.5 0 0 1 13 14H3a1.5 1.5 0 0 1-1.5-1.5V3.5z"></path></svg>',
+  clock: '<svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6.5"></circle><polyline points="8 4.5 8 8 10.5 9.5"></polyline></svg>',
+  bolt: '<svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="9 1.5 2.5 9 7.5 9 7 14.5 13.5 7 8.5 7 9 1.5"></polygon></svg>',
+  cpu: '<svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5"></rect><path d="M6 1.5v2M10 1.5v2M6 12.5v2M10 12.5v2M1.5 6h2M1.5 10h2M12.5 6h2M12.5 10h2"></path></svg>',
+  terminal: '<svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 5 6.5 8 3 11"></polyline><line x1="8.5" y1="11" x2="13" y2="11"></line></svg>',
+  edit: '<svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 2.5l2.5 2.5-8 8H3v-2.5l8-8z"></path></svg>',
+  file: '<svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2.5h6.5l3.5 3.5V13.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1z"></path></svg>',
+  search: '<svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"></circle><line x1="10.5" y1="10.5" x2="14.5" y2="14.5"></line></svg>',
+  tool: '<svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9.8 2.2a4 4 0 0 1 4 4l-1.5 1.5-3-3L10.8 3.2a1.5 1.5 0 0 0-1-1zM6.5 7.5l3 3-5 5H2v-2.5l4.5-5.5z"></path></svg>',
+  copy: '<svg class="ui-icon copy-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"></rect><path d="M3.5 10.5H3A1.5 1.5 0 0 1 1.5 9V3A1.5 1.5 0 0 1 3 1.5h6A1.5 1.5 0 0 1 10.5 3v.5"></path></svg>',
+  check: '<svg class="ui-icon copy-check" viewBox="0 0 16 16" fill="none" stroke="var(--success)" stroke-width="2"><polyline points="3.5 8.5 6.5 11.5 12.5 4.5"></polyline></svg>',
+  info: '<svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6.5"></circle><line x1="8" y1="7.5" x2="8" y2="11.5"></line><circle cx="8" cy="4.75" r="0.75" fill="currentColor"></circle></svg>',
+  fullscreen: '<svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 5.5V2h3.5M14 5.5V2h-3.5M2 10.5V14h3.5M14 10.5V14h-3.5"></path></svg>',
+  exitFullscreen: '<svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5.5 2v3.5H2M10.5 2v3.5H14M5.5 14v-3.5H2M10.5 14v-3.5H14"></path></svg>',
+};
 
 // --- Application State ---
 const INITIAL_LOG_TAIL_BYTES = 1024 * 1024;
@@ -341,7 +358,7 @@ function renderWorkspaceChips() {
     chip.className = `workspace-chip ${state.filterWorkspace === ws.path ? 'active' : ''}`;
     
     let activePulse = ws.activeRuns > 0 ? '<span class="pulse-dot" style="margin-right: 4px;"></span>' : '';
-    chip.innerHTML = `${activePulse}📁 ${escapeHtml(ws.name)} <span class="chip-count">${ws.totalRuns}</span>`;
+    chip.innerHTML = `${activePulse}${ICONS.folder} ${escapeHtml(ws.name)} <span class="chip-count">${ws.totalRuns}</span>`;
     
     chip.addEventListener('click', () => {
       state.filterWorkspace = ws.path;
@@ -371,40 +388,25 @@ function renderActiveCards(activeRuns) {
   if (activeRuns.length === 0) {
     el.activeContainer.innerHTML = `
       <div class="empty-active-state">
-        <div class="sentinel-radar-wrap">
-          <div class="sentinel-radar">
-            <div class="radar-ring radar-ring-1"></div>
-            <div class="radar-ring radar-ring-2"></div>
-            <div class="radar-ring radar-ring-3"></div>
-            <div class="radar-sweep"></div>
-            <div class="radar-blip blip-1" title="OpenCode"></div>
-            <div class="radar-blip blip-2" title="Antigravity"></div>
-            <div class="radar-blip blip-3" title="Codex"></div>
-            <div class="radar-blip blip-4" title="Claude"></div>
-            <div class="radar-core"></div>
+        <div class="standby-indicator">
+          <div class="standby-badge">
+            <span class="pulse-dot"></span>
+            <span>STANDBY · LISTENING ON /PROC & LOGS</span>
           </div>
-        </div>
-        <div class="empty-active-content">
-          <div class="empty-active-header">
-            <div class="sentinel-status-pill">
-              <span class="sentinel-dot"></span>
-              <span>SENTINEL ACTIVE · LISTENING FOR RUNNERS</span>
-            </div>
-            <h3>No Active Subagent Calls</h3>
-          </div>
-          <p>Processes currently running in your terminal will stream live progress, tokens, and diffs here automatically. Quick launch:</p>
+          <h3 class="standby-title">No Active Agent Runs</h3>
+          <p class="standby-desc">Terminal processes dispatched with the CLI stream live progress, tokens, and diffs here automatically.</p>
           <div class="quick-cmd-pills">
-            <button class="quick-cmd-pill" data-cmd='opencode-agent "Task..."' title="Click to copy CLI command">
-              <span class="pill-dot dot-opencode"></span><code>opencode-agent "..."</code>
+            <button class="quick-cmd-pill" data-cmd='relay claude "..."' title="Click to copy CLI command">
+              <span class="pill-dot dot-claude"></span><code>relay claude "..."</code>
             </button>
-            <button class="quick-cmd-pill" data-cmd='antigravity-agent "Task..."' title="Click to copy CLI command">
-              <span class="pill-dot dot-antigravity"></span><code>antigravity-agent "..."</code>
+            <button class="quick-cmd-pill" data-cmd='relay codex "..."' title="Click to copy CLI command">
+              <span class="pill-dot dot-codex"></span><code>relay codex "..."</code>
             </button>
-            <button class="quick-cmd-pill" data-cmd='codex-agent "Task..."' title="Click to copy CLI command">
-              <span class="pill-dot dot-codex"></span><code>codex-agent "..."</code>
+            <button class="quick-cmd-pill" data-cmd='relay opencode "..."' title="Click to copy CLI command">
+              <span class="pill-dot dot-opencode"></span><code>relay opencode "..."</code>
             </button>
-            <button class="quick-cmd-pill" data-cmd='claude-agent "Task..."' title="Click to copy CLI command">
-              <span class="pill-dot dot-claude"></span><code>claude-agent "..."</code>
+            <button class="quick-cmd-pill" data-cmd='relay antigravity "..."' title="Click to copy CLI command">
+              <span class="pill-dot dot-antigravity"></span><code>relay antigravity "..."</code>
             </button>
           </div>
         </div>
@@ -450,7 +452,7 @@ function renderActiveCards(activeRuns) {
       const clock = card.querySelector('.active-clock');
       if (clock) {
         clock.dataset.start = run.startTime || '';
-        clock.textContent = `⏱️ ${run.durationHuman || '0s'}`;
+        clock.innerHTML = `${ICONS.clock} <span>${escapeHtml(run.durationHuman || '0s')}</span>`;
       }
       const actionText = card.querySelector('.active-action-text');
       if (actionText) {
@@ -467,11 +469,11 @@ function renderActiveCards(activeRuns) {
             <span class="provider-pill ${providerClass}">${escapeHtml(run.provider)}</span>
             <span class="model-badge">${escapeHtml(run.model)}</span>
           </div>
-          <span class="active-clock" data-start="${run.startTime || ''}">⏱️ ${run.durationHuman || '0s'}</span>
+          <span class="active-clock" data-start="${run.startTime || ''}">${ICONS.clock} <span>${escapeHtml(run.durationHuman || '0s')}</span></span>
         </div>
 
         <div class="active-workspace">
-          <span>📁</span>
+          ${ICONS.folder}
           <strong>${escapeHtml(workspaceName)}</strong>
           <span style="color: var(--text-dim); font-size: 0.75rem;">(PID: ${run.pid})</span>
         </div>
@@ -481,7 +483,7 @@ function renderActiveCards(activeRuns) {
         </div>
 
         <div class="active-action-row">
-          <span>⚡</span>
+          ${ICONS.bolt}
           <span class="active-action-text" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(run.currentAction || 'Running...')}</span>
         </div>
 
@@ -554,7 +556,7 @@ function renderHistoryTable() {
       </td>
       <td class="col-workspace">
         <div style="display: flex; flex-direction: column; overflow: hidden; max-width: 100%;">
-          <strong style="color: var(--text-main); font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(workspaceName)}">📁 ${escapeHtml(workspaceName)}</strong>
+          <strong style="color: var(--text-main); font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 4px;" title="${escapeHtml(workspaceName)}">${ICONS.folder} <span>${escapeHtml(workspaceName)}</span></strong>
           <span style="color: var(--text-dim); font-size: 0.7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">PID: ${run.pid}</span>
         </div>
       </td>
@@ -618,11 +620,11 @@ function applyModalMetadata(meta) {
   const modalOutcome = meta.outcome || meta.result?.outcome || 'unknown';
   el.modalStatusPill.textContent = meta.status === 'completed' ? `${meta.status} / ${modalOutcome}` : meta.status;
   el.modalStatusPill.className = `status-pill status-${(meta.attentionRequired ? modalOutcome : meta.status).toLowerCase()}`;
-  el.modalWorkspace.textContent = `📁 ${meta.workspaceName || meta.workspace}`;
-  el.modalModel.textContent = `🤖 ${meta.model}`;
+  el.modalWorkspace.innerHTML = `${ICONS.folder} <span>${escapeHtml(meta.workspaceName || meta.workspace)}</span>`;
+  el.modalModel.innerHTML = `${ICONS.cpu} <span>${escapeHtml(meta.model)}</span>`;
   el.modalPid.textContent = `PID: ${meta.pid}`;
-  el.modalStartTime.textContent = `🕒 ${formatISTTime(meta.startTimeIST || meta.startTime)}`;
-  el.modalDuration.textContent = `⏱️ ${meta.durationHuman}`;
+  el.modalStartTime.innerHTML = `${ICONS.clock} <span>${formatISTTime(meta.startTimeIST || meta.startTime)}</span>`;
+  el.modalDuration.innerHTML = `${ICONS.clock} <span>${escapeHtml(meta.durationHuman)}</span>`;
   el.btnModalDownloadLog.href = `/api/logs/${encodeURIComponent(meta.filename)}`;
 
   // Kill button
@@ -805,12 +807,12 @@ function renderToolsTab() {
   }
 
   const iconMap = {
-    command: '💻',
-    edit: '✏️',
-    read: '📄',
-    grep: '🔍',
-    tool: '⚙️',
-    other: '🔧',
+    command: ICONS.terminal,
+    edit: ICONS.edit,
+    read: ICONS.file,
+    grep: ICONS.search,
+    tool: ICONS.tool,
+    other: ICONS.tool,
   };
 
   const badgeClassMap = {
@@ -823,7 +825,7 @@ function renderToolsTab() {
   };
 
   el.modalToolsContainer.innerHTML = filtered.map((t, idx) => {
-    const icon = iconMap[t.type] || '⚙️';
+    const icon = iconMap[t.type] || ICONS.tool;
     const badgeClass = badgeClassMap[t.type] || 'tool-badge-cmd';
     const escapedSummary = escapeHtml(t.summary || t.tool);
     const escapedDetail = escapeHtml(t.detail || t.summary || '');
@@ -833,12 +835,12 @@ function renderToolsTab() {
       <div class="tool-card">
         <div class="tool-card-header">
           <div class="tool-card-title">
-            <span>${icon}</span>
+            <span style="display: flex; align-items: center;">${icon}</span>
             <span class="${badgeClass}">${escapeHtml(t.tool)}</span>
             <span>${escapedSummary}</span>
           </div>
           ${durationText}
-          <button class="tool-btn-copy" data-copy-idx="${idx}" title="Copy command/file detail">📋</button>
+          <button class="tool-btn-copy" data-copy-idx="${idx}" title="Copy command/file detail">${ICONS.copy}</button>
         </div>
         <div class="tool-card-body">${escapedDetail}</div>
       </div>
@@ -852,8 +854,8 @@ function renderToolsTab() {
       const item = filtered[idx];
       if (item && item.detail) {
         copyToClipboard(item.detail, 'Copied tool command!');
-        btn.textContent = '✓';
-        setTimeout(() => { btn.textContent = '📋'; }, 1500);
+        btn.innerHTML = ICONS.check;
+        setTimeout(() => { btn.innerHTML = ICONS.copy; }, 1500);
       }
     });
   });
@@ -880,7 +882,7 @@ function closeWorkspaceModal() {
 function toggleFullscreenModal() {
   state.isFullscreen = !state.isFullscreen;
   el.workspaceModal.classList.toggle('is-fullscreen', state.isFullscreen);
-  el.btnToggleFullscreen.textContent = state.isFullscreen ? '🗗' : '⛶';
+  el.btnToggleFullscreen.innerHTML = state.isFullscreen ? ICONS.exitFullscreen : ICONS.fullscreen;
   el.btnToggleFullscreen.title = state.isFullscreen ? 'Exit Fullscreen' : 'Toggle Fullscreen Width';
 }
 
@@ -983,7 +985,7 @@ function formatLogLine(rawLine) {
     try {
       const obj = JSON.parse(trimmed);
       if (obj.event === 'init') {
-        return `<span style="color: var(--accent); font-weight: 600;">🚀 [Session Init]</span> <span style="color: var(--text-dim);">${escapeHtml(obj.conversation_id || '')}</span> (Model: <span style="color: var(--accent);">${escapeHtml(obj.model || 'default')}</span>)`;
+        return `<span class="stream-badge stream-init">INIT</span> <span style="color: var(--text-dim);">${escapeHtml(obj.conversation_id || '')}</span> (Model: <span style="color: var(--accent);">${escapeHtml(obj.model || 'default')}</span>)`;
       }
       if (obj.event === 'step_update') {
         const su = obj.step_update || obj.step || {};
@@ -992,7 +994,7 @@ function formatLogLine(rawLine) {
           const params = su.tool_info?.parameters || su.args || {};
           const duration = su.duration_seconds ? ` (${su.duration_seconds.toFixed(2)}s)` : '';
           const output = su.tool_info?.output ? `\n<span style="color: var(--text-dim); font-size: 0.8rem;">${escapeHtml(su.tool_info.output.slice(0, 300))}</span>` : '';
-          return `<div style="color: var(--badge-opencode); font-weight: 600; margin-top: 4px;">⚙ ${escapeHtml(toolName)}${duration} <span style="color: var(--text-dim); font-weight: 400;">${escapeHtml(JSON.stringify(params).slice(0, 120))}</span></div>${output}`;
+          return `<div style="color: var(--badge-opencode); font-weight: 600; margin-top: 4px;"><span class="stream-badge stream-tool">EXEC</span> ${escapeHtml(toolName)}${duration} <span style="color: var(--text-dim); font-weight: 400;">${escapeHtml(JSON.stringify(params).slice(0, 120))}</span></div>${output}`;
         }
         if (su.step_type === 'agent_response') {
           if (su.text_delta) {
@@ -1003,10 +1005,10 @@ function formatLogLine(rawLine) {
           }
         }
         if (su.thought || su.thinking) {
-          return `<div style="color: var(--text-dim); padding: 2px 0 2px 8px; border-left: 2px solid rgba(255,255,255,0.15); margin: 3px 0;">💭 ${escapeHtml(su.thought || su.thinking)}</div>`;
+          return `<div style="color: var(--text-dim); padding: 2px 0 2px 8px; border-left: 2px solid rgba(255,255,255,0.15); margin: 3px 0;"><span class="stream-badge stream-thought">THOUGHT</span> ${escapeHtml(su.thought || su.thinking)}</div>`;
         }
         if (su.tool_calls && Array.isArray(su.tool_calls)) {
-          return su.tool_calls.map(tc => `<div style="color: var(--badge-opencode); font-weight: 600;">⚙ ${escapeHtml(tc.name || 'tool')}(${escapeHtml(JSON.stringify(tc.args || {}).slice(0, 100))})</div>`).join('\n');
+          return su.tool_calls.map(tc => `<div style="color: var(--badge-opencode); font-weight: 600;"><span class="stream-badge stream-tool">TOOL</span> ${escapeHtml(tc.name || 'tool')}(${escapeHtml(JSON.stringify(tc.args || {}).slice(0, 100))})</div>`).join('\n');
         }
       }
       if (obj.event === 'result') {
@@ -1014,10 +1016,10 @@ function formatLogLine(rawLine) {
         const respText = resObj.response || resObj.content || resObj.summary || resObj.output || (typeof obj.result === 'string' ? obj.result : '');
         const duration = resObj.duration_seconds ? ` (${Math.round(resObj.duration_seconds)}s)` : '';
         const tokens = resObj.usage?.total_tokens ? ` · ${formatNumber(resObj.usage.total_tokens)} tokens` : '';
-        return `\n<div style="padding: 8px 12px; background: rgba(34, 197, 94, 0.1); border-left: 3px solid var(--success); margin: 8px 0; border-radius: 4px;"><span style="color: var(--success); font-weight: 600;">✨ [Task Completed${duration}${tokens}]</span>\n${escapeHtml(respText)}</div>`;
+        return `\n<div style="padding: 8px 12px; background: rgba(34, 197, 94, 0.1); border-left: 3px solid var(--success); margin: 8px 0; border-radius: 4px;"><span class="stream-badge stream-complete">COMPLETED</span> <span style="color: var(--success); font-weight: 600;">Task Completed${duration}${tokens}</span>\n${escapeHtml(respText)}</div>`;
       }
       if (obj.type === 'tool_use') {
-        return `<span style="color: var(--badge-claude); font-weight: 600;">⚙ [Tool Use: ${escapeHtml(obj.name || '')}]</span> <span style="color: var(--text-dim);">${escapeHtml(JSON.stringify(obj.input || {}).slice(0, 120))}</span>`;
+        return `<span class="stream-badge stream-tool">TOOL</span> <span style="color: var(--badge-claude); font-weight: 600;">${escapeHtml(obj.name || '')}</span> <span style="color: var(--text-dim);">${escapeHtml(JSON.stringify(obj.input || {}).slice(0, 120))}</span>`;
       }
       if (obj.type === 'text') {
         return escapeHtml(obj.text || '');
@@ -1340,16 +1342,16 @@ function renderDiffsTab(meta) {
     html += `
       <div class="diff-files-summary">
         <div class="diff-files-header">
-          <span>📁</span>
+          ${ICONS.folder}
           <strong>Modified Files (${files.length})</strong>
-          <span style="font-size: 0.75rem; color: var(--text-dim); margin-left: auto;">${meta.isAlive ? '⚡ Active Execution' : 'Completed Session'}</span>
+          <span style="font-size: 0.75rem; color: var(--text-dim); margin-left: auto; display: flex; align-items: center; gap: 4px;">${meta.isAlive ? `${ICONS.bolt} Active Execution` : 'Completed Session'}</span>
         </div>
         <div class="diff-files-list">
           ${files.map(f => `
             <div class="diff-file-row">
-              <span class="diff-file-icon">✏️</span>
+              <span class="diff-file-icon" style="display: flex; align-items: center;">${ICONS.edit}</span>
               <span class="diff-file-path">${escapeHtml(f)}</span>
-              <button class="tool-btn-copy" data-copy-path="${escapeHtml(f)}" title="Copy file path">📋</button>
+              <button class="tool-btn-copy" data-copy-path="${escapeHtml(f)}" title="Copy file path">${ICONS.copy}</button>
             </div>
           `).join('')}
         </div>
@@ -1362,7 +1364,7 @@ function renderDiffsTab(meta) {
     html += `
       <div class="diff-content-block">
         <div class="diff-content-header">
-          <span>📝</span>
+          ${ICONS.file}
           <strong>Unified Git Diff</strong>
         </div>
         <pre class="diff-code">${renderDiffToHtml(diffText)}</pre>
@@ -1371,7 +1373,7 @@ function renderDiffsTab(meta) {
   } else if (meta.isAlive) {
     html += `
       <div class="diff-live-notice">
-        <span>ℹ️</span>
+        ${ICONS.info}
         <span>Unified git diff is generated when the session finalizes. You can inspect the live modified files above or watch the real-time terminal output.</span>
       </div>
     `;
@@ -1386,8 +1388,8 @@ function renderDiffsTab(meta) {
       const p = btn.dataset.copyPath;
       if (p) {
         copyToClipboard(p, `Copied: ${p}`);
-        btn.textContent = '✓';
-        setTimeout(() => { btn.textContent = '📋'; }, 1500);
+        btn.innerHTML = ICONS.check;
+        setTimeout(() => { btn.innerHTML = ICONS.copy; }, 1500);
       }
     });
   });
@@ -1787,7 +1789,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const diffSec = Math.max(0, Math.round((Date.now() - startMs) / 1000));
         const m = Math.floor(diffSec / 60);
         const s = diffSec % 60;
-        clockEl.textContent = `⏱️ ${m}m ${s}s`;
+        clockEl.innerHTML = `${ICONS.clock} <span>${m}m ${s}s</span>`;
       }
     });
   }, 1000);
