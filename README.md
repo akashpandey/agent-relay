@@ -126,7 +126,10 @@ Install the shared delegation skill for Codex and Claude Code with:
 
 This links commands into `~/.local/bin` and the tracked skill at
 `skills/agent-relay/` into Codex, Claude, OpenCode, Gemini, and shared agent skill
-directories. Existing `agent-relay` skill directories are replaced. Update the
+directories. Existing `agent-relay` skill directories are replaced. If a
+target CLI/skill link already points somewhere else, a warning prints the old
+and new target before replacing it; pass `--force` to skip that warning (the
+link is still replaced either way — the installer never prompts). Update the
 source here; keep the checkout and do not edit the installed links.
 
 `skills/agent-relay/` is also the canonical source for the plugin skill.
@@ -616,7 +619,7 @@ available while the corresponding log file still exists.
 
 ## Process Cleanup
 
-A agent can leave things running after it exits — a `npm run dev &`
+An agent can leave things running after it exits — a `npm run dev &`
 it forgot to stop, a background server started to "test" something. All
 wrapper types clean this up automatically:
 

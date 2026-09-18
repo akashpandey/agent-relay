@@ -1,5 +1,12 @@
 # Public Release and Production Readiness Roadmap
 
+> **Historical planning document.** The "Current State" snapshot below is from
+> 2026-08-03, before public release. Since then the repository has gone
+> public, shipped a license, CI, CodeQL, `CONTRIBUTING.md`, and `SECURITY.md`,
+> and published npm releases — see the [README](../README.md) for current
+> status. This file is kept as a record of the original plan and is not
+> updated to track completed milestones.
+
 ## Purpose
 
 `agent-relay` gives any shell-capable AI harness a stable way to delegate
