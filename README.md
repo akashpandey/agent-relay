@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/akashpandey/agent-relay/actions/workflows/ci.yml/badge.svg)](https://github.com/akashpandey/agent-relay/actions/workflows/ci.yml)
 
-> **Pass the baton between Claude Code, Codex, Antigravity, and OpenCode with a single Unix command.**
+> **Run, track, and hand off local coding-agent tasks across Claude Code, Codex, Antigravity, and OpenCode.**
 
 [📖 **Getting Started Guide**](./docs/GETTING_STARTED.md) — 5-minute setup from zero to running delegated agents.
 
@@ -53,7 +53,7 @@ flowchart TD
     Logs --> Dashboard
 ```
 
-Small, harness-agnostic shell wrappers and local-first orchestration for running coding agents in non-interactive mode.
+A local-first operator toolkit for the coding-agent CLIs you already use. Delegate a task from your terminal or an AI session, inspect its logs and structured result, then continue with the same provider or hand it to another one. Use shell commands or MCP tools; the dashboard gives you a shared view of runs across your repositories.
 
 ![agent-relay demo](./docs/assets/demo.gif)
 
@@ -96,23 +96,32 @@ Included wrappers:
 
 ## What they are good for
 
-These wrappers are useful when you want a harness to delegate a bounded task to a agent without opening an interactive UI.
+Use agent-relay when you want a bounded coding task to run without opening another interactive UI, and want a way to inspect or continue it afterward.
 
-Common cases:
+| Use case | Example task | Where agent-relay helps |
+|---|---|---|
+| Delegate from an AI coding session | Ask another provider to write tests for one module | A shared shell/MCP interface keeps the primary agent in control |
+| Get an independent review | Have a second model inspect a proposed fix without editing | Separate provider sessions and saved results make feedback easy to revisit |
+| Diagnose a failing build | Reproduce one failure, find its cause, and propose a narrow fix | Run logs, verification entries, and follow-up sessions preserve the investigation |
+| Split implementation work | Assign isolated modules to workers in separate Git worktrees | Exact workspace paths keep each run in its intended checkout |
+| Recover an interrupted task | Switch providers after a quota limit or context ceiling | Takeover assembles available local session context and current Git state |
+| Maintain several repositories | Review test gaps, dependency changes, or documentation drift | Workspace aliases and the dashboard make runs easier to find and inspect |
+| Script repeatable checks | Run a review prompt from a local script or a trusted automation runner | Non-interactive commands and structured results give the caller an acceptance surface |
+| Compare providers | Ask two models to review the same unchanged diff | A consistent task interface and separate logs support manual comparison |
 
-- a Codex or Claude Code session delegating work to another model
-- quick implementation tasks from the terminal
-- code review or second-opinion passes on a repo
-- one-shot debugging prompts
-- delegated work from another agent
-- scripted handoffs from tools like `xargs`, shell loops, or CI-adjacent automation
-- comparing two model backends on the same task prompt
-
-They are best for short, self-contained tasks where stdout is enough as the return channel.
+These are caller-directed workflows, not built-in autonomous pipelines. Give each run a clear scope, file ownership, and verification target.
 
 They are not a queueing system or autonomous workflow engine. `relay` provides
 run lookup, structured result parsing, continuation, and cross-harness takeover,
 but retries and multi-step planning still belong to the caller.
+
+### Scope and safety
+
+- Agent-relay does not provide models or credentials. Install and authenticate the provider CLIs you intend to use; you do not need all four. Provider usage limits and charges still apply.
+- Local-first means the harness stores run data locally, not that inference is offline. Provider CLIs may send prompts, code, and takeover context to their configured services. Treat logs and session history as sensitive.
+- Non-interactive execution is not a security sandbox. Wrappers can disable approval prompts, and permissions depend on the provider and host configuration. Use trusted repositories and isolated environments; do not run untrusted pull-request instructions with secrets or privileged access.
+- For parallel edits, use separate worktrees or explicitly disjoint ownership. Agent-relay does not lock files, merge changes, or resolve worker conflicts.
+- A successful process exit is not proof that the task is complete. Inspect the structured result and independently verify consequential changes before merging or deploying.
 
 ## Harness-friendly design
 
@@ -232,7 +241,7 @@ Use `get_run_result` or `wait_for_run` for acceptance checks; raw log tools are 
 
 ## Cross-Harness Relay Takeover (Token Exhaustion Handoff)
 
-When you hit a rate limit, quota exhaustion, or context ceiling midway in an interactive harness session (Claude Code, Codex CLI, Antigravity CLI, or OpenCode) or in a agent run, you don't need to re-explain the task from scratch.
+When you hit a rate limit, quota exhaustion, or context ceiling midway in an interactive harness session (Claude Code, Codex CLI, Antigravity CLI, or OpenCode) or in an agent run, you don't need to re-explain the task from scratch.
 
 `agent-relay` inspects the local session logs across all four harnesses, extracts the working context, inspects current repository changes (`git status` & `git diff`), and packages a structured baton-pass prompt for the target agent harness:
 
@@ -241,13 +250,13 @@ When you hit a rate limit, quota exhaustion, or context ceiling midway in an int
 relay takeover codex
 
 # Take over a named workspace using OpenCode:
-relay takeover fitschool opencode
+relay takeover my-app opencode
 
 # Take over with an explicit directive:
-relay takeover fitschool claude "Finish the remaining unit tests and commit"
+relay takeover my-app claude "Finish the remaining unit tests and report verification"
 
 # Continue a previous agent run but switch provider:
-relay continue fitschool --to codex "Continue where the last run stopped"
+relay continue my-app --to codex "Continue where the last run stopped"
 ```
 
 ### What gets passed during takeover:
@@ -350,48 +359,79 @@ Codex selectors: `latest` (`gpt-5.6-sol`), `terra` (`gpt-5.6-terra`), `luna` (`g
 
 ## Typical scenarios
 
-### 1. Delegate a narrow coding task
+The examples below assume installation is complete and the selected provider is authenticated. Replace paths and workspace aliases with your own. Each invocation runs a real provider task and may incur usage charges.
+
+### 1. Delegate implementation and verify it
 
 ```bash
 cd /path/to/repo
-opencode-agent "Update the failing test and explain the change"
+relay opencode "Fix the failing parser test. Limit edits to the parser and its tests; run the targeted test suite and report the result."
+relay result --last
 ```
 
-Useful when you want a direct code-editing agent pass on the current repo without opening an interactive session.
-
-This is the main pattern for use from Claude Code or Codex CLI: the primary agent stays in control and delegates a narrow task through a wrapper command.
+Use this from a terminal or an AI coding session. The caller reviews the changed files and verification, rather than treating a zero exit code as acceptance.
 
 ### 2. Ask for a second opinion
 
 ```bash
 cd /path/to/repo
-antigravity-agent "Review the auth flow for obvious risks"
+relay claude "Review the current git diff for regressions and missing tests. Do not edit files. Return findings with file and line references."
 ```
 
-Useful when you want an alternate model or toolchain to critique a change, review architecture, or sanity-check an approach.
+Choose a different provider from the one that made the changes. Asking for no edits is a task instruction, not an enforced read-only permission boundary.
 
-### 3. Fan out a list of tasks
+### 3. Investigate, then continue the same session
 
 ```bash
-printf '%s\n' \
-  "Review the Docker setup" \
-  "Check the auth middleware" \
-  "Summarize the test gaps" \
-| xargs -I{} opencode-agent "{}"
+relay my-app codex "Reproduce the failing parser test and identify the root cause. Do not edit files yet. Report the reproduction command and a proposed fix."
+relay result my-app
+relay continue my-app "Implement the proposed parser fix and rerun the reproduction test."
 ```
 
-Useful when another script or agent needs a simple command-shaped interface.
+Continue only after reviewing the diagnosis. Same-provider continuation requires a recorded provider session ID; unrelated tasks should start fresh sessions.
 
-### 4. Compare backends on the same prompt
+### 4. Run isolated workers in separate worktrees
 
 ```bash
-OPENCODE_MODEL='zai-coding-plan/glm-5.2' opencode-agent "Review this diff"
-AGY_MODEL='Gemini 3.6 Flash (Low)' antigravity-agent "Review this diff"
-CLAUDE_MODEL='sonnet' claude-agent "Review this diff"
-CODEX_MODEL='gpt-5.6-terra' codex-agent "Review this diff"
+cd /path/to/repo
+git worktree add -b relay-parser-tests ../repo-parser-tests
+git worktree add -b relay-docs ../repo-docs
+codex-agent --workspace ../repo-parser-tests "Add parser edge-case tests only. Run the parser test suite; do not commit." &
+claude-agent --workspace ../repo-docs "Update parser documentation only. Check examples against the source; do not commit." &
+wait
 ```
 
-Useful when you want to compare speed, quality, or failure modes across providers.
+Inspect each run's structured result and each worktree's diff before integrating changes. Shell `wait` only waits for processes; it does not verify task acceptance. Separate worktrees isolate files, but not shared databases, services, or other external side effects.
+
+### 5. Hand off when a provider cannot continue
+
+```bash
+relay takeover my-app codex "Finish the remaining tests. Preserve existing changes and report any missing context."
+relay result my-app
+```
+
+Takeover uses available local history and Git state to build a new prompt. It is a context summary, not a transfer of the original provider's internal state; the receiving agent still needs to verify assumptions.
+
+### 6. Review several repositories from a script
+
+```bash
+for workspace in api web worker; do
+  relay "$workspace" codex "Review test coverage gaps. Do not edit files; report the three highest-risk gaps with file references."
+  relay result "$workspace"
+done
+```
+
+Configure these aliases first with `relay init`. The loop runs sequentially; the caller decides whether to retry, stop, or act on a result. For an MCP-driven equivalent, launch with `run_agent`, inspect with `get_run_result` or `wait_for_run`, and explicitly check `accepted` before scheduling dependent work.
+
+### 7. Compare providers on an unchanged input
+
+```bash
+cd /path/to/repo
+codex-agent "Review the current git diff. Do not edit files; report regressions and missing tests."
+claude-agent "Review the current git diff. Do not edit files; report regressions and missing tests."
+```
+
+Keep the checkout unchanged between runs and compare the saved results. Agent-relay provides the runs and logs, not an automated benchmark or quality score.
 
 ## opencode-agent
 
