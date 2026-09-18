@@ -1,9 +1,34 @@
 #!/usr/bin/env sh
 set -eu
 
+force=0
+for arg in "$@"; do
+  case "$arg" in
+    --force|-f) force=1 ;;
+  esac
+done
+
 script_path="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$script_path")" && pwd -P)
 source_dir="$repo_dir/skills/agent-relay"
+
+warn_symlink() {
+  target="$1"
+  new_target="$2"
+  if [ "$force" -eq 0 ] && [ -L "$target" ]; then
+    old_target="$(readlink "$target" 2>/dev/null || true)"
+    old_real="$(readlink -f "$target" 2>/dev/null || realpath "$target" 2>/dev/null || true)"
+    new_real="$(readlink -f "$new_target" 2>/dev/null || realpath "$new_target" 2>/dev/null || true)"
+    [ -n "$old_target" ] || old_target="$old_real"
+    if [ -n "$old_real" ] && [ -n "$new_real" ]; then
+      if [ "$old_real" != "$new_real" ]; then
+        echo "Warning: replacing existing link $target (was pointing to $old_target) with $new_target"
+      fi
+    elif [ "$old_target" != "$new_target" ]; then
+      echo "Warning: replacing existing link $target (was pointing to $old_target) with $new_target"
+    fi
+  fi
+}
 
 # 1. Install skills
 for target in \
@@ -17,6 +42,7 @@ for target in \
     echo "Replacing directory with symlink: $target"
     rm -rf "$target"
   fi
+  warn_symlink "$target" "$source_dir"
   mkdir -p "$(dirname -- "$target")"
   ln -sfnT "$source_dir" "$target"
   echo "Installed skill: $target -> $source_dir"
@@ -42,7 +68,9 @@ for bin in \
     source_bin="$repo_dir/agent"
   fi
   if [ -f "$source_bin" ]; then
-    ln -sf "$source_bin" "$HOME/.local/bin/$bin"
-    echo "Installed CLI: $HOME/.local/bin/$bin -> $source_bin"
+    cli_target="$HOME/.local/bin/$bin"
+    warn_symlink "$cli_target" "$source_bin"
+    ln -sf "$source_bin" "$cli_target"
+    echo "Installed CLI: $cli_target -> $source_bin"
   fi
 done
