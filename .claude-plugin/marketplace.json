@@ -1,0 +1,13 @@
+{
+  "name": "agent-relay",
+  "owner": { "name": "Akash Pandey" },
+  "metadata": { "description": "Native agent-relay delegation integration for Claude Code." },
+  "plugins": [
+    {
+      "name": "agent-relay",
+      "source": "./plugins/agent-relay",
+      "description": "Delegate local coding-agent tasks with CLI, MCP, and dashboard observability.",
+      "version": "1.0.0"
+    }
+  ]
+}

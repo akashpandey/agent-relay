@@ -1,0 +1,20 @@
+{
+  "name": "agent-relay",
+  "interface": {
+    "displayName": "Agent Relay"
+  },
+  "plugins": [
+    {
+      "name": "agent-relay",
+      "source": {
+        "source": "local",
+        "path": "./plugins/agent-relay"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

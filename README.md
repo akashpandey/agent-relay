@@ -5,7 +5,9 @@
 
 > **Run, track, and hand off local coding-agent tasks across Claude Code, Codex, Antigravity, and OpenCode.**
 
-[📖 **Getting Started Guide**](./docs/GETTING_STARTED.md) — 5-minute setup from zero to running delegated agents.
+[📖 **Getting Started Guide**](./docs/GETTING_STARTED.md) — install the CLI and dashboard, verify your first task, update, and uninstall. [Harness plugins](./docs/PLUGINS.md) are also available.
+
+[GitHub release guide](./docs/RELEASES.md) — prepare a tested version tag and downloadable install bundle.
 
 ```mermaid
 flowchart TD
@@ -148,11 +150,9 @@ That gives you a stable delegation surface even if the underlying CLI syntax cha
 
 These wrappers assume the backing CLIs are already installed on the host:
 
-- Node.js 24 or newer, for the built-in `node:sqlite` dashboard/index APIs
-- `opencode-agent` calls `$HOME/.opencode/bin/opencode`
-- `antigravity-agent` calls `$HOME/.local/bin/agy`
-- `claude-agent` calls `$HOME/.local/bin/claude`
-- `codex-agent` calls `codex`
+- Linux, or Linux inside WSL2 (verify on your machine). Native Windows and macOS are not validated; wrappers use Linux utilities.
+- Node.js 24+ is recommended and used in CI; the declared minimum is 22.5.0. The dashboard image uses Node 22.
+- At least one authenticated provider CLI: `opencode`, `agy`, `claude`, or `codex`, discovered through PATH. Executable paths can be overridden; see the getting-started guide.
 
 They are meant for a machine where those tools already exist. The wrappers do not install or manage them.
 
@@ -164,12 +164,10 @@ Install the shared delegation skill for Codex and Claude Code with:
 ./install-skill
 ```
 
-This creates symlinks from `~/.codex/skills/agent-relay` and
-`~/.claude/skills/agent-relay` to the tracked source at
-`skills/agent-relay/`. Update that source here; do not edit the installed
-links. OpenCode already permits Claude-style skills on this host. Antigravity's
-plugin system can import Claude skills when needed, but has no global skill
-directory configured yet.
+This links commands into `~/.local/bin` and the tracked skill at
+`skills/agent-relay/` into Codex, Claude, OpenCode, Gemini, and shared agent skill
+directories. Existing `agent-relay` skill directories are replaced. Update the
+source here; keep the checkout and do not edit the installed links.
 
 ## Usage
 
@@ -199,8 +197,8 @@ printf '%s\n' "Review this repo" | ./codex-agent
 ./relay mcp install      # Auto-wire MCP server into Claude, OpenCode, Codex, Antigravity
 ./relay workspaces
 ./relay doctor
-./relay dashboard
-./relay dashboard restart
+./relay dashboard         # Check dashboard HTTP availability
+./relay dashboard restart # Restart the configured Docker/hook setup
 ./relay my-app opencode "Review this repo"
 ./relay codex "Review the current directory"
 ./relay attention my-app
@@ -626,7 +624,7 @@ its probe and real task calls.
 
 The `logs/` directory is gitignored and not rotated. Clean it out periodically
 if it grows (`rm -rf ~/agent-relay/logs/*`); the dashboard keeps indexed run
-metadata in `data/agents.db`, but full raw-log download/search is only
+metadata in `data/subagents.db`, but full raw-log download/search is only
 available while the corresponding log file still exists.
 
 ## Process Cleanup

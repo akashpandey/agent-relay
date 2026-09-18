@@ -45,6 +45,9 @@
     "dashboard/",
     "skills/",
     "docs/",
+    "plugins/",
+    ".claude-plugin/",
+    ".agents/plugins/",
     "docker-compose.sample.yml",
     "README.md",
     "LICENSE"
@@ -67,6 +70,7 @@
     "test": "node --test tests/*.mjs",
     "test:mcp": "node --test tests/test-mcp-server.mjs",
     "test:wrappers": "./tests/test-wrappers.sh",
+    "test:package": "node tests/package-smoke.js",
     "doctor": "./agent-doctor",
     "dashboard": "./agent-dashboard start",
     "dashboard:dev": "npm --prefix dashboard run dev"

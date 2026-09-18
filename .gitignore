@@ -33,3 +33,8 @@ coverage/
 .env
 .env.local
 .env.*.local
+
+# Public Codex plugin catalog (also allow through global .agents ignores)
+!.agents/
+!.agents/plugins/
+!.agents/plugins/marketplace.json

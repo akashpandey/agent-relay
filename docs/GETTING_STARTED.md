@@ -1,129 +1,196 @@
-# Getting Started with agent-relay
+# Install agent-relay and its dashboard
 
-Welcome to **agent-relay**! This guide gets you from zero to orchestrating local coding agents (Claude Code, OpenAI Codex, OpenCode, and Antigravity) in under 5 minutes.
-
----
+Install the CLI on your host and a persistent dashboard in Docker. Provider
+agents run on the host; the container monitors runs. You need one authenticated
+provider. [Harness plugins](PLUGINS.md) are optional.
 
 ## 1. Prerequisites
 
-- **Node.js**: Version 22.5.0 or higher (uses native `node:sqlite`).
-- **One or more AI coding agent CLIs installed**:
-  - [Claude Code](https://claude.ai/code): `claude`
-  - [OpenAI Codex CLI](https://github.com/openai/codex): `codex`
-  - [OpenCode](https://opencode.ai): `opencode`
-  - [Antigravity / Gemini CLI](https://cloud.google.com): `agy`
+Use Linux, or Linux inside WSL2. Linux is covered by CI; verify WSL2 on your
+machine. Native Windows and macOS are not validated targets: wrappers use Linux
+utilities including `setsid`, `timeout`, and `/proc`. On Windows, install Node
+and your provider inside WSL and run these commands in that Linux terminal.
 
----
+- [Node.js](https://nodejs.org/en/download) **24+** is recommended and used in
+  CI. The declared minimum is 22.5.0; the Docker dashboard uses Node 22. Docker
+  does not remove the host Node requirement.
+- [Git](https://git-scm.com/downloads).
+- [Docker Engine](https://docs.docker.com/engine/install/) and
+  [Compose](https://docs.docker.com/compose/install/linux/), or
+  [Docker Desktop with WSL integration](https://docs.docker.com/desktop/features/wsl/).
+  Skip Docker for the foreground Node option below.
+- Install and authenticate [Codex](https://github.com/openai/codex),
+  [Claude Code](https://code.claude.com/docs/en/setup), or
+  [OpenCode](https://opencode.ai/docs/) using its setup guide. Open it directly
+  and confirm it can answer a prompt. Antigravity requires the
+  [Antigravity CLI](https://antigravity.google/docs/cli/) executable `agy`;
+  the editor or generic Gemini CLI alone is insufficient.
 
-## 2. Installation
-
-Clone the repository and install the shared skill and CLI symlinks:
+Check readiness (replace `codex` with your provider; omit Docker checks for Node):
 
 ```bash
-git clone https://github.com/akashpandey/agent-relay.git
-cd agent-relay
+node --version
+git --version
+command -v codex
+docker info
+docker compose version
+```
 
-# Links relay, agent, and wrapper binaries into ~/.local/bin
+Provider charges and quotas apply; relay does not supply models or credentials.
+
+## 2. Install commands and skills
+
+```bash
+git clone https://github.com/akashpandey/agent-relay.git "$HOME/agent-relay"
+cd "$HOME/agent-relay"
 ./install-skill
-```
-
-Ensure `~/.local/bin` is in your `PATH`:
-```bash
 export PATH="$HOME/.local/bin:$PATH"
+relay --help
 ```
 
-*(Alternatively, if installing via npm: `npm install -g agent-relay`)*
+Add the PATH export once to `~/.bashrc` (Bash) or `~/.zshrc` (Zsh). Open a new
+terminal and confirm `command -v relay` works. No sudo or npm install is needed.
+Keep the checkout: commands and skills are symlinks into it. The installer
+replaces existing `agent-relay` skill directories; preserve custom copies first.
+This guide uses source installation rather than assuming an npm publication.
 
----
+Wrappers find providers through PATH. For unusual executable locations, set
+`AGENT_RELAY_CODEX_BIN`, `AGENT_RELAY_CLAUDE_BIN`, `AGENT_RELAY_OPENCODE_BIN`, or
+`AGENT_RELAY_AGY_BIN` to its absolute path in your shell startup file.
 
-## 3. Quick Setup
+## 3. Start the dashboard
 
-### Step 3.1: Discover Your Workspaces
-Run the interactive workspace setup to scan your repositories (default: `~/Code`):
+### Recommended: persistent Docker dashboard
+
+```bash
+cd "$HOME/agent-relay"
+cp docker-compose.sample.yml docker-compose.yml
+mkdir -p data logs
+```
+
+Edit `docker-compose.yml`: use `"127.0.0.1:4242:4242"` as the port mapping for
+local access. Uncomment only provider mounts you use, for example
+`- ${HOME}/.codex:/codex_data:ro`. Confirm source directories exist. Mounts enable
+session history and available token/cost details; basic relay logs work without
+them. The dashboard has no login; keep sensitive logs and sessions local.
+
+```bash
+docker compose up -d --build
+docker compose ps
+relay dashboard
+```
+
+Open **http://localhost:4242**. The container survives closing the terminal and
+restarts with Docker unless explicitly stopped. `relay dashboard` checks HTTP
+availability; it does not launch the server.
+
+### Alternative: foreground Node dashboard
+
+In a separate terminal:
+
+```bash
+HOST=127.0.0.1 agent-dashboard
+```
+
+Open the same URL. Keep this terminal open; Ctrl+C stops it. Run the command
+again to restart. No dependency installation is needed. Do not start both
+options on the same port.
+
+## 4. Workspaces and shared paths
 
 ```bash
 relay init
+relay workspaces
 ```
 
-This generates `~/.config/agent-relay/workspaces.json`, allowing you to reference projects by canonical names (e.g. `relay my-app opencode "fix bug"`).
+Init scans `~/Code` and asks before writing aliases to
+`~/.config/agent-relay/workspaces.json`. For a different root, use
+`AGENT_RELAY_CODE_ROOT="/absolute/path/to/repos" relay init`. Existing config is
+not overwritten; edit it directly. Aliases are optional: relay uses your current
+repository directory when none is supplied.
 
-### Step 3.2: Connect Your AI Harnesses (MCP)
-To enable Claude Code, Codex, Antigravity, and OpenCode to call each other natively through MCP:
+Wrappers and the Node dashboard default to this checkout's `logs/` and
+`data/subagents.db`. Docker mounts those same directories. Back up both.
+If overriding `AGENT_RELAY_LOG_DIR` or `AGENT_RELAY_DATA_DIR`, apply the same
+host paths to all relay processes and the Node dashboard, and adjust Docker's
+host mount paths too. Host exports alone do not change container mounts.
+
+To share workspace aliases with Docker, mount the config file read-only and
+set `AGENT_RELAY_WORKSPACES_CONFIG` to its container path. Keep repository paths
+inside that file as host paths for grouping runs.
+
+## 5. Verify your first task
+
+In another terminal, use a trusted Git repository:
 
 ```bash
-relay mcp install
+cd "/absolute/path/to/your/repository"
+relay codex "Describe this repository in one sentence. Do not edit files or run commands that modify it."
+relay result --last
 ```
 
-This auto-detects installed coding tools and registers the `agent-relay` MCP server in:
-- Claude Code (`~/.claude.json`)
-- OpenCode (`~/.config/opencode/opencode.json`)
-- Antigravity CLI (`~/.gemini/antigravity-cli/mcp_config.json`)
-- OpenAI Codex CLI (`~/.codex/config.toml`)
+Replace `codex` with your authenticated provider. This is a real model call;
+the no-edit request is an instruction, not an enforced security sandbox.
+Confirm the banner prints a log path under `~/agent-relay/logs`. Refresh the
+dashboard: the task should appear with the correct provider and workspace.
+Open its result and inspect `accepted`, summary, verification, blockers, and
+incomplete work. Zero exit code alone does not prove acceptance. An empty
+dashboard before your first run is normal.
 
----
+## 6. Optional harness integration
 
-## 4. Usage Patterns
+Follow the [plugin guide](PLUGINS.md) for native packages. Alternatively, back
+up harness configs and run `relay mcp install`. It writes Claude config and
+updates OpenCode, Codex, and Antigravity configs when their expected directories
+exist. Restart your harness and confirm `run_agent` and `get_run_result` appear.
+Shell usage does not require MCP. Avoid registering the same server through
+both a plugin and manual configuration.
 
-### A. Direct Terminal Delegation
-Run tasks against the current directory or a named workspace:
+## 7. Maintenance and removal
 
-```bash
-# Run a task using Claude Code
-relay claude "Write unit tests for auth middleware"
-
-# Run a task using OpenCode in a named workspace
-relay my-project opencode "Refactor database migrations"
-
-# Run with dynamic model family aliases
-CODEX_MODEL='latest' relay codex "Review recent git diff"
-```
-
-### B. Structured MCP Tool Calls
-Inside any AI coding session (e.g., Claude Code or Codex), the model can call `agent-relay` MCP tools:
-
-- `run_agent`: Delegate tasks directly (`provider`, `prompt`, `workspace`, `model`, `wait`).
-- `list_models`: Check which models and dynamic aliases are available on this host.
-- `list_runs`: Query previous runs, filter by status, outcome, or workspace.
-- `get_run_result`: Retrieve the machine-readable acceptance contract for a run.
-- `takeover_run`: Transfer a task and context to another harness.
-- `kill_run`: Terminate a runaway agent process tree.
-
-### C. Cross-Harness Relay Takeover (Token / Quota Exhaustion)
-Hit a rate limit or context ceiling in Claude Code? Transfer the baton to Codex without losing progress:
+Docker commands run from `~/agent-relay`:
 
 ```bash
-relay takeover codex "Finish the remaining unit tests and verify build"
-```
-
-The handoff engine automatically:
-1. Inspects the active session logs and user goal.
-2. Extracts touched files and the last assistant reasoning.
-3. Captures uncommitted workspace changes (`git status` and `git diff`).
-4. Synthesizes a structured baton-pass prompt for the target agent.
-
----
-
-## 5. Web Dashboard (Real-Time Monitor)
-
-Launch the visualizer dashboard to track live runs, inspect diffs, token counts, and costs:
-
-```bash
-# Start dashboard via docker
-cp docker-compose.sample.yml docker-compose.yml
+docker compose stop
 docker compose up -d
-
-# Or run directly with Node:
-npm run dashboard
+docker compose logs --tail=50 agent-dashboard
 ```
 
-Open **`http://localhost:4242`** in your browser.
-
----
-
-## 6. Health Check
-
-Verify your setup at any time with:
+To update, stop active tasks and back up logs, data, and configuration:
 
 ```bash
-relay doctor
+cd "$HOME/agent-relay"
+git pull --ff-only
+./install-skill
+docker compose build agent-dashboard
+docker compose up -d --no-build --force-recreate agent-dashboard
+relay dashboard
 ```
+
+Resolve local changes if Git refuses the pull. Review sample Compose changes
+without overwriting your customized file. Build completes before replacement.
+For Node, omit Docker commands and restart the foreground server. Restart MCP
+harnesses and update installed plugins as described in their guide.
+
+To uninstall, stop active tasks and run `docker compose down` (or Ctrl+C for
+Node). Remove only `~/.local/bin` symlinks pointing into this checkout and skill
+links printed by the installer. Uninstall plugins and remove relay MCP entries,
+then restart harnesses. Remove workspace config if unwanted. Save wanted
+logs/data before deleting the checkout; Compose down preserves these folders.
+
+## Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| Command missing | Check PATH, reopen the terminal, and rerun the installer if links are missing. |
+| Provider/login failure | Run it directly; check authentication, PATH, and executable overrides. |
+| SQLite startup failure | Check host Node version; use Node 24+. |
+| Docker permission/connection error | Make `docker info` succeed; check daemon and WSL integration. |
+| Dashboard unavailable | Check Compose status/logs or the Node terminal; ensure port 4242 is free. |
+| Task absent | Compare its printed log path with dashboard mounts and data overrides. |
+| Session details/costs absent | Check provider mounts; not every provider records every metric. |
+| Empty summary/verification | Inspect logs and result; missing outcome contracts mean unverified work. |
+| MCP tools absent | Restart the harness and check its configured executable path. |
+| Doctor reports missing hooks | Doctor checks a specific Docker/post-commit-hook setup. Hooks are optional; use `relay dashboard` and the first-task check for this guide. |
+
+More delegation and takeover examples are in the [README](../README.md).

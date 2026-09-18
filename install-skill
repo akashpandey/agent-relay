@@ -36,8 +36,13 @@ for bin in \
   agent-relay-mcp \
   agent \
   relay; do
-  if [ -f "$repo_dir/$bin" ]; then
-    ln -sf "$repo_dir/$bin" "$HOME/.local/bin/$bin"
-    echo "Installed CLI: $HOME/.local/bin/$bin -> $repo_dir/$bin"
+  source_bin="$repo_dir/$bin"
+  # npm archives omit the relay -> agent symlink.
+  if [ "$bin" = relay ] && [ ! -f "$source_bin" ]; then
+    source_bin="$repo_dir/agent"
+  fi
+  if [ -f "$source_bin" ]; then
+    ln -sf "$source_bin" "$HOME/.local/bin/$bin"
+    echo "Installed CLI: $HOME/.local/bin/$bin -> $source_bin"
   fi
 done

@@ -1,0 +1,9 @@
+{
+  "name": "agent-relay",
+  "version": "1.0.0",
+  "description": "Delegate, inspect, continue, and hand off local coding-agent tasks.",
+  "author": { "name": "Akash Pandey" },
+  "homepage": "https://github.com/akashpandey/agent-relay",
+  "repository": "https://github.com/akashpandey/agent-relay",
+  "license": "MIT"
+}

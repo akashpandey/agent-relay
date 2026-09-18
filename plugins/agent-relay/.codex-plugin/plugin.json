@@ -1,0 +1,19 @@
+{
+  "name": "agent-relay",
+  "version": "1.0.0",
+  "description": "Delegate, inspect, continue, and hand off local coding-agent tasks.",
+  "author": {
+    "name": "Akash Pandey"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Agent Relay",
+    "shortDescription": "Use Agent Relay in Codex.",
+    "longDescription": "Use the installed agent-relay CLI and MCP server with a shared local dashboard.",
+    "developerName": "Akash Pandey",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "defaultPrompt": "Help me use Agent Relay."
+  },
+  "mcpServers": "./.mcp.json"
+}
