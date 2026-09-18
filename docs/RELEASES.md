@@ -157,4 +157,4 @@ npm publish
 Publishing makes the package files public on npm even if the GitHub repository
 is private. A GitHub release does not perform this step. After publication, verify
 `npm view @akashpandey/agent-relay version` and follow the
-[npm installation steps](GETTING_STARTED.md#npm-installation).
+[npm installation steps](GETTING_STARTED.md#2-install).
