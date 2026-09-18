@@ -58,10 +58,20 @@ agy plugin install "$HOME/agent-relay/plugins/agent-relay"
 agy plugin list
 ```
 
-The bundle follows [Antigravity's CLI plugin format](https://antigravity.google/docs/cli/plugins.md):
-root `plugin.json`, `mcp_config.json`, and `skills/`. Restart the CLI and confirm
-the skill and relay MCP tools load. Use the installed CLI's `agy plugin` commands
-to manage the bundle; do not assume Claude marketplace commands work here.
+The bundle follows Antigravity's CLI plugin format (the docs/schema URLs
+previously linked here, `antigravity.google/docs/cli/plugins.md` and
+`antigravity.google/schemas/v1/plugin.json`, both 404 as of this writing;
+removed until a working link is found): root `plugin.json`, `mcp_config.json`,
+and `skills/`. Restart the CLI and confirm the skill and relay MCP tools load.
+Use the installed CLI's `agy plugin` commands to manage the bundle; do not
+assume Claude marketplace commands work here.
+
+`agy plugin validate` (checked on CLI 1.2.6) does not read a `hooks` field in
+`plugin.json` at all — verified by testing a real hooks file, a directory
+path, and an invalid value, all producing identical `hooks: skipped (not
+found)` output. Unlike the Claude/Codex bundles, this plugin has no
+SessionStart hook; adding one would currently be a silent no-op. Revisit once
+a newer `agy` version documents hook support.
 The staging directory is version-dependent: CLI 1.2.5 on this host used
 `~/.gemini/config/plugins/agent-relay`, rather than the older documented
 `~/.gemini/antigravity-cli/plugins/` path. Use the plugin manager, not manual
