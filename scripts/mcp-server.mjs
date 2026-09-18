@@ -806,7 +806,7 @@ async function handle(message) {
       result(message.id, {
         protocolVersion: message.params?.protocolVersion || '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'agent-relay', version: '1.0.0' },
+        serverInfo: { name: 'agent-relay', version: '1.0.1' },
       });
     } else if (message.method === 'tools/list') {
       result(message.id, { tools });

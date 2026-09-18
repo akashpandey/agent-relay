@@ -68,13 +68,6 @@ export PATH="$HOME/.local/bin:$PATH"
 relay --help
 ```
 
-If package-name lookup returns 404 after publication, the published `1.0.0`
-archive can also be installed directly:
-
-```bash
-npm install -g https://registry.npmjs.org/@akashpandey/agent-relay/-/agent-relay-1.0.0.tgz
-```
-
 Continue with the dashboard steps below from that package directory. Update with
 `npm install -g @akashpandey/agent-relay@latest`, then rerun `./install-skill`
 and restart the dashboard and harnesses. Back up configuration, logs, and data

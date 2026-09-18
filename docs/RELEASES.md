@@ -15,7 +15,7 @@ See [GitHub's release instructions](https://docs.github.com/en/repositories/rele
 Review and commit the intended changes, push them to main, and wait for the
 repository CI to pass for that exact commit. Include the plugin catalogs,
 bundles, installer fix, documentation, and tests. Preserve unrelated local work.
-For the first candidate, the current package/plugin version is `1.0.0`.
+For the first GitHub release, the current package/plugin version is `1.0.1`.
 Future releases must update both plugin manifests and the Claude catalog version
 alongside `package.json`.
 
@@ -44,12 +44,12 @@ check a different supported runtime. Provider credentials are not mounted.
 Only run these after the candidate is committed, pushed, and verified:
 
 ```bash
-git tag -a v1.0.0 -m "agent-relay v1.0.0"
-git push origin v1.0.0
-mkdir -p /tmp/agent-relay-v1.0.0
-npm pack --pack-destination /tmp/agent-relay-v1.0.0
-(cd /tmp/agent-relay-v1.0.0 && sha256sum akashpandey-agent-relay-1.0.0.tgz > SHA256SUMS)
-gh release create v1.0.0 --verify-tag --draft --title "agent-relay v1.0.0" --generate-notes /tmp/agent-relay-v1.0.0/akashpandey-agent-relay-1.0.0.tgz /tmp/agent-relay-v1.0.0/SHA256SUMS
+git tag -a v1.0.1 -m "agent-relay v1.0.1"
+git push origin v1.0.1
+mkdir -p /tmp/agent-relay-v1.0.1
+npm pack --pack-destination /tmp/agent-relay-v1.0.1
+(cd /tmp/agent-relay-v1.0.1 && sha256sum akashpandey-agent-relay-1.0.1.tgz > SHA256SUMS)
+gh release create v1.0.1 --verify-tag --draft --title "agent-relay v1.0.1" --generate-notes /tmp/agent-relay-v1.0.1/akashpandey-agent-relay-1.0.1.tgz /tmp/agent-relay-v1.0.1/SHA256SUMS
 ```
 
 Review the draft's notes, exact tagged commit, included files, and known limits.
@@ -68,7 +68,7 @@ machine or a fresh profile:
 ```bash
 claude plugin marketplace add akashpandey/agent-relay
 claude plugin install agent-relay@agent-relay
-codex plugin marketplace add akashpandey/agent-relay --ref v1.0.0
+codex plugin marketplace add akashpandey/agent-relay --ref v1.0.1
 codex plugin add agent-relay@agent-relay
 ```
 
@@ -81,7 +81,7 @@ For users installing the attached archive:
 
 ```bash
 mkdir -p "$HOME/agent-relay"
-tar -xzf akashpandey-agent-relay-1.0.0.tgz -C "$HOME/agent-relay" --strip-components=1
+tar -xzf akashpandey-agent-relay-1.0.1.tgz -C "$HOME/agent-relay" --strip-components=1
 cd "$HOME/agent-relay"
 ./install-skill
 ```
@@ -100,7 +100,7 @@ release.
 The package name is `@akashpandey/agent-relay` because the unscoped
 `agent-relay` name belongs to another project. `publishConfig.access` is `public`;
 CLI command names, Git tags, and harness plugin names remain `agent-relay` / `relay`.
-The scoped archive filename is `akashpandey-agent-relay-1.0.0.tgz`.
+The scoped archive filename is `akashpandey-agent-relay-1.0.1.tgz`.
 
 Before publishing, authenticate to npm and verify that your npm account owns the
 `@akashpandey` scope or has permission to publish in it. A matching GitHub username

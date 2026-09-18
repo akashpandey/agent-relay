@@ -1,69 +1,25 @@
 # agent-relay
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/akashpandey/agent-relay/blob/main/LICENSE)
 [![CI](https://github.com/akashpandey/agent-relay/actions/workflows/ci.yml/badge.svg)](https://github.com/akashpandey/agent-relay/actions/workflows/ci.yml)
 
 > **Run, track, and hand off local coding-agent tasks across Claude Code, Codex, Antigravity, and OpenCode.**
 
-[📖 **Getting Started Guide**](./docs/GETTING_STARTED.md) — install the CLI and dashboard, verify your first task, update, and uninstall. [Harness plugins](./docs/PLUGINS.md) are also available.
+[📖 **Getting Started Guide**](https://github.com/akashpandey/agent-relay/blob/main/docs/GETTING_STARTED.md) — install the CLI and dashboard, verify your first task, update, and uninstall. [Harness plugins](https://github.com/akashpandey/agent-relay/blob/main/docs/PLUGINS.md) are also available.
 
-[GitHub release guide](./docs/RELEASES.md) — prepare a tested version tag and downloadable install bundle.
+[GitHub release guide](https://github.com/akashpandey/agent-relay/blob/main/docs/RELEASES.md) — prepare a tested version tag and downloadable install bundle.
 
 The npm package name is **`@akashpandey/agent-relay`**.
 The unscoped `agent-relay` package belongs to another project. CLI commands and
 harness plugin names remain unchanged.
 
-```mermaid
-flowchart TD
-    User["Developer / AI Coding Session"]
-    
-    subgraph Harnesses [Supported AI Harnesses]
-        Claude["Claude Code"]
-        Codex["OpenAI Codex"]
-        OpenCode["OpenCode"]
-        Agy["Antigravity / Gemini"]
-    end
-
-    subgraph RelayCore [agent-relay Core]
-        CLI["relay / agent CLI"]
-        MCP["agent-relay-mcp Server"]
-        Takeover["Relay Takeover Engine"]
-    end
-
-    subgraph Wrappers [Execution Wrappers]
-        WClaude["claude-agent"]
-        WCodex["codex-agent"]
-        WOpen["opencode-agent / fallback"]
-        WAgy["antigravity-agent"]
-    end
-
-    subgraph Storage [Observability and Storage]
-        DB[("subagents.db SQLite WAL")]
-        Logs["Run Logs in logs/"]
-        Dashboard["Web Visualizer on :4242"]
-    end
-
-    User --> Harnesses
-    User --> CLI
-    Harnesses -.->|MCP tools| MCP
-    Harnesses -.->|Shell Commands| CLI
-    
-    MCP --> Wrappers
-    CLI --> Wrappers
-    CLI --> Takeover
-    Takeover --> Wrappers
-
-    Wrappers --> DB
-    Wrappers --> Logs
-    DB --> Dashboard
-    Logs --> Dashboard
-```
+[Architecture diagram](https://github.com/akashpandey/agent-relay/blob/main/docs/ARCHITECTURE.md)
 
 A local-first operator toolkit for the coding-agent CLIs you already use. Delegate a task from your terminal or an AI session, inspect its logs and structured result, then continue with the same provider or hand it to another one. Use shell commands or MCP tools; the dashboard gives you a shared view of runs across your repositories.
 
-![agent-relay demo](./docs/assets/demo.gif)
+![agent-relay demo](https://raw.githubusercontent.com/akashpandey/agent-relay/main/docs/assets/demo.gif)
 
-![Subagents Monitor dashboard](./docs/assets/dashboard.gif)
+![Subagents Monitor dashboard](https://raw.githubusercontent.com/akashpandey/agent-relay/main/docs/assets/dashboard.gif)
 
 ## Why these wrappers exist
 
@@ -178,7 +134,7 @@ After editing it, run `npm run sync:skills` and commit the generated plugin copy
 with the source. Packaging synchronizes it automatically, and tests reject
 drift. Standalone links read checkout updates in a fresh harness session;
 cached plugins require a versioned update/reinstall and restart. See
-[skill update behavior](docs/PLUGINS.md#updating-skill-instructions).
+[skill update behavior](https://github.com/akashpandey/agent-relay/blob/main/docs/PLUGINS.md#updating-skill-instructions).
 
 ## Usage
 
@@ -241,11 +197,11 @@ Native integrations are included for all four harnesses:
 | Antigravity CLI | `plugin.json`, `mcp_config.json`, and shared skill |
 | OpenCode | Native JavaScript plugin that adds guidance and registers MCP |
 
-Follow the [plugin installation guide](docs/PLUGINS.md) after installing the
+Follow the [plugin installation guide](https://github.com/akashpandey/agent-relay/blob/main/docs/PLUGINS.md) after installing the
 host CLI. Plugins share the host's run data and do not install providers or
 start the dashboard. Avoid duplicate manual MCP registrations. Interactive
 loading, real workspace-listing tool calls, and OpenCode prompt injection
-[passed Linux verification](docs/PLUGIN_VERIFICATION.md); delegated worker
+[passed Linux verification](https://github.com/akashpandey/agent-relay/blob/main/docs/PLUGIN_VERIFICATION.md); delegated worker
 execution and other platforms remain separate verification targets.
 
 ### Structured tools
@@ -683,4 +639,4 @@ fallback remains useful on hosts without systemd user services.
 
 ## License
 
-[MIT](LICENSE) © Akash Pandey
+[MIT](https://github.com/akashpandey/agent-relay/blob/main/LICENSE) © Akash Pandey
