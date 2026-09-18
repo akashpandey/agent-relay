@@ -2,14 +2,13 @@
 
 ## Quickstart
 
-Three commands, if you already have Node.js 24+ and at least one of Claude
+Two commands, if you already have Node.js 24+ and at least one of Claude
 Code, Codex, OpenCode, or the Antigravity CLI (`agy`) installed and
 authenticated:
 
 ```bash
 npm install -g @akashpandey/agent-relay
 relay install
-relay codex "Describe this repository in one sentence. Do not edit files."
 ```
 
 What each line does:
@@ -19,25 +18,44 @@ What each line does:
    `claude-agent`, etc.) into your harnesses in the background; you don't
    need to run anything extra for that part.
 2. **`relay install`** — detects which of the four provider CLIs you have on
-   `PATH`, registers agent-relay's MCP server with each one it finds, and
-   asks whether to start the dashboard (Docker if available, otherwise a
-   plain foreground process). It prints a summary line per provider, e.g.:
+   `PATH`, registers agent-relay's MCP server with each one it finds, asks
+   whether to also add a one-line Claude Code SessionStart hook (opt-in,
+   always asks first, never silent), and offers to start the dashboard
+   (Docker if available, otherwise a plain foreground process) so you can
+   watch task progress at `http://localhost:4242`. It prints a summary per
+   provider, e.g.:
 
    ```text
    claude: skill+bin ok, mcp registered
    codex: skill+bin ok, mcp registered
    opencode: not found on PATH, skipped
    agy: not found on PATH, skipped
+   hooks (Claude Code): registered
 
    Next steps:
      relay claude "Describe this repository in one sentence."
    ```
 
    Only providers actually found get configured; nothing else changes.
-3. **`relay codex "..."`** — runs a real task with whichever provider you
-   have. Swap `codex` for `claude`, `opencode`, or `antigravity` — whatever
-   `relay install` reported as configured. A minute or two later you'll get a
-   structured result; check it with `relay result --last`.
+
+That's it — setup is done. **Now go to whichever harness `relay install`
+configured (Claude Code, Codex, OpenCode, or Antigravity) and just talk to
+it.** Ask it in plain language to delegate, review, or hand off a task to
+another model, for example:
+
+> Use agent-relay to have Codex describe this repository in one sentence.
+> Don't edit any files.
+
+Your assistant calls agent-relay's skill/MCP tool for you — you never leave
+that conversation, and you never had to open a second terminal. A minute or
+two later it'll come back with a real result: pass, fail, or blocked, not
+just "done."
+
+Prefer typing the command yourself, or driving this from a script or CI
+instead of a harness conversation? The "Next steps" line `relay install`
+printed works directly in a terminal too — swap `claude` for whichever
+provider you have. See [Usage](../README.md#usage) in the README for the
+full direct/scripting command surface.
 
 That's the whole path for a single-provider, single-repo setup. Everything
 below is for cases the quickstart doesn't cover: installing from a Git

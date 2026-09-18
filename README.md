@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/akashpandey/agent-relay/blob/main/LICENSE)
 [![CI](https://github.com/akashpandey/agent-relay/actions/workflows/ci.yml/badge.svg)](https://github.com/akashpandey/agent-relay/actions/workflows/ci.yml)
 
-> **Run, track, and hand off local coding-agent tasks across Claude Code, Codex, Antigravity, and OpenCode.**
+> **Talk to the AI assistant you're already using — Claude Code, Codex, Antigravity, or OpenCode — and let it delegate, review, or hand off a task to another model without you ever leaving that tab.**
 
 [📖 **Getting Started Guide**](https://github.com/akashpandey/agent-relay/blob/main/docs/GETTING_STARTED.md) — install the CLI and dashboard, verify your first task, update, and uninstall. [Harness plugins](https://github.com/akashpandey/agent-relay/blob/main/docs/PLUGINS.md) are also available.
 
@@ -15,10 +15,12 @@ harness plugin names remain unchanged.
 
 ## Table of contents
 
+- [The idea](#the-idea)
+- [Harness-friendly design](#harness-friendly-design)
 - [Why these wrappers exist](#why-these-wrappers-exist)
 - [What they are good for](#what-they-are-good-for)
 - [Requirements](#requirements)
-- [Harness skill](#harness-skill)
+- [Install](#install)
 - [Usage](#usage)
 - [Typical scenarios](#typical-scenarios)
 - [MCP Server](#mcp-server)
@@ -32,7 +34,6 @@ harness plugin names remain unchanged.
 - [codex-agent](#codex-agent)
 - [Observability](#observability)
 - [Process Cleanup](#process-cleanup)
-- [Harness-friendly design](#harness-friendly-design)
 - [Notes](#notes)
 - [License](#license)
 
@@ -40,11 +41,57 @@ harness plugin names remain unchanged.
 
 [Architecture diagram](https://github.com/akashpandey/agent-relay/blob/main/docs/ARCHITECTURE.md)
 
-A local-first operator toolkit for the coding-agent CLIs you already use. Delegate a task from your terminal or an AI session, inspect its logs and structured result, then continue with the same provider or hand it to another one. Use shell commands or MCP tools; the dashboard gives you a shared view of runs across your repositories.
+A local-first operator toolkit for the coding-agent CLIs you already use. Under the hood: a shared skill and MCP server your harness already knows how to use, a small set of provider wrappers, and a local dashboard for watching progress.
 
 ![agent-relay demo](https://raw.githubusercontent.com/akashpandey/agent-relay/main/docs/assets/demo.gif)
 
 ![Subagents Monitor dashboard](https://raw.githubusercontent.com/akashpandey/agent-relay/main/docs/assets/dashboard.gif)
+
+## The idea
+
+agent-relay didn't start as a CLI. It started as a skill file — a short set of
+instructions telling Claude Code, and later Codex, how to invoke a wrapper
+script and call a particular model when a task needed a second opinion or a
+different pair of hands. The wrapper existed so those instructions could stay
+simple: one stable command shape, no matter which provider CLI sat underneath.
+
+As the pattern got used more, it needed rules — how to wait for a real result
+instead of guessing from a stream of text, how to tell a genuine success from
+a process that just exited zero, how to hand a task to a different provider
+when one ran out of context or quota mid-task. Those rules are the acceptance
+contract every wrapper still returns today.
+
+Then came MCP — not a replacement for the skill, its structured twin. A skill
+teaches an assistant *how* to act; an MCP server gives it typed tools to act
+*with*. Together they mean what this project always meant: you stay in the
+conversation you're already having. You don't open a second terminal, switch
+tabs, or babysit another CLI by hand. You tell your assistant what you need,
+it delegates through agent-relay, and it comes back with a real answer —
+pass, fail, or blocked — without you ever leaving the tab you started in.
+
+The terminal commands and MCP tool names documented below are the mechanism,
+not the point. The point is a tab that never has to become three.
+
+## Harness-friendly design
+
+These wrappers are intentionally command-shaped so another coding agent can call them without knowing the underlying provider CLI.
+
+The harness only needs to know:
+
+- command name
+- working directory
+- task text
+- optional environment variables
+
+Everything else stays inside the wrapper:
+
+- workspace wiring
+- prompt framing
+- provider-specific flags
+- timeout handling
+- basic observability
+
+That gives you a stable delegation surface even if the underlying CLI syntax changes later.
 
 ## Why these wrappers exist
 
@@ -143,17 +190,29 @@ These wrappers assume the backing CLIs are already installed on the host:
 
 They are meant for a machine where those tools already exist. The wrappers do not install or manage them.
 
-## Harness skill
+## Install
 
-After `npm install -g @akashpandey/agent-relay`, the npm postinstall hook
-automatically wires the shared skills and CLI binaries. Run:
+Two commands:
 
 ```bash
+npm install -g @akashpandey/agent-relay
 relay install
 ```
 
-This also registers the MCP server for detected providers and offers to set up
-the dashboard.
+`npm install` alone already wires the shared skill and CLI binaries in the
+background (the postinstall hook). `relay install` does the rest: it detects
+which of Claude Code, Codex, OpenCode, and the Antigravity CLI you actually
+have, registers the MCP server for each one it finds, offers to add a
+Claude Code SessionStart hook (a one-line reminder that agent-relay is
+available — opt-in, asks first, never silent), and offers to start the
+dashboard in the background (Docker if available, otherwise a plain
+foreground process) so you can watch task progress at `http://localhost:4242`.
+
+That's the whole setup. From here, go to whichever harness you configured and
+just talk to it — ask it to delegate, review, or hand off a task to another
+model. It calls agent-relay through the skill/MCP tools for you; you don't
+need to open a separate terminal or type a wrapper command yourself unless
+you want to (see [Usage](#usage) below for that direct/scripting path).
 
 If installing from a git checkout instead, use the manual installer:
 
@@ -177,6 +236,11 @@ cached plugins require a versioned update/reinstall and restart. See
 [skill update behavior](https://github.com/akashpandey/agent-relay/blob/main/docs/PLUGINS.md#updating-skill-instructions).
 
 ## Usage
+
+Once installed, most people never type these directly — you just talk to your
+harness and it calls agent-relay for you through the skill/MCP. The commands
+below are for direct terminal use: scripts, CI, or driving a provider from
+outside any harness.
 
 ```bash
 opencode-agent "Fix the bug"
@@ -709,27 +773,6 @@ wrapper types clean this up automatically:
 
 The systemd path bounds even an orphaned wrapper by its runtime limit. The
 fallback remains useful on hosts without systemd user services.
-
-## Harness-friendly design
-
-These wrappers are intentionally command-shaped so another coding agent can call them without knowing the underlying provider CLI.
-
-The harness only needs to know:
-
-- command name
-- working directory
-- task text
-- optional environment variables
-
-Everything else stays inside the wrapper:
-
-- workspace wiring
-- prompt framing
-- provider-specific flags
-- timeout handling
-- basic observability
-
-That gives you a stable delegation surface even if the underlying CLI syntax changes later.
 
 ## Notes
 
