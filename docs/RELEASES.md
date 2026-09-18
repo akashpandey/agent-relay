@@ -1,4 +1,36 @@
-# Publish a GitHub release
+# Publish a release
+
+## Automated path (current)
+
+`.github/workflows/release.yml` runs on any pushed tag matching `v*.*.*`. It
+verifies the tag matches `package.json`'s version, runs the full test suite
+(`npm test`, `test:wrappers`, `test:package`), publishes to npm with
+provenance using the `NPM_TOKEN` repo secret, then builds the tarball +
+`SHA256SUMS` and publishes a GitHub release immediately (not a draft) via
+`gh release create --generate-notes`.
+
+To cut a release: bump `package.json` (and both plugin manifests / the Claude
+marketplace entry if the skill changed), commit, push to `main`, wait for
+`main`'s CI to pass, then:
+
+```bash
+git tag -a vX.Y.Z -m "agent-relay vX.Y.Z"
+git push origin vX.Y.Z
+```
+
+Everything else — npm publish, tarball, checksums, GitHub release — happens in
+CI. Watch the `Release` workflow run; a failure there (e.g. a version
+mismatch) leaves npm/GitHub untouched, so it's safe to fix and re-tag.
+
+`NPM_TOKEN` must be a valid npm automation/granular token with publish access
+to `@akashpandey/agent-relay` (`gh secret set NPM_TOKEN`); rotate it before it
+expires or publish steps will fail with an auth error, not a silent no-op.
+
+## Manual path (reference / fallback)
+
+The steps below predate the workflow above and still work if you need to
+publish by hand — for example, to test a pre-release build without tagging,
+or if the automated workflow is broken.
 
 As checked on 2026-09-18, `akashpandey/agent-relay` is public and has no GitHub
 releases or version tags. `@akashpandey/agent-relay@1.0.0` is published on npm;
