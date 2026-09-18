@@ -32,6 +32,8 @@ test('relay install skips MCP setup when no provider CLIs are present', () => {
     const result = runInstall(fixture.env);
     assert.equal(result.status, 0, result.stderr);
     for (const provider of ['opencode', 'agy', 'claude', 'codex']) assert.match(result.stdout, new RegExp(`${provider}: not found on PATH, skipped`));
+    assert.doesNotMatch(result.stdout, /\x1b/);
+    assert.match(result.stdout, /Next steps:\n\s*See docs\/GETTING_STARTED\.md/);
     assert.equal(fs.lstatSync(path.join(fixture.home, '.local', 'bin', 'relay')).isSymbolicLink(), true);
     assert.equal(fs.lstatSync(path.join(fixture.home, '.codex', 'skills', 'agent-relay')).isSymbolicLink(), true);
     assert.equal(fs.existsSync(path.join(fixture.home, '.claude.json')), false);
@@ -49,6 +51,8 @@ test('relay install configures all detected providers idempotently', () => {
     assert.equal(first.status, 0, first.stderr);
     assert.equal(second.status, 0, second.stderr);
     for (const provider of ['opencode', 'agy', 'claude', 'codex']) assert.match(second.stdout, new RegExp(`${provider}: skill\\+bin ok, mcp registered`));
+    assert.doesNotMatch(second.stdout, /\x1b/);
+    assert.match(second.stdout, /Next steps:\n\s*relay opencode "Describe this repository in one sentence\./);
 
     const claude = JSON.parse(fs.readFileSync(path.join(fixture.home, '.claude.json')));
     const opencode = JSON.parse(fs.readFileSync(path.join(fixture.home, '.config', 'opencode', 'opencode.json')));

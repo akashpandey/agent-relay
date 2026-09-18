@@ -267,6 +267,14 @@ async function installDashboard(mode) {
   printDashboardCommands();
 }
 
+function colorSummaryLine(line, useColor) {
+  if (!useColor) return line;
+  if (line.includes('failed')) return `\x1b[31m${line}\x1b[0m`;
+  if (line.includes('skill+bin ok') && line.includes('mcp registered')) return `\x1b[32m${line}\x1b[0m`;
+  if (line.includes('not found on PATH, skipped')) return `\x1b[33m${line}\x1b[0m`;
+  return line;
+}
+
 async function installRelay(argv) {
   const invalid = argv.filter(arg => !['--dashboard', '--no-dashboard'].includes(arg));
   if (invalid.length || (argv.includes('--dashboard') && argv.includes('--no-dashboard'))) {
@@ -279,15 +287,27 @@ async function installRelay(argv) {
   const linksOk = links.status === 0;
   const mcp = await installMcp(detected);
 
+  const useColor = Boolean(process.stdout.isTTY) && !('NO_COLOR' in process.env && process.env.NO_COLOR !== '');
+
   console.log('\nInstall summary:');
   for (const [provider] of installHarnesses) {
-    if (!detected.has(provider)) console.log(`${provider}: not found on PATH, skipped`);
-    else console.log(`${provider}: skill+bin ${linksOk ? 'ok' : 'failed'}, mcp ${mcp.get(provider) || 'failed'}`);
+    const line = !detected.has(provider)
+      ? `${provider}: not found on PATH, skipped`
+      : `${provider}: skill+bin ${linksOk ? 'ok' : 'failed'}, mcp ${mcp.get(provider) || 'failed'}`;
+    console.log(colorSummaryLine(line, useColor));
   }
 
   if (!linksOk || [...mcp.values()].some(result => result.startsWith('failed:'))) process.exitCode = 1;
   const dashboardMode = argv.includes('--dashboard') ? 'yes' : argv.includes('--no-dashboard') ? 'no' : 'ask';
   await installDashboard(dashboardMode);
+
+  console.log('\nNext steps:');
+  const firstSuccess = installHarnesses.find(([p]) => detected.has(p) && linksOk && mcp.get(p) === 'registered');
+  if (firstSuccess) {
+    console.log(`  relay ${firstSuccess[0]} "Describe this repository in one sentence. Do not edit files or run commands that modify it."`);
+  } else {
+    console.log('  See docs/GETTING_STARTED.md for provider setup and verification.');
+  }
 }
 
 function resolveWorkspace(value) {
