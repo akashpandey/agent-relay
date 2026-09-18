@@ -37,9 +37,11 @@ if (process.argv.includes('--inside')) {
   const root = fileURLToPath(new URL('../', import.meta.url));
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-relay-package-'));
   try {
-    const archive = execFileSync('npm', ['pack', '--silent', '--pack-destination', temporary], {
-      cwd: root, encoding: 'utf8',
-    }).trim();
+    execFileSync('npm', ['pack', '--silent', '--pack-destination', temporary], {
+      cwd: root, stdio: 'ignore',
+    });
+    const archive = fs.readdirSync(temporary).find(file => file.endsWith('.tgz'));
+    assert.ok(archive, 'npm pack must produce an archive');
     execFileSync('tar', ['-xzf', path.join(temporary, archive), '-C', temporary]);
     execFileSync('docker', [
       'run', '--rm', '--network', 'none',

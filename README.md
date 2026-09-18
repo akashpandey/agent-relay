@@ -169,6 +169,13 @@ This links commands into `~/.local/bin` and the tracked skill at
 directories. Existing `agent-relay` skill directories are replaced. Update the
 source here; keep the checkout and do not edit the installed links.
 
+`skills/agent-relay/` is also the canonical source for the plugin skill.
+After editing it, run `npm run sync:skills` and commit the generated plugin copy
+with the source. Packaging synchronizes it automatically, and tests reject
+drift. Standalone links read checkout updates in a fresh harness session;
+cached plugins require a versioned update/reinstall and restart. See
+[skill update behavior](docs/PLUGINS.md#updating-skill-instructions).
+
 ## Usage
 
 ```bash
@@ -218,6 +225,26 @@ Canonical workspace grouping is shared by the wrappers and dashboard. Optional c
 Run `./agent-doctor` to check Docker, the dashboard container, the compose symlink, and the post-commit restart hook.
 
 ## MCP Server
+
+### Harness plugins
+
+Native integrations are included for all four harnesses:
+
+| Harness | Package |
+|---|---|
+| Claude Code | `.claude-plugin` manifest, shared skill, and bundled MCP |
+| Codex | `.codex-plugin` manifest, shared skill, and bundled MCP |
+| Antigravity CLI | `plugin.json`, `mcp_config.json`, and shared skill |
+| OpenCode | Native JavaScript plugin that adds guidance and registers MCP |
+
+Follow the [plugin installation guide](docs/PLUGINS.md) after installing the
+host CLI. Plugins share the host's run data and do not install providers or
+start the dashboard. Avoid duplicate manual MCP registrations. Interactive
+loading, real workspace-listing tool calls, and OpenCode prompt injection
+[passed Linux verification](docs/PLUGIN_VERIFICATION.md); delegated worker
+execution and other platforms remain separate verification targets.
+
+### Structured tools
 
 `agent-relay-mcp` exposes a local stdio MCP server for agents that prefer
 structured tools over shell commands. It wraps the existing SQLite/dashboard

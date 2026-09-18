@@ -5,7 +5,15 @@ description: Delegate a bounded coding, investigation, review, or parallel imple
 
 # Agent Relay
 
-Execute delegated tasks across 5 local coding harnesses (`opencode-agent`, `opencode-agent-fallback`, `antigravity-agent`, `claude-agent`, `codex-agent`). Each wrapper runs non-interactively in the target workspace, logs output, captures diffs and telemetry, and integrates with the local Visualizer Dashboard at `http://localhost:4242`.
+Delegate tasks across four providers: OpenCode, Antigravity, Claude Code, and Codex. Five wrappers include OpenCode's optional fallback runner. Runs execute non-interactively in the target workspace and save logs and structured results for the local dashboard at `http://localhost:4242`.
+
+## Installation and plugins
+
+Requires the host agent-relay installation, Node.js 24+ (recommended), and at least one authenticated provider CLI. Run `relay --help` to check installation. Native plugins are available for Claude Code, Codex, Antigravity CLI, and OpenCode; see `docs/PLUGINS.md` in the host checkout. Plugins connect to the installed host MCP server; they do not install providers or start the dashboard.
+
+`relay dashboard` checks HTTP availability. Start the server separately using Docker or `HOST=127.0.0.1 agent-dashboard`, following `docs/GETTING_STARTED.md`. `relay doctor` checks a specific Docker/hook setup; missing optional hooks do not invalidate a working Node dashboard. Logs and data default to the installed checkout's `logs/` and `data/subagents.db`; apply overrides consistently across wrappers, MCP, and dashboard.
+
+Discover MCP tool identifiers from the harness. Antigravity uses the plugin-prefixed server `agent-relay_agent-relay`, although its interactive menu displays `agent-relay`. Avoid duplicate manual and plugin MCP registrations. Verify actual tool results: model summaries and successful harness exits can misreport counts or hide failed tool calls.
 
 ## Available Harnesses & Invocation
 
@@ -15,16 +23,16 @@ Prefer the unified `relay` (or `agent`) front door when using canonical workspac
 relay workspaces
 relay doctor
 relay dashboard
-relay fitschool opencode "Task prompt..."
+relay my-app opencode "Task prompt..."
 relay codex "Task prompt in the current directory..."
-relay attention fitschool
+relay attention my-app
 relay prune --dry-run --older-than 30d
-relay result fitschool
-relay open fitschool
-relay last fitschool
-relay continue fitschool "Follow-up prompt..."
-relay continue fitschool --to opencode "Continue using another provider..."
-relay takeover fitschool codex "Take over where previous harness left off..."
+relay result my-app
+relay open my-app
+relay last my-app
+relay continue my-app "Follow-up prompt..."
+relay continue my-app --to opencode "Continue using another provider..."
+relay takeover my-app codex "Take over where previous harness left off..."
 ```
 
 Run provider wrappers directly from the target repository/workspace directory when you need full wrapper-specific flags:
@@ -89,7 +97,7 @@ opencode-agent --resume "session-abc-123" "Next step prompt..."
 # or
 AGENT_RELAY_SESSION="session-abc-123" antigravity-agent "Next step prompt..."
 ```
-*(Every agent run writes its persisted `sessionId` in `logs/<log>.done` and in the dashboard header).*
+Successful session capture records a provider `sessionId` in `logs/<log>.done`. If no resumable ID was captured, use a fresh session instead of assuming continuation is available.
 
 > [!TIP]
 > **Always use wrappers for continuation, not raw CLIs:** Always execute continuation through the wrapper binaries (`*-agent --continue` or `--resume <id>`) rather than raw provider CLIs (`claude -c`, `opencode attach`, etc.). Raw CLIs default to interactive REPL mode on resume, which stalls headless automation. Subagent wrappers enforce non-interactive batch flags and run an automatic completion watchdog that reaps lingering event-loop handles or background MCP connections after task completion, ensuring prompt exit and accurate `.done` recording.
@@ -103,13 +111,13 @@ When an interactive session (in Claude Code, Codex, Antigravity, or OpenCode) or
 relay takeover codex
 
 # Take over a specific workspace with OpenCode
-relay takeover fitschool opencode
+relay takeover my-app opencode
 
 # Take over with an explicit goal/instruction
-relay takeover fitschool claude "Complete the remaining tests and verify build"
+relay takeover my-app claude "Complete the remaining tests and verify build"
 
 # Continue a previous agent run while switching providers
-relay continue fitschool --to codex "Finish the implementation"
+relay continue my-app --to codex "Finish the implementation"
 ```
 
 The handoff engine inspects:
@@ -123,32 +131,32 @@ It packages a comprehensive baton-pass prompt and launches the target harness di
 
 ---
 
-## Recommended Orchestration: Zero-Polling & Event-Driven Execution
+## Recommended Orchestration: Wait for Structured Results
 
-Avoid busy polling loops (`while sleep 5; check status`) which waste tokens, context window, and CPU. Use one of these **zero-polling** patterns:
+Prefer one blocking wait over repeatedly requesting status. The CLI and MCP server handle their own waiting; do not assume every wait is implemented without polling.
 
 Completeness rule: Never tail or manually read run logs to decide whether delegated work is complete. Use `agent-wait <log-filename>` or `GET /api/runs/<log-filename>/result`. Logs are for debugging only after the structured result says `attentionRequired=true` or the result API is unavailable.
 With the unified CLI, prefer `agent result --last`, `agent result <workspace>`, or `agent result <log-filename>` for this structured result lookup.
 
-### Pattern A: AI Agent Native Reactive Wake-Up (Recommended for AI Assistants)
-When calling a agent from an agentic runtime (Antigravity, Claude Code, Codex):
+### Pattern A: Harness completion notification
+When your harness supports background-process completion notifications:
 1. Launch the command directly (or as a background task):
    ```sh
    opencode-agent "Implement auth token refresh"
    ```
-2. **Stop calling tools**. The harness runtime monitors the process at the OS kernel level and automatically resumes your execution with a `<SYSTEM_MESSAGE> Task finished with result: ...` the exact millisecond the agent completes.
+2. Wait for the harness's completion notification, then retrieve the structured result. Notification support and timing depend on the harness; agent-relay does not guarantee automatic wake-up in every runtime. Without notifications, use `wait_for_run` or `agent-wait`.
 
-### Pattern B: Event-Driven `agent-wait` CLI (For Scripts & Parallel Chaining)
+### Pattern B: Wait for specific CLI runs
 When orchestrating multi-agent parallel pipelines:
 ```sh
 # Launch multiple agents in parallel
-opencode-agent "Refactor service A" &
-antigravity-agent "Refactor service B" &
+opencode-agent --workspace /path/to/worktree-a "Refactor service A" &
+antigravity-agent --workspace /path/to/worktree-b "Refactor service B" &
 
-# Block until all finish with ZERO CPU/network polling
-agent-wait --last
+# Use both filenames printed in the startup banners
+agent-wait "<first-run-log>" "<second-run-log>"
 ```
-*Uses Linux kernel process monitors (`tail --pid` / `inotify`) and immediately outputs the structured JSON result upon completion.*
+`--last` selects only the latest log; it does not wait for all parallel runs. The CLI waits using `tail --pid` with a polling fallback, then returns each structured result. MCP `wait_for_run` checks status internally every 500 ms until completion or its wait limit.
 
 ### Pattern C: Structured API Result Retrieval
 Once notified of completion:
@@ -179,12 +187,12 @@ Caller contract:
     "sessionId": "",
     "sameSessionCommand": "opencode-agent --resume <session> \"<follow-up task>\"",
     "continueLastCommand": "opencode-agent --continue \"<follow-up task>\"",
-    "agentContinueCommand": "relay continue fitschool \"<follow-up task>\"",
+    "agentContinueCommand": "relay continue my-app \"<follow-up task>\"",
     "relayCommands": {
-      "codex": "relay takeover fitschool codex",
-      "claude": "relay takeover fitschool claude",
-      "opencode": "relay takeover fitschool opencode",
-      "antigravity": "relay takeover fitschool antigravity"
+      "codex": "relay takeover my-app codex",
+      "claude": "relay takeover my-app claude",
+      "opencode": "relay takeover my-app opencode",
+      "antigravity": "relay takeover my-app antigravity"
     },
     "env": { "AGENT_RELAY_SESSION": "" }
   }
@@ -263,9 +271,9 @@ http://localhost:4242/api/dangling/kill-all
 
 ## Rules & Best Practices
 
-1. **Always anchor to target workspace**: Always `cd /path/to/target/repo` before running a agent. Each harness automatically sets strict process and workspace scoping so background runs never leak into your interactive `/resume` lists.
+1. **Always anchor to target workspace**: Use `cd /path/to/target/repo` or an explicit workspace. Provider session visibility and process isolation depend on the provider and host; wrappers are not a security sandbox.
 2. **Reuse sessions for multi-step tasks**: Use `--continue` (or `-c`) / `--resume <id>` for follow-up prompts to save context, cache, and token budget.
-3. **Never poll in busy loops**: Use native reactive agent wake-up or `agent-wait` instead of `sleep` polling loops.
+3. **Prefer blocking waits**: Use supported harness notifications, MCP `wait_for_run`, or `agent-wait` with explicit run filenames instead of repeated status tool calls.
 4. **Keep tasks bounded**: One bug trace, one refactor, one test implementation, or one code review per turn.
 5. **Parallel execution safety**: When running multiple write-capable agents simultaneously, execute them in separate `git worktree` directories to prevent file write collisions.
 6. **Verify deliverables**: Inspect the generated git diff or test results locally after a agent reports completion before accepting changes.

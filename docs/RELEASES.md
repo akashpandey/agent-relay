@@ -1,9 +1,9 @@
 # Publish a GitHub release
 
 As checked on 2026-09-18, `akashpandey/agent-relay` is private and has no GitHub
-releases or version tags. CI passed for the latest pushed commit, `8124510`;
-the new plugin and installation changes are still local. Do not release that
-older commit as if it contains the plugins.
+releases or version tags. The plugin, installer, and dashboard restart changes
+are pushed in `488d322`, and CI passed for that commit. Include any subsequent
+documentation changes in the candidate and verify CI for its exact commit.
 
 A release is a versioned Git tag plus release notes and optional downloadable
 files. It does not publish an npm package or make a private repository public.

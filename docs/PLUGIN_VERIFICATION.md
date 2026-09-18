@@ -41,8 +41,8 @@ MCP initialization, and dashboard HTTP from the packed archive.
 
 These checks verify real model/tool round trips and OpenCode prompt injection,
 but not delegated provider task execution or delegated-result acceptance.
-Remote marketplace installation cannot verify uncommitted local plugins;
-the repository must first receive those files. Windows/WSL2/macOS behavior is
+The plugin files have since been pushed in `488d322`; remote marketplace
+installation still needs a separate check with repository access. Windows/WSL2/macOS behavior is
 also outside this host verification. GitHub reported the repository private
 with no releases; see [release steps](RELEASES.md).
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent Relay"
+  short_description: "Delegate bounded coding tasks to local CLI agents"
+  default_prompt: "Delegate this bounded task using a suitable local agent."

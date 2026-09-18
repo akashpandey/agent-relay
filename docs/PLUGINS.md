@@ -10,8 +10,9 @@ The Claude/Codex/Antigravity bundle is `plugins/agent-relay`; OpenCode uses
 `plugins/opencode/agent-relay.js`. All launch the host server so logs and data
 stay in the installed relay checkout, outside harness plugin caches.
 
-These files become remotely installable after they are committed and published
-to the repository. Until then, use the local checkout commands below.
+The plugin files and catalogs are pushed to the repository. Remote installation
+requires repository access while it remains private. Local checkout commands
+below are also available; remote marketplace installation is still unverified.
 
 ## Claude Code
 
@@ -109,6 +110,39 @@ the checkout directly. Remove/add the Codex plugin if its version is cached.
 Reinstall the local Antigravity bundle. OpenCode's
 symlink uses the updated source. Restart each harness after changes.
 
+### Updating skill instructions
+
+`skills/agent-relay/` is the canonical source for both standalone and bundled
+skills, including companion files such as `agents/openai.yaml`. Edit that
+directory only. `plugins/agent-relay/skills/agent-relay/` is generated:
+
+```bash
+npm run sync:skills
+node --test tests/test-plugins.mjs
+```
+
+Commit the source and generated copy together so Git marketplaces receive the
+same instructions. CI rejects mismatched files. `npm pack` also synchronizes
+the copy automatically through `prepack`; npm publication is not required.
+
+Standalone installations use symlinks, so changes reach the installed files as
+soon as the checkout is updated. A harness may already have read the old skill
+into its session: start a new session or restart it to reliably load the update.
+Existing conversation context is not rewritten by changing a file.
+
+Installed marketplace plugins usually contain cached copies. A checkout update
+alone does not refresh those copies. Publish a new plugin version, refresh the
+marketplace, update/reinstall the plugin, and restart the harness. Antigravity's
+local bundle must likewise be reinstalled. Claude's temporary `--plugin-dir`
+loading reads the checkout on the next session. OpenCode's plugin and standalone
+skill links read the updated checkout on restart.
+
+For a published skill change, bump `package.json`, both versioned plugin
+manifests, and the Claude marketplace entry together before release. Version
+bumps let caches distinguish updates; resynchronizing instructions alone does
+not force already installed plugins to reload. Skill-only updates change
+instructions, not provider credentials, run history, or the dashboard database.
+
 To remove:
 
 ```bash
@@ -126,4 +160,4 @@ Manifests, packaged files, and OpenCode hooks pass automated validation.
 harnesses on Linux, including real model calls to the workspace-listing tool
 and OpenCode system-prompt injection. Delegated task execution and WSL2 behavior
 still require verification on your machine. See [GitHub release steps](RELEASES.md)
-for publishing the currently local bundles.
+for publishing a versioned release of the bundles.

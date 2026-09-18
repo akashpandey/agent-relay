@@ -9,6 +9,19 @@ import { AgentRelayPlugin } from '../plugins/opencode/agent-relay.js';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const json = name => JSON.parse(fs.readFileSync(path.join(root, name), 'utf8'));
 
+test('packaged plugin skill exactly matches the canonical skill directory', () => {
+  const source = path.join(root, 'skills/agent-relay');
+  const destination = path.join(root, 'plugins/agent-relay/skills/agent-relay');
+  const files = directory => fs.readdirSync(directory, { recursive: true })
+    .filter(file => fs.statSync(path.join(directory, file)).isFile()).sort();
+  const expected = files(source);
+  assert.deepEqual(files(destination), expected, 'Run npm run sync:skills');
+  for (const file of expected) {
+    assert.equal(fs.readFileSync(path.join(destination, file), 'utf8'),
+      fs.readFileSync(path.join(source, file), 'utf8'), `Skill drift in ${file}; run npm run sync:skills`);
+  }
+});
+
 test('native plugin bundles point to real skills and the installed host server', () => {
   for (const marketplace of ['.claude-plugin/marketplace.json', '.agents/plugins/marketplace.json']) {
     const entry = json(marketplace).plugins[0];
