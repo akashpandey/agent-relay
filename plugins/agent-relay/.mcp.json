@@ -2,7 +2,10 @@
   "mcpServers": {
     "agent-relay": {
       "command": "sh",
-      "args": ["-c", "exec \"$HOME/.local/bin/agent-relay-mcp\""]
+      "args": [
+        "-c",
+        "if [ -x \"$HOME/.local/bin/agent-relay-mcp\" ]; then exec \"$HOME/.local/bin/agent-relay-mcp\"; else exec npx -y @akashpandey/agent-relay agent-relay-mcp; fi"
+      ]
     }
   }
 }

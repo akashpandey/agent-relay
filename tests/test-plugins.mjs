@@ -39,8 +39,10 @@ test('native plugin bundles point to real skills and the installed host server',
   assert.deepEqual(json('plugins/agent-relay/mcp_config.json'), mcp);
   assert.equal(mcp.mcpServers['agent-relay'].command, 'sh');
   assert.deepEqual(mcp.mcpServers['agent-relay'].args,
-    ['-c', 'exec "$HOME/.local/bin/agent-relay-mcp"']);
+    ['-c', 'if [ -x "$HOME/.local/bin/agent-relay-mcp" ]; then exec "$HOME/.local/bin/agent-relay-mcp"; else exec npx -y @akashpandey/agent-relay agent-relay-mcp; fi']);
   assert.ok(fs.existsSync(path.join(root, codex.mcpServers.replace('./', 'plugins/agent-relay/'))));
+  assert.ok(fs.existsSync(path.join(root, claude.hooks.replace('./', 'plugins/agent-relay/'))));
+  assert.ok(fs.existsSync(path.join(root, codex.hooks.replace('./', 'plugins/agent-relay/'))));
 });
 
 test('OpenCode registers MCP, preserves user configuration, and adds acceptance guidance', async () => {

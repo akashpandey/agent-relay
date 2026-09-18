@@ -6,6 +6,7 @@
     "name": "Akash Pandey"
   },
   "skills": "./skills/",
+  "hooks": "./hooks/agent-relay-hooks.json",
   "interface": {
     "displayName": "Agent Relay",
     "shortDescription": "Use Agent Relay in Codex.",
