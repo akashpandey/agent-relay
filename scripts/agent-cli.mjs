@@ -267,6 +267,40 @@ async function installDashboard(mode) {
   printDashboardCommands();
 }
 
+async function installHooks(mode) {
+  const home = os.homedir();
+  const claudeDir = path.join(home, '.claude');
+  if (!fs.existsSync(claudeDir)) return 'skipped: claude not detected';
+
+  const settingsPath = path.join(claudeDir, 'settings.json');
+  let settings = {};
+  if (fs.existsSync(settingsPath)) {
+    try { settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8')); } catch {}
+  }
+  const hookCommand = `node "${path.join(repoDir, 'plugins', 'agent-relay', 'hooks', 'agent-relay-activate.js')}"`;
+  const existingEntries = settings.hooks?.SessionStart || [];
+  const already = existingEntries.some(entry => (entry.hooks || []).some(h => h.command === hookCommand));
+  if (already) return 'already installed';
+
+  if (mode === 'no') return 'skipped';
+  let confirmed = mode === 'yes';
+  if (!confirmed) {
+    if (!process.stdout.isTTY) return 'skipped (non-interactive)';
+    const answer = await ask('Install a SessionStart hook so Claude Code reminds itself agent-relay is available? [y/N] ');
+    confirmed = ['y', 'yes'].includes(answer.toLowerCase());
+  }
+  if (!confirmed) return 'skipped (not confirmed)';
+
+  settings.hooks = settings.hooks || {};
+  settings.hooks.SessionStart = existingEntries.concat([{
+    matcher: 'startup|resume|clear|compact',
+    hooks: [{ type: 'command', command: hookCommand, timeout: 5 }],
+  }]);
+  fs.mkdirSync(claudeDir, { recursive: true });
+  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+  return 'registered';
+}
+
 function colorSummaryLine(line, useColor) {
   if (!useColor) return line;
   if (line.includes('failed')) return `\x1b[31m${line}\x1b[0m`;
@@ -276,9 +310,11 @@ function colorSummaryLine(line, useColor) {
 }
 
 async function installRelay(argv) {
-  const invalid = argv.filter(arg => !['--dashboard', '--no-dashboard'].includes(arg));
-  if (invalid.length || (argv.includes('--dashboard') && argv.includes('--no-dashboard'))) {
-    console.error(`Usage: ${cmdName} install [--dashboard|--no-dashboard]`);
+  const validFlags = ['--dashboard', '--no-dashboard', '--hooks', '--no-hooks'];
+  const invalid = argv.filter(arg => !validFlags.includes(arg));
+  if (invalid.length || (argv.includes('--dashboard') && argv.includes('--no-dashboard')) ||
+      (argv.includes('--hooks') && argv.includes('--no-hooks'))) {
+    console.error(`Usage: ${cmdName} install [--dashboard|--no-dashboard] [--hooks|--no-hooks]`);
     process.exit(2);
   }
 
@@ -296,6 +332,10 @@ async function installRelay(argv) {
       : `${provider}: skill+bin ${linksOk ? 'ok' : 'failed'}, mcp ${mcp.get(provider) || 'failed'}`;
     console.log(colorSummaryLine(line, useColor));
   }
+
+  const hooksMode = argv.includes('--hooks') ? 'yes' : argv.includes('--no-hooks') ? 'no' : 'ask';
+  const hooksResult = await installHooks(hooksMode);
+  console.log(`hooks (Claude Code): ${hooksResult}`);
 
   if (!linksOk || [...mcp.values()].some(result => result.startsWith('failed:'))) process.exitCode = 1;
   const dashboardMode = argv.includes('--dashboard') ? 'yes' : argv.includes('--no-dashboard') ? 'no' : 'ask';

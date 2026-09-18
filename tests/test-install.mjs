@@ -22,8 +22,8 @@ function testEnv(providers = []) {
   return { dir, home, bin, env: { ...process.env, HOME: home, PATH: bin } };
 }
 
-function runInstall(env) {
-  return spawnSync(process.execPath, [cli, 'install', '--no-dashboard'], { env, encoding: 'utf8' });
+function runInstall(env, extraArgs = []) {
+  return spawnSync(process.execPath, [cli, 'install', '--no-dashboard', ...extraArgs], { env, encoding: 'utf8' });
 }
 
 test('relay install skips MCP setup when no provider CLIs are present', () => {
@@ -83,6 +83,49 @@ test('postinstall is quiet, succeeds without providers, and does not touch MCP o
     assert.equal(fs.existsSync(path.join(fixture.home, '.claude.json')), false);
     assert.equal(fs.existsSync(path.join(fixture.home, '.codex', 'config.toml')), false);
     assert.equal(fs.existsSync(dashboardMarker), false);
+  } finally {
+    fs.rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+test('relay install skips the SessionStart hook non-interactively by default', () => {
+  const fixture = testEnv(['claude']);
+  try {
+    fs.mkdirSync(path.join(fixture.home, '.claude'), { recursive: true });
+    const result = runInstall(fixture.env);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /hooks \(Claude Code\): skipped \(non-interactive\)/);
+    assert.equal(fs.existsSync(path.join(fixture.home, '.claude', 'settings.json')), false);
+  } finally {
+    fs.rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+test('relay install --hooks registers the SessionStart hook idempotently', () => {
+  const fixture = testEnv(['claude']);
+  try {
+    fs.mkdirSync(path.join(fixture.home, '.claude'), { recursive: true });
+    const first = runInstall(fixture.env, ['--hooks']);
+    const second = runInstall(fixture.env, ['--hooks']);
+    assert.equal(first.status, 0, first.stderr);
+    assert.match(first.stdout, /hooks \(Claude Code\): registered/);
+    assert.match(second.stdout, /hooks \(Claude Code\): already installed/);
+
+    const settings = JSON.parse(fs.readFileSync(path.join(fixture.home, '.claude', 'settings.json')));
+    assert.equal(settings.hooks.SessionStart.length, 1);
+  } finally {
+    fs.rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+test('relay install --no-hooks never writes settings.json', () => {
+  const fixture = testEnv(['claude']);
+  try {
+    fs.mkdirSync(path.join(fixture.home, '.claude'), { recursive: true });
+    const result = runInstall(fixture.env, ['--no-hooks']);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /hooks \(Claude Code\): skipped$/m);
+    assert.equal(fs.existsSync(path.join(fixture.home, '.claude', 'settings.json')), false);
   } finally {
     fs.rmSync(fixture.dir, { recursive: true, force: true });
   }
