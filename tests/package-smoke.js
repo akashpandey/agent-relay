@@ -29,7 +29,7 @@ if (process.argv.includes('--inside')) {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     assert.ok(ready, 'installed dashboard must serve HTTP');
-    console.log('Package install, relay command, MCP handshake, and dashboard HTTP passed');
+    console.log('Archive and npm global install, relay commands, MCP handshake, and dashboard HTTP passed');
   } finally {
     server.kill('SIGTERM');
   }
@@ -45,10 +45,11 @@ if (process.argv.includes('--inside')) {
     execFileSync('tar', ['-xzf', path.join(temporary, archive), '-C', temporary]);
     execFileSync('docker', [
       'run', '--rm', '--network', 'none',
+      '--mount', `type=bind,source=${path.join(temporary, archive)},target=/package.tgz,readonly`,
       '--mount', `type=bind,source=${path.join(temporary, 'package')},target=/package,readonly`,
       '--mount', `type=bind,source=${fileURLToPath(import.meta.url)},target=/package-smoke.mjs,readonly`,
       '--entrypoint', 'sh', process.env.AGENT_RELAY_TEST_IMAGE || 'node:22-slim', '-c',
-      'cp -a /package /root/agent-relay && cd /root/agent-relay && ./install-skill >/dev/null && node /package-smoke.mjs --inside',
+      'npm install -g /package.tgz --offline --ignore-scripts >/dev/null && relay --help >/dev/null && agent-relay --help >/dev/null && cp -a /package /root/agent-relay && cd /root/agent-relay && ./install-skill >/dev/null && node /package-smoke.mjs --inside',
     ], { stdio: 'inherit', timeout: 60000 });
   } finally {
     fs.rmSync(temporary, { recursive: true, force: true });

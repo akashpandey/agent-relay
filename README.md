@@ -9,6 +9,10 @@
 
 [GitHub release guide](./docs/RELEASES.md) — prepare a tested version tag and downloadable install bundle.
 
+The npm package name is **`@akashpandey/agent-relay`**.
+The unscoped `agent-relay` package belongs to another project. CLI commands and
+harness plugin names remain unchanged.
+
 ```mermaid
 flowchart TD
     User["Developer / AI Coding Session"]

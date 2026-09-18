@@ -54,6 +54,32 @@ Keep the checkout: commands and skills are symlinks into it. The installer
 replaces existing `agent-relay` skill directories; preserve custom copies first.
 This guide uses source installation rather than assuming an npm publication.
 
+### npm installation
+
+The npm package is `@akashpandey/agent-relay`. The unscoped `agent-relay` package
+is a different project. Use a writable npm global prefix (for example, through
+a Node version manager):
+
+```bash
+npm install -g @akashpandey/agent-relay
+cd "$(npm root -g)/@akashpandey/agent-relay"
+./install-skill
+export PATH="$HOME/.local/bin:$PATH"
+relay --help
+```
+
+If package-name lookup returns 404 after publication, the published `1.0.0`
+archive can also be installed directly:
+
+```bash
+npm install -g https://registry.npmjs.org/@akashpandey/agent-relay/-/agent-relay-1.0.0.tgz
+```
+
+Continue with the dashboard steps below from that package directory. Update with
+`npm install -g @akashpandey/agent-relay@latest`, then rerun `./install-skill`
+and restart the dashboard and harnesses. Back up configuration, logs, and data
+before updating; npm may replace files inside the installed package directory.
+
 Wrappers find providers through PATH. For unusual executable locations, set
 `AGENT_RELAY_CODEX_BIN`, `AGENT_RELAY_CLAUDE_BIN`, `AGENT_RELAY_OPENCODE_BIN`, or
 `AGENT_RELAY_AGY_BIN` to its absolute path in your shell startup file.
