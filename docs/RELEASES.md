@@ -1,9 +1,10 @@
 # Publish a GitHub release
 
-As checked on 2026-09-18, `akashpandey/agent-relay` is private and has no GitHub
-releases or version tags. The plugin, installer, and dashboard restart changes
-are pushed in `488d322`, and CI passed for that commit. Include any subsequent
-documentation changes in the candidate and verify CI for its exact commit.
+As checked on 2026-09-18, `akashpandey/agent-relay` is public and has no GitHub
+releases or version tags. `@akashpandey/agent-relay@1.0.0` is published on npm;
+installation by package name passed CLI, MCP, and dashboard checks. CI passed
+for `27610d5`. Include subsequent changes in the candidate and verify CI for
+its exact commit.
 
 A release is a versioned Git tag plus release notes and optional downloadable
 files. It does not publish an npm package or make a private repository public.
@@ -17,6 +18,11 @@ bundles, installer fix, documentation, and tests. Preserve unrelated local work.
 For the first candidate, the current package/plugin version is `1.0.0`.
 Future releases must update both plugin manifests and the Claude catalog version
 alongside `package.json`.
+
+GitHub protects `main` against deletion and force pushes for everyone. A separate
+ruleset requires `Lint & Mock Test Suite`, with administrator bypass to preserve
+the local post-commit hook's direct pushes. That bypass does not exempt a release
+candidate from passing CI for its exact commit.
 
 From a clean checkout of the candidate commit:
 
@@ -52,13 +58,12 @@ repository write access and authenticated Git/GitHub CLI.
 
 ## 3. Public availability and remote plugin checks
 
-For an open-source release, review the repository contents and history before
-changing visibility in GitHub Settings. A private release is visible only to
-people with repository access. Making the repository public is a separate
-publication decision; these local changes do not change visibility.
+The repository is public, so users can clone it and access its plugin catalogs
+without private-repository access. GitHub releases remain a separate step from
+repository visibility and npm publication.
 
 Once the plugin catalogs are pushed, verify the remote marketplace from another
-machine or a fresh profile using an account with repository access:
+machine or a fresh profile:
 
 ```bash
 claude plugin marketplace add akashpandey/agent-relay

@@ -42,9 +42,10 @@ MCP initialization, and dashboard HTTP from the packed archive.
 These checks verify real model/tool round trips and OpenCode prompt injection,
 but not delegated provider task execution or delegated-result acceptance.
 The plugin files have since been pushed in `488d322`; remote marketplace
-installation still needs a separate check with repository access. Windows/WSL2/macOS behavior is
-also outside this host verification. GitHub reported the repository private
-with no releases; see [release steps](RELEASES.md).
+installation still needs a separate check. Windows/WSL2/macOS behavior is
+also outside this host verification. The repository is now public, and npm
+`1.0.0` installation by package name passed CLI, MCP, and dashboard checks in a
+fresh Node 22 container. No GitHub releases exist yet; see [release steps](RELEASES.md).
 
 Final checks: 36/36 Node tests passed when run alone, 16/16 wrapper checks
 passed, and the clean archive installation/dashboard check passed. One

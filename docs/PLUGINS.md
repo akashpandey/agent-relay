@@ -10,8 +10,8 @@ The Claude/Codex/Antigravity bundle is `plugins/agent-relay`; OpenCode uses
 `plugins/opencode/agent-relay.js`. All launch the host server so logs and data
 stay in the installed relay checkout, outside harness plugin caches.
 
-The plugin files and catalogs are pushed to the repository. Remote installation
-requires repository access while it remains private. Local checkout commands
+The plugin files and catalogs are pushed to the public repository. Remote
+installation does not require private-repository access. Local checkout commands
 below are also available; remote marketplace installation is still unverified.
 
 ## Claude Code
@@ -24,7 +24,7 @@ claude plugin install agent-relay@agent-relay
 claude plugin list
 ```
 
-After publication, the marketplace source can instead be
+The remote marketplace source can instead be
 `akashpandey/agent-relay`. For a temporary local test, use
 `claude --plugin-dir "$HOME/agent-relay/plugins/agent-relay"`.
 
@@ -43,7 +43,7 @@ codex plugin add agent-relay@agent-relay
 codex plugin list
 ```
 
-After publication, `codex plugin marketplace add akashpandey/agent-relay` is
+`codex plugin marketplace add akashpandey/agent-relay` is
 the remote equivalent. The `.codex-plugin/plugin.json` declares the skill and
 MCP companion file. Restart Codex or open a new session and confirm the skill
 and relay tools are loaded. Older Codex installations can use
