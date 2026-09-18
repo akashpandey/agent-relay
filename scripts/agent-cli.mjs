@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -28,6 +28,7 @@ function usage() {
   ${cmdName} <workspace> <provider> [wrapper-args...] "task"
   ${cmdName} takeover [workspace] <provider> [instructions...]
   ${cmdName} init
+  ${cmdName} install [--dashboard|--no-dashboard]
   ${cmdName} mcp install
   ${cmdName} workspaces
   ${cmdName} doctor
@@ -108,7 +109,7 @@ async function initWorkspaces() {
   console.log(`✓ Wrote ${workspaces.length} workspaces to ${configPath}`);
 }
 
-async function installMcp() {
+async function installMcp(onlyProviders = null) {
   const home = os.homedir();
   const mcpBin = path.join(home, '.local', 'bin', 'agent-relay-mcp');
   const fallbackBin = path.join(repoDir, 'agent-relay-mcp');
@@ -116,9 +117,11 @@ async function installMcp() {
 
   console.log(`Setting up agent-relay MCP server (${targetBin})...\n`);
   let configuredCount = 0;
+  const results = new Map();
+  const enabled = provider => !onlyProviders || onlyProviders.has(provider);
 
   // 1. Claude Code (~/.claude.json)
-  try {
+  if (enabled('claude')) try {
     const claudePath = path.join(home, '.claude.json');
     let claudeConfig = {};
     if (fs.existsSync(claudePath)) {
@@ -129,15 +132,17 @@ async function installMcp() {
     fs.writeFileSync(claudePath, JSON.stringify(claudeConfig, null, 2) + '\n');
     console.log(`✓ Configured Claude Code (${displayPath(claudePath)})`);
     configuredCount++;
+    results.set('claude', 'registered');
   } catch (err) {
     console.error(`✗ Claude Code: ${err.message}`);
+    results.set('claude', `failed: ${err.message}`);
   }
 
   // 2. OpenCode (~/.config/opencode/opencode.json)
-  try {
+  if (enabled('opencode')) try {
     const opencodeDir = path.join(home, '.config', 'opencode');
     const opencodePath = path.join(opencodeDir, 'opencode.json');
-    if (fs.existsSync(opencodeDir) || fs.existsSync(opencodePath)) {
+    if (onlyProviders || fs.existsSync(opencodeDir) || fs.existsSync(opencodePath)) {
       let opencodeConfig = {};
       if (fs.existsSync(opencodePath)) {
         try { opencodeConfig = JSON.parse(fs.readFileSync(opencodePath, 'utf8')); } catch {}
@@ -152,16 +157,18 @@ async function installMcp() {
       fs.writeFileSync(opencodePath, JSON.stringify(opencodeConfig, null, 2) + '\n');
       console.log(`✓ Configured OpenCode (${displayPath(opencodePath)})`);
       configuredCount++;
+      results.set('opencode', 'registered');
     }
   } catch (err) {
     console.error(`✗ OpenCode: ${err.message}`);
+    results.set('opencode', `failed: ${err.message}`);
   }
 
   // 3. Antigravity CLI (~/.gemini/antigravity-cli/mcp_config.json)
-  try {
+  if (enabled('agy')) try {
     const agyCliDir = path.join(home, '.gemini', 'antigravity-cli');
     const agyConfigPath = path.join(agyCliDir, 'mcp_config.json');
-    if (fs.existsSync(path.join(home, '.gemini'))) {
+    if (onlyProviders || fs.existsSync(path.join(home, '.gemini'))) {
       let agyConfig = {};
       if (fs.existsSync(agyConfigPath)) {
         try { agyConfig = JSON.parse(fs.readFileSync(agyConfigPath, 'utf8')); } catch {}
@@ -172,16 +179,19 @@ async function installMcp() {
       fs.writeFileSync(agyConfigPath, JSON.stringify(agyConfig, null, 2) + '\n');
       console.log(`✓ Configured Antigravity CLI (${displayPath(agyConfigPath)})`);
       configuredCount++;
+      results.set('agy', 'registered');
     }
   } catch (err) {
     console.error(`✗ Antigravity: ${err.message}`);
+    results.set('agy', `failed: ${err.message}`);
   }
 
   // 4. OpenAI Codex CLI (~/.codex/config.toml)
-  try {
+  if (enabled('codex')) try {
     const codexDir = path.join(home, '.codex');
     const codexPath = path.join(codexDir, 'config.toml');
-    if (fs.existsSync(codexDir)) {
+    if (onlyProviders || fs.existsSync(codexDir)) {
+      fs.mkdirSync(codexDir, { recursive: true });
       let content = fs.existsSync(codexPath) ? fs.readFileSync(codexPath, 'utf8') : '';
       if (!content.includes('[mcp_servers.agent_relay]') && !content.includes('[mcp_servers.agent-relay]')) {
         const tomlSnippet = `\n[mcp_servers.agent_relay]\ncommand = "${targetBin}"\nstartup_timeout_sec = 60\n`;
@@ -192,12 +202,92 @@ async function installMcp() {
         console.log(`✓ OpenAI Codex already configured (${displayPath(codexPath)})`);
         configuredCount++;
       }
+      results.set('codex', 'registered');
     }
   } catch (err) {
     console.error(`✗ Codex: ${err.message}`);
+    results.set('codex', `failed: ${err.message}`);
   }
 
   console.log(`\nMCP setup complete across ${configuredCount} detected harness(es).`);
+  return results;
+}
+
+const installHarnesses = [
+  ['opencode', 'opencode'],
+  ['agy', 'agy'],
+  ['claude', 'claude'],
+  ['codex', 'codex'],
+];
+
+function commandOnPath(command) {
+  const mode = fs.constants.X_OK;
+  return (process.env.PATH || '').split(path.delimiter).some(dir => {
+    try {
+      const candidate = path.join(dir || '.', command);
+      fs.accessSync(candidate, mode);
+      return fs.statSync(candidate).isFile();
+    } catch {
+      return false;
+    }
+  });
+}
+
+function printDashboardCommands() {
+  console.log(`Dashboard (Docker, from ${repoDir}): docker compose up -d`);
+  console.log(`Dashboard (foreground): ${path.join(repoDir, 'agent-dashboard')}`);
+}
+
+async function installDashboard(mode) {
+  if (!process.stdout.isTTY || mode === 'no') {
+    printDashboardCommands();
+    return;
+  }
+
+  const dockerReady = spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0;
+  const composePath = path.join(repoDir, 'docker-compose.yml');
+  if (dockerReady && fs.existsSync(composePath)) {
+    const answer = mode === 'yes' ? 'yes' : await ask('Start the dashboard with Docker? [y/N] ');
+    if (['y', 'yes'].includes(answer.toLowerCase())) {
+      const child = spawnSync('docker', ['compose', 'up', '-d'], { cwd: repoDir, stdio: 'inherit' });
+      if (child.status === 0) return;
+      console.error(`${cmdName}: docker compose failed`);
+    }
+  } else if (dockerReady) {
+    console.log('No docker-compose.yml found. Run: cp docker-compose.sample.yml docker-compose.yml');
+  }
+
+  const answer = mode === 'yes' ? 'yes' : await ask('Launch the dashboard in the background instead? [y/N] ');
+  if (['y', 'yes'].includes(answer.toLowerCase())) {
+    const child = spawn(path.join(repoDir, 'agent-dashboard'), [], { cwd: repoDir, detached: true, stdio: 'ignore' });
+    child.unref();
+    console.log('Dashboard started: http://127.0.0.1:4242');
+    return;
+  }
+  printDashboardCommands();
+}
+
+async function installRelay(argv) {
+  const invalid = argv.filter(arg => !['--dashboard', '--no-dashboard'].includes(arg));
+  if (invalid.length || (argv.includes('--dashboard') && argv.includes('--no-dashboard'))) {
+    console.error(`Usage: ${cmdName} install [--dashboard|--no-dashboard]`);
+    process.exit(2);
+  }
+
+  const detected = new Set(installHarnesses.filter(([, command]) => commandOnPath(command)).map(([provider]) => provider));
+  const links = spawnSync(path.join(repoDir, 'install-skill'), [], { cwd: repoDir, stdio: 'inherit', env: process.env });
+  const linksOk = links.status === 0;
+  const mcp = await installMcp(detected);
+
+  console.log('\nInstall summary:');
+  for (const [provider] of installHarnesses) {
+    if (!detected.has(provider)) console.log(`${provider}: not found on PATH, skipped`);
+    else console.log(`${provider}: skill+bin ${linksOk ? 'ok' : 'failed'}, mcp ${mcp.get(provider) || 'failed'}`);
+  }
+
+  if (!linksOk || [...mcp.values()].some(result => result.startsWith('failed:'))) process.exitCode = 1;
+  const dashboardMode = argv.includes('--dashboard') ? 'yes' : argv.includes('--no-dashboard') ? 'no' : 'ask';
+  await installDashboard(dashboardMode);
 }
 
 function resolveWorkspace(value) {
@@ -377,6 +467,11 @@ if (args[0] === 'workspaces') {
 if (args[0] === 'init') {
   await initWorkspaces();
   process.exit(0);
+}
+
+if (args[0] === 'install') {
+  await installRelay(args.slice(1));
+  process.exit(process.exitCode || 0);
 }
 
 if (args[0] === 'mcp') {

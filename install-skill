@@ -2,15 +2,21 @@
 set -eu
 
 force=0
+quiet=0
 for arg in "$@"; do
   case "$arg" in
     --force|-f) force=1 ;;
+    --quiet|-q) quiet=1 ;;
   esac
 done
 
 script_path="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
-repo_dir=$(CDPATH= cd -- "$(dirname -- "$script_path")" && pwd -P)
+repo_dir=$(CDPATH='' cd -- "$(dirname -- "$script_path")" && pwd -P)
 source_dir="$repo_dir/skills/agent-relay"
+
+log() {
+  [ "$quiet" -eq 1 ] || echo "$@"
+}
 
 warn_symlink() {
   target="$1"
@@ -45,7 +51,7 @@ for target in \
   warn_symlink "$target" "$source_dir"
   mkdir -p "$(dirname -- "$target")"
   ln -sfnT "$source_dir" "$target"
-  echo "Installed skill: $target -> $source_dir"
+  log "Installed skill: $target -> $source_dir"
 done
 
 # 2. Install CLI binaries into ~/.local/bin
@@ -71,6 +77,6 @@ for bin in \
     cli_target="$HOME/.local/bin/$bin"
     warn_symlink "$cli_target" "$source_bin"
     ln -sf "$source_bin" "$cli_target"
-    echo "Installed CLI: $cli_target -> $source_bin"
+    log "Installed CLI: $cli_target -> $source_bin"
   fi
 done
