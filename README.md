@@ -56,6 +56,21 @@ Included wrappers:
 - `claude-agent`
 - `codex-agent`
 
+### Why these four harnesses, specifically
+
+Claude Code, Codex CLI, and the Antigravity CLI are each a lab's own official
+entrypoint to its frontier models — Anthropic's, OpenAI's, and Google's.
+Between them, three wrappers already reach most frontier models simply by
+going through the harness their own maker ships. OpenCode is the fourth
+because it isn't tied to one lab: point it at almost any model through a
+subscription or a plain API key, covering what the other three don't.
+
+That's why the wrapper list stops at four — it's not an arbitrary cap, it's
+already most of the model landscape. The MCP server and shared skill aren't
+limited the same way: any harness that can load an MCP server or a skill can
+use agent-relay's dashboard, logs, and structured results directly, with or
+without a dedicated wrapper script.
+
 ## What they are good for
 
 Use agent-relay when you want a bounded coding task to run without opening another interactive UI, and want a way to inspect or continue it afterward.
