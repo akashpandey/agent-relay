@@ -240,6 +240,23 @@ relay install
 
 *(If you already have the CLI installed and just want to update or sync the agent skill via skills.sh, you can run `npx skills add akashpandey/agent-relay -g`).*
 
+### Alternative: Install via Harness Plugin Marketplaces
+If your harness supports native plugins and you prefer installing directly inside the chat UI:
+
+```bash
+# In Claude Code:
+claude plugin marketplace add akashpandey/agent-relay
+claude plugin install agent-relay@agent-relay
+
+# In Codex:
+codex plugin marketplace add akashpandey/agent-relay
+codex plugin add agent-relay@agent-relay
+
+# In Antigravity CLI:
+agy plugin install "$HOME/agent-relay/plugins/agent-relay"
+```
+*(See [📖 Harness plugins guide](docs/PLUGINS.md) for full configuration and OpenCode setup).*
+
 That's the whole setup. From here, go to whichever harness you configured and
 just talk to it — ask it to delegate, review, or hand off a task to another
 model. It calls agent-relay through the skill/MCP tools for you; you don't

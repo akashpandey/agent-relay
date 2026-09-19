@@ -16,17 +16,24 @@ below are also available; remote marketplace installation is still unverified.
 
 ## Claude Code
 
-Install the local marketplace and plugin:
+### Remote Marketplace (Recommended)
+Install directly from GitHub into Claude Code:
 
 ```bash
-claude plugin marketplace add "$HOME/agent-relay"
+claude plugin marketplace add akashpandey/agent-relay
 claude plugin install agent-relay@agent-relay
 claude plugin list
 ```
 
-The remote marketplace source can instead be
-`akashpandey/agent-relay`. For a temporary local test, use
-`claude --plugin-dir "$HOME/agent-relay/plugins/agent-relay"`.
+### Local Checkout (Development)
+If you are developing inside a cloned checkout:
+
+```bash
+claude plugin marketplace add "$HOME/agent-relay"
+claude plugin install agent-relay@agent-relay
+```
+
+For a temporary session test without installing: `claude --plugin-dir "$HOME/agent-relay/plugins/agent-relay"`.
 
 The bundle follows [Claude's plugin format](https://code.claude.com/docs/en/plugins-reference)
 and includes its skill and `.mcp.json`. Restart Claude; confirm
