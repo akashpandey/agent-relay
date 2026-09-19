@@ -13,17 +13,15 @@ relay install
 
 What each line does:
 
-1. **`npm install -g @akashpandey/agent-relay`** — installs the CLI. It also
-   silently wires the shared skill and command symlinks (`relay`, `agent`,
-   `claude-agent`, etc.) into your harnesses in the background; you don't
-   need to run anything extra for that part.
-2. **`relay install`** — detects which of the four provider CLIs you have on
-   `PATH`, registers agent-relay's MCP server with each one it finds, asks
-   whether to also add a one-line Claude Code SessionStart hook (opt-in,
-   always asks first, never silent), and offers to start the dashboard
-   (Docker if available, otherwise a plain foreground process) so you can
-   watch task progress at `http://localhost:4242`. It prints a summary per
-   provider, e.g.:
+1. **`npm install -g @akashpandey/agent-relay`** — installs the CLI binaries
+   (`relay`, `agent`, `claude-agent`, `antigravity-agent`, etc.).
+2. **`relay install`** — sets up the shared skill and command symlinks,
+   detects which of the four provider CLIs you have on `PATH`, registers
+   agent-relay's MCP server with each one it finds, asks whether to also add
+   a one-line Claude Code SessionStart hook (opt-in, always asks first, never
+   silent), and offers to start the dashboard (Docker if available, otherwise
+   a plain foreground process) so you can watch task progress at
+   `http://localhost:4242`. It prints a summary per provider, e.g.:
 
    ```text
    claude: skill+bin ok, mcp registered

@@ -67,13 +67,13 @@ test('relay install configures all detected providers idempotently', () => {
   }
 });
 
-test('postinstall is quiet, succeeds without providers, and does not touch MCP or dashboard', () => {
+test('install-skill is quiet, succeeds without providers, and does not touch MCP or dashboard', () => {
   const fixture = testEnv();
   const dashboardMarker = path.join(fixture.dir, 'dashboard-ran');
   fs.writeFileSync(path.join(fixture.bin, 'docker'), `#!/bin/sh\ntouch "${dashboardMarker}"\n`, { mode: 0o755 });
   try {
-    const result = spawnSync(process.execPath, [path.join(root, 'scripts', 'postinstall.mjs')], {
-      env: { ...fixture.env, INIT_CWD: root, npm_config_global: 'false' },
+    const result = spawnSync(path.join(root, 'install-skill'), ['--quiet'], {
+      env: fixture.env,
       encoding: 'utf8',
     });
     assert.equal(result.status, 0, result.stderr);
@@ -131,18 +131,4 @@ test('relay install --no-hooks never writes settings.json', () => {
   }
 });
 
-test('postinstall skips dependency installs', () => {
-  const fixture = testEnv();
-  try {
-    const result = spawnSync(process.execPath, [path.join(root, 'scripts', 'postinstall.mjs')], {
-      env: { ...fixture.env, INIT_CWD: fixture.dir, npm_config_global: 'false' },
-      encoding: 'utf8',
-    });
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout, '');
-    assert.equal(result.stderr, '');
-    assert.equal(fs.existsSync(path.join(fixture.home, '.local', 'bin', 'relay')), false);
-  } finally {
-    fs.rmSync(fixture.dir, { recursive: true, force: true });
-  }
-});
+

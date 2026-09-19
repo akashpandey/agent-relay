@@ -1,6 +1,6 @@
 ---
 name: agent-relay
-description: Delegate a bounded coding, investigation, review, or parallel implementation task to local CLI agents (OpenCode, Antigravity, Claude Code, Codex). Also supports cross-harness relay takeover when tokens or quotas are exhausted.
+description: Delegate coding, investigation, review, or parallel implementation tasks to local CLI agents (OpenCode, Antigravity, Claude Code, Codex). Supports cross-harness relay takeover, model fallback chains, and dashboard tracking.
 ---
 
 # Agent Relay

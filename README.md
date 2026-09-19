@@ -2,6 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/akashpandey/agent-relay/blob/main/LICENSE)
 [![CI](https://github.com/akashpandey/agent-relay/actions/workflows/ci.yml/badge.svg)](https://github.com/akashpandey/agent-relay/actions/workflows/ci.yml)
+[![skills.sh](https://skills.sh/b/akashpandey/agent-relay?style=for-the-badge)](https://skills.sh/akashpandey/agent-relay)
 
 > **Talk to the AI assistant you're already using — Claude Code, Codex, Antigravity, or OpenCode — and let it delegate, review, or hand off a task to another model without you ever leaving that tab.**
 
@@ -192,21 +193,26 @@ They are meant for a machine where those tools already exist. The wrappers do no
 
 ## Install
 
-Two commands:
+Install the CLI and wire your harnesses:
 
 ```bash
 npm install -g @akashpandey/agent-relay
 relay install
 ```
 
-`npm install` alone already wires the shared skill and CLI binaries in the
-background (the postinstall hook). `relay install` does the rest: it detects
-which of Claude Code, Codex, OpenCode, and the Antigravity CLI you actually
-have, registers the MCP server for each one it finds, offers to add a
-Claude Code SessionStart hook (a one-line reminder that agent-relay is
-available — opt-in, asks first, never silent), and offers to start the
-dashboard in the background (Docker if available, otherwise a plain
+`relay install` sets up everything: it links the shared skill and CLI binaries
+into your harnesses, detects which of Claude Code, Codex, OpenCode, and the
+Antigravity CLI you actually have, registers the MCP server for each one it
+finds, offers to add a Claude Code SessionStart hook (a one-line reminder that
+agent-relay is available — opt-in, asks first, never silent), and offers to
+start the dashboard in the background (Docker if available, otherwise a plain
 foreground process) so you can watch task progress at `http://localhost:4242`.
+
+Alternatively, if you manage agent skills using [skills.sh](https://skills.sh):
+
+```bash
+npx skills add akashpandey/agent-relay -g
+```
 
 That's the whole setup. From here, go to whichever harness you configured and
 just talk to it — ask it to delegate, review, or hand off a task to another

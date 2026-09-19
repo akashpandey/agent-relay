@@ -71,7 +71,6 @@
   ],
   "scripts": {
     "sync:skills": "node scripts/sync-plugin-skill.mjs",
-    "postinstall": "node scripts/postinstall.mjs",
     "prepack": "npm run sync:skills",
     "test": "node --test tests/*.mjs",
     "test:mcp": "node --test tests/test-mcp-server.mjs",
