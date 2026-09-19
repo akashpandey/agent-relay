@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/akashpandey/agent-relay/blob/main/LICENSE)
 [![CI](https://github.com/akashpandey/agent-relay/actions/workflows/ci.yml/badge.svg)](https://github.com/akashpandey/agent-relay/actions/workflows/ci.yml)
-[![skills.sh](https://skills.sh/b/akashpandey/agent-relay?style=for-the-badge)](https://skills.sh/akashpandey/agent-relay)
+[![skills.sh](https://img.shields.io/badge/skills.sh-akashpandey%2Fagent--relay-black?logo=vercel&style=for-the-badge)](https://skills.sh/akashpandey/agent-relay)
 
 > **Talk to the AI assistant you're already using — Claude Code, Codex, Antigravity, or OpenCode — and let it delegate, review, or hand off a task to another model without you ever leaving that tab.**
 
