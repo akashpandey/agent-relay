@@ -104,8 +104,27 @@ Rules:
 - Run all commands in non-interactive batch mode (e.g. use 'npx -y', avoid interactive stdin/prompts).
 - Do not put deliverables in Antigravity scratch.
 - After editing, summarize changed files and verification commands.
-- End your final response with a JSON object containing: outcome (done|partial|blocked|failed), summary, changedFiles, verification, blockers, incomplete, nextSteps. The JSON object must be the last non-whitespace content. Do not write anything after it. Each verification item must be an object with command, status (passed|failed|skipped), and optional reason.
 - Use outcome=done only when the requested task is complete and verification passed or was explicitly unnecessary.
+- CRITICAL: Your absolute last turn MUST end with this exact JSON structure (no text or markdown after it):
+\`\`\`json
+{
+  \"outcome\": \"done\",
+  \"summary\": \"Brief explanation of what was done.\",
+  \"changedFiles\": [\"path/to/file\"],
+  \"verification\": [
+    {
+      \"command\": \"npm test\",
+      \"status\": \"passed\",
+      \"reason\": \"All tests passed\"
+    }
+  ],
+  \"blockers\": [],
+  \"incomplete\": [],
+  \"nextSteps\": []
+}
+\`\`\`
+outcome must be: done | partial | blocked | failed.
+verification status must be: passed | failed | skipped.
 
 Task:
 $user_prompt"

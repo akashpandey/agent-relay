@@ -15,18 +15,23 @@ try {
   const systemdUnit = text.slice(0, markerIndex < 0 ? 0 : markerIndex).match(/^agent-unit: ([^\r\n]+)$/m)?.[1] || null;
   const messages = [];
   let recordedSession = null;
+  let runningStreamText = '';
   for (const line of body.split('\n')) {
     try {
       const event = JSON.parse(line);
-      recordedSession = event.session_id || event.conversation_id || event.sessionID || event.thread_id || recordedSession;
+      recordedSession = event.session_id || event.conversation_id || event.sessionID || event.thread_id || event.init?.conversation_id || recordedSession;
       if (event.type === 'result' && typeof event.result === 'string') messages.push(event.result);
       if (event.type === 'assistant') {
         messages.push((event.message?.content || []).filter(part => part.type === 'text').map(part => part.text).join(''));
       }
       if (event.type === 'item.completed' && event.item?.type === 'agent_message' && typeof event.item.text === 'string') messages.push(event.item.text);
       if (event.type === 'text' && event.part?.type === 'text' && typeof event.part.text === 'string') messages.push(event.part.text);
+      if (event.event === 'step_update' && event.step_update?.text_delta) {
+        runningStreamText += event.step_update.text_delta;
+      }
     } catch {}
   }
+  if (runningStreamText.trim()) messages.push(runningStreamText.trim());
   const final = (messages.at(-1) || '').trim().replace(/\s*```\s*$/, '').trim();
   let explicit = null;
   for (let i = final.lastIndexOf('{'); i >= 0; i = final.lastIndexOf('{', i - 1)) {
