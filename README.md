@@ -6,7 +6,37 @@
 
 > **Talk to the AI assistant you're already using — Claude Code, Codex, Antigravity, or OpenCode — and let it delegate, review, or hand off a task to another model without you ever leaving that tab.**
 
-[📖 **Getting Started Guide**](https://github.com/akashpandey/agent-relay/blob/main/docs/GETTING_STARTED.md) — install the CLI and dashboard, verify your first task, update, and uninstall. [Harness plugins](https://github.com/akashpandey/agent-relay/blob/main/docs/PLUGINS.md) are also available.
+---
+
+### How It Works (in 30 seconds)
+
+1. **Install once:**
+   ```bash
+   npm install -g @akashpandey/agent-relay
+   relay install
+   ```
+   *`relay install` auto-detects your installed AI tools, links the skills, registers MCP servers, and starts your local dashboard.*
+
+2. **Stay in your AI conversation:**
+   Prompt your assistant naturally:
+   > *"Use agent-relay to have Codex review `src/auth.ts` for security vulnerabilities and verify all tests pass."*
+
+3. **Watch live or wait for the verified answer:**
+   Open **`http://localhost:4242`** to watch the subagent run in real time. When finished, your assistant receives a verified pass/fail outcome and summarizes the result directly in your chat.
+
+---
+
+## What makes agent-relay different?
+
+| What you might do today | With agent-relay |
+|---|---|
+| Open 3 terminal tabs to run Claude Code, Codex, and Gemini manually. | Stay in **one** tab. Your primary assistant delegates to the others for you. |
+| Copy-paste error messages and code diffs across different AI CLIs. | Structured handoffs with workspace context and automatic rollback on failure. |
+| Wonder if an agent actually finished or just exited with 0. | Strict **acceptance contracts** — tasks only report `pass` when verified. |
+| Run out of tokens or hit provider rate limits mid-task. | Automatic failover chains (`relay takeover` or model fallback chains). |
+| Cloud dashboards and telemetry tracking your code. | **100% local.** Runs on SQLite on your own machine. Zero tracking. |
+
+[📖 **Getting Started Guide**](https://github.com/akashpandey/agent-relay/blob/main/docs/GETTING_STARTED.md) — step-by-step setup, first verified task, dashboard controls, and updates. [Harness plugins](https://github.com/akashpandey/agent-relay/blob/main/docs/PLUGINS.md) are also available.
 
 [GitHub release guide](https://github.com/akashpandey/agent-relay/blob/main/docs/RELEASES.md) — prepare a tested version tag and downloadable install bundle.
 
@@ -193,26 +223,22 @@ They are meant for a machine where those tools already exist. The wrappers do no
 
 ## Install
 
-Install the CLI and wire your harnesses:
+Two quick commands set up everything (CLI binaries, skills, MCP servers, and dashboard):
 
 ```bash
 npm install -g @akashpandey/agent-relay
 relay install
 ```
 
-`relay install` sets up everything: it links the shared skill and CLI binaries
-into your harnesses, detects which of Claude Code, Codex, OpenCode, and the
-Antigravity CLI you actually have, registers the MCP server for each one it
-finds, offers to add a Claude Code SessionStart hook (a one-line reminder that
-agent-relay is available — opt-in, asks first, never silent), and offers to
-start the dashboard in the background (Docker if available, otherwise a plain
-foreground process) so you can watch task progress at `http://localhost:4242`.
+**What happens behind the scenes:**
+1. **`npm install -g`** installs the unified `relay` CLI, MCP server, and provider wrappers (`claude-agent`, `codex-agent`, etc.).
+2. **`relay install`** does the rest:
+   - **Wires the Skills**: Symlinks the shared `agent-relay` skill into all detected harnesses (`~/.claude/skills`, `~/.codex/skills`, `~/.gemini/skills`, etc.).
+   - **Registers MCP Tools**: Configures the `agent-relay` MCP server with Claude Code, Codex, Antigravity, and OpenCode.
+   - **Optional Hook**: Offers to add a one-line Claude Code SessionStart reminder.
+   - **Starts the Dashboard**: Launches the local web monitor at `http://localhost:4242` (Docker if available, or plain background process).
 
-Alternatively, if you manage agent skills using [skills.sh](https://skills.sh):
-
-```bash
-npx skills add akashpandey/agent-relay -g
-```
+*(If you already have the CLI installed and just want to update or sync the agent skill via skills.sh, you can run `npx skills add akashpandey/agent-relay -g`).*
 
 That's the whole setup. From here, go to whichever harness you configured and
 just talk to it — ask it to delegate, review, or hand off a task to another
