@@ -4,13 +4,22 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-09-22
+
 ### Added
 
-- `codex-agent` for non-interactive local Codex delegation with model, reasoning-effort, sandbox, timeout, logging, and cleanup support.
-- Optional `CLAUDE_EFFORT` support for Claude Code reasoning-effort selection.
-- `claude-agent` for non-interactive Claude Code delegation with model, fallback, timeout, logging, and cleanup support.
-- `opencode-agent --models [--refresh]` to list its documented provider-filtered model catalogue.
-- `antigravity-agent --models` to list its available model catalogue.
-- Model catalogue snapshots and refresh commands in the README.
-- `AGENT_RELAY_SESSION` support to resume a provider session across sequential wrapper calls.
-- Transient systemd user-service execution with cgroup-wide cleanup and runtime limits, with the existing process cleanup retained as fallback.
+- Task routing configuration module with host model discovery (`relay config init [--global]`, `relay install`).
+- Auto-population of global routing config (`~/.config/agent-relay/config.json`) during `relay install`.
+
+### Changed
+
+- Dashboard landing page mobile optimization:
+  - Header padding and subtitle responsive scaling to prevent layout clutter.
+  - Horizontally swipeable metrics chips and segmented filters with smooth touch scrolling.
+  - 2x2 executive KPI summary grid on mobile viewports.
+  - Run history table converted to responsive native-like cards on viewports <= 768px with prompt preview, status, tokens, and direct CLI / Inspect action buttons.
+- Fullscreen workspace inspection modal mobile optimization:
+  - Header reorganized with dedicated touch-friendly close button pinned to top-right.
+  - Horizontally scrollable actions toolbar (Details, Stop, Copy CLI, Continue, Run Again, Copy Prompt, Raw Log).
+  - Collapsible task description, token cost, and modified files drawer, giving 90%+ vertical space to terminal/diff viewers by default.
+  - Smooth horizontal scrolling for multi-tabs and tool filter pills.

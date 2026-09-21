@@ -748,6 +748,15 @@ async function openWorkspaceModal(filename) {
   el.modalFilesChips.innerHTML = '';
 
   // Open Fullscreen Modal
+  const modalSidebarEl = document.getElementById('modal-sidebar');
+  if (modalSidebarEl) {
+    modalSidebarEl.classList.remove('mobile-expanded');
+    const hint = modalSidebarEl.querySelector('.fs-toggle-hint');
+    if (hint) hint.textContent = 'tap to view';
+    const btnDetails = document.getElementById('btn-modal-mobile-details');
+    if (btnDetails) btnDetails.classList.remove('active');
+  }
+
   el.workspaceModalOverlay.classList.add('open');
   el.workspaceModal.classList.add('open');
   updateModalBodyLock();
@@ -1603,6 +1612,30 @@ function initEventListeners() {
   el.btnModalCopyLog.addEventListener('click', () => {
     copyToClipboard(getRenderedLogLines().join('\n'), 'Visible log window copied to clipboard!');
   });
+
+  // Mobile Details / Sidebar Toggle
+  const modalSidebar = document.getElementById('modal-sidebar');
+  const btnSidebarMobileToggle = document.getElementById('btn-sidebar-mobile-toggle');
+  const btnModalMobileDetails = document.getElementById('btn-modal-mobile-details');
+
+  const toggleSidebarMobile = () => {
+    if (modalSidebar) {
+      modalSidebar.classList.toggle('mobile-expanded');
+      const isExpanded = modalSidebar.classList.contains('mobile-expanded');
+      const hint = modalSidebar.querySelector('.fs-toggle-hint');
+      if (hint) hint.textContent = isExpanded ? 'tap to collapse' : 'tap to view';
+      if (btnModalMobileDetails) {
+        btnModalMobileDetails.classList.toggle('active', isExpanded);
+      }
+    }
+  };
+
+  if (btnSidebarMobileToggle) {
+    btnSidebarMobileToggle.addEventListener('click', toggleSidebarMobile);
+  }
+  if (btnModalMobileDetails) {
+    btnModalMobileDetails.addEventListener('click', toggleSidebarMobile);
+  }
 
   el.fsTabs.forEach(tab => {
     tab.addEventListener('click', () => switchModalTab(tab.dataset.tab));

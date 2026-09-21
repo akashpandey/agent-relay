@@ -8,6 +8,11 @@ import { fileURLToPath } from 'node:url';
 import { resolveWorkspacePath, configuredWorkspaceEntries } from '../dashboard/workspaces.js';
 import { deleteRun, getFilteredRuns, getRun, getWorkspacesFromDb } from '../dashboard/db.js';
 import { findLatestWorkspaceSession, buildRelayTakeoverPrompt } from './relay-handoff.mjs';
+import {
+  GLOBAL_CONFIG_PATH,
+  discoverHostModels,
+  generateConfigFileContent,
+} from './routing-config.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const repoDir = path.resolve(path.dirname(__filename), '..');
@@ -28,7 +33,8 @@ function usage() {
   ${cmdName} <workspace> <provider> [wrapper-args...] "task"
   ${cmdName} takeover [workspace] <provider> [instructions...]
   ${cmdName} init
-  ${cmdName} install [--dashboard|--no-dashboard]
+  ${cmdName} config init [--global]
+  ${cmdName} install [--dashboard|--no-dashboard] [--hooks|--no-hooks]
   ${cmdName} mcp install
   ${cmdName} workspaces
   ${cmdName} doctor
@@ -337,6 +343,20 @@ async function installRelay(argv) {
   const hooksResult = await installHooks(hooksMode);
   console.log(`hooks (Claude Code): ${hooksResult}`);
 
+  console.log('\nAuto-discovering host models and setting up routing config...');
+  const discovered = discoverHostModels(repoDir);
+  const totalModels = Object.values(discovered).reduce((sum, list) => sum + list.length, 0);
+  const providersWithModels = Object.keys(discovered).filter(k => discovered[k]?.length > 0);
+
+  if (!fs.existsSync(GLOBAL_CONFIG_PATH)) {
+    fs.mkdirSync(path.dirname(GLOBAL_CONFIG_PATH), { recursive: true });
+    fs.writeFileSync(GLOBAL_CONFIG_PATH, generateConfigFileContent(discovered));
+    console.log(`✓ Discovered ${totalModels} model(s) across ${providersWithModels.join(', ') || 'installed harnesses'}`);
+    console.log(`✓ Created global routing config: ${displayPath(GLOBAL_CONFIG_PATH)}`);
+  } else {
+    console.log(`✓ Routing config exists: ${displayPath(GLOBAL_CONFIG_PATH)} (${totalModels} host model(s) detected)`);
+  }
+
   if (!linksOk || [...mcp.values()].some(result => result.startsWith('failed:'))) process.exitCode = 1;
   const dashboardMode = argv.includes('--dashboard') ? 'yes' : argv.includes('--no-dashboard') ? 'no' : 'ask';
   await installDashboard(dashboardMode);
@@ -348,6 +368,7 @@ async function installRelay(argv) {
   } else {
     console.log('  See docs/GETTING_STARTED.md for provider setup and verification.');
   }
+  console.log(`  Routing config: ${displayPath(GLOBAL_CONFIG_PATH)} (task-based provider & model routing)`);
 }
 
 function resolveWorkspace(value) {
@@ -540,6 +561,25 @@ if (args[0] === 'mcp') {
     process.exit(0);
   }
   console.error(`${cmdName}: unknown mcp command: ${args[1]}`);
+  process.exit(2);
+}
+
+if (args[0] === 'config') {
+  if (args[1] === 'init') {
+    const isGlobal = args.includes('--global');
+    const targetPath = isGlobal ? GLOBAL_CONFIG_PATH : path.join(process.cwd(), '.agent-relay.json');
+    console.log('Auto-discovering host models...');
+    const discovered = discoverHostModels(repoDir);
+    const totalModels = Object.values(discovered).reduce((sum, list) => sum + list.length, 0);
+    const providersWithModels = Object.keys(discovered).filter(k => discovered[k]?.length > 0);
+
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    fs.writeFileSync(targetPath, generateConfigFileContent(discovered));
+    console.log(`✓ Discovered ${totalModels} model(s) across ${providersWithModels.join(', ') || 'installed harnesses'}`);
+    console.log(`✓ Wrote routing config to ${displayPath(targetPath)}`);
+    process.exit(0);
+  }
+  console.error(`Usage: ${cmdName} config init [--global]`);
   process.exit(2);
 }
 

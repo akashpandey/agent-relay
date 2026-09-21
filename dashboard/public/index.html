@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=2.1.0">
+  <link rel="stylesheet" href="style.css?v=2.2.0">
 </head>
 <body>
   <div class="app-layout">
@@ -293,10 +293,15 @@
     <div class="fullscreen-modal" id="workspace-modal">
       <!-- Full Modal Header Bar -->
       <div class="fullscreen-modal-header">
-        <div class="fs-header-left">
-          <span class="provider-tag" id="modal-provider">opencode</span>
-          <h2 class="fs-modal-title" id="modal-filename">run.log</h2>
-          <span class="status-pill" id="modal-status-pill">Running</span>
+        <div class="fs-header-top-row">
+          <div class="fs-header-left">
+            <span class="provider-tag" id="modal-provider">opencode</span>
+            <h2 class="fs-modal-title" id="modal-filename">run.log</h2>
+            <span class="status-pill" id="modal-status-pill">Running</span>
+          </div>
+          <button class="btn-close" id="btn-close-workspace-modal" title="Close (Esc)" aria-label="Close">
+            <svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="3.5" y1="3.5" x2="12.5" y2="12.5"></line><line x1="12.5" y1="3.5" x2="3.5" y2="12.5"></line></svg>
+          </button>
         </div>
 
         <div class="fs-header-meta">
@@ -312,6 +317,10 @@
         </div>
 
         <div class="fs-header-actions">
+          <button class="btn btn-sm btn-secondary btn-mobile-details" id="btn-modal-mobile-details" title="Toggle Run Details">
+            <svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6.5"></circle><line x1="8" y1="7.5" x2="8" y2="11.5"></line><circle cx="8" cy="4.75" r="0.75" fill="currentColor"></circle></svg>
+            <span>Details</span>
+          </button>
           <button class="btn btn-sm btn-danger" id="modal-btn-kill" style="display: none;">Stop Process</button>
           <button class="btn btn-sm btn-secondary" id="btn-modal-copy-cli" title="Copy CLI Command">Copy CLI</button>
           <button class="btn btn-sm btn-secondary" id="btn-modal-copy-continue" title="Copy agent continue command">Continue</button>
@@ -324,16 +333,24 @@
               <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
             </svg>
           </button>
-          <button class="btn-close" id="btn-close-workspace-modal" title="Close (Esc)" aria-label="Close">
-            <svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="3.5" y1="3.5" x2="12.5" y2="12.5"></line><line x1="12.5" y1="3.5" x2="3.5" y2="12.5"></line></svg>
-          </button>
         </div>
       </div>
 
       <!-- Full Modal Body Grid (Left Sidebar + Right Main Workspace) -->
       <div class="fullscreen-modal-body">
         <!-- Left Sidebar / Info & Prompt Pane -->
-        <aside class="fs-sidebar">
+        <aside class="fs-sidebar" id="modal-sidebar">
+          <div class="fs-sidebar-mobile-toggle" id="btn-sidebar-mobile-toggle">
+            <div class="fs-sidebar-mobile-toggle-title">
+              <svg class="ui-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6.5"></circle><line x1="8" y1="7.5" x2="8" y2="11.5"></line><circle cx="8" cy="4.75" r="0.75" fill="currentColor"></circle></svg>
+              <span>Task Prompt & Session Stats</span>
+            </div>
+            <div class="fs-sidebar-mobile-toggle-arrow">
+              <span class="fs-toggle-hint">tap to view</span>
+              <svg class="ui-icon toggle-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="4 6 8 10 12 6"></polyline></svg>
+            </div>
+          </div>
+          <div class="fs-sidebar-content">
           <!-- Initial Task Prompt Box -->
           <div class="fs-task-card">
             <div class="fs-card-header">
@@ -414,7 +431,8 @@
             </p>
             <div class="fs-relay-buttons" id="modal-relay-actions" style="display: flex; gap: 6px; flex-wrap: wrap;"></div>
           </div>
-        </aside>
+        </div>
+      </aside>
 
         <!-- Right Main Content Workspace with Multi-Tabs -->
         <section class="fs-main-viewport">
@@ -619,6 +637,6 @@
     </div>
   </div>
 
-  <script src="/app.js?v=2.0.8"></script>
+  <script src="/app.js?v=2.1.0"></script>
 </body>
 </html>
