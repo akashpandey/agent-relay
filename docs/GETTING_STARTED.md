@@ -198,6 +198,11 @@ An empty dashboard before your first run is normal.
 
 ### 6. Optional harness integration
 
+For task-based model selection, see [Task routing](../README.md#task-routing).
+`relay config init` creates a repository rules file; `relay config init --global`
+creates a personal fallback if `relay install` has not already created one.
+Edit the generated provider and model choices before using them.
+
 `relay install` and `relay mcp install` already wire the MCP server into
 detected harness configs. For native plugin packages instead (Claude Code,
 Codex, Antigravity, OpenCode), follow the [plugin guide](PLUGINS.md). Restart

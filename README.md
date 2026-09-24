@@ -57,6 +57,7 @@ harness plugin names remain unchanged.
 - [MCP Server](#mcp-server)
 - [Cross-Harness Relay Takeover (Token Exhaustion Handoff)](#cross-harness-relay-takeover-token-exhaustion-handoff)
 - [Session reuse](#session-reuse)
+- [Task routing](#task-routing)
 - [Model catalogues & Dynamic Family Aliases](#model-catalogues--dynamic-family-aliases)
 - [opencode-agent](#opencode-agent)
 - [opencode-agent-fallback](#opencode-agent-fallback)
@@ -541,6 +542,59 @@ The compact result from `agent-wait` and `/api/runs/<log>/result` includes a
 `continuation.sameSessionCommand` when the same agent should fix its own
 issue or continue a closely related task. Use a fresh session for unrelated work
 or parallel workers.
+
+## Task routing
+
+Power users can choose a provider and model by task type without putting personal
+model preferences in `AGENTS.md` or `CLAUDE.md`. Create a repository config with
+`relay config init`, or a personal global config with `relay config init --global`.
+Both commands generate examples and discovered model names for editing; they refuse
+to overwrite an existing config. `relay install` also creates the global sample
+when absent, so edit that file if you have already installed relay. The config
+uses JSON with optional comments.
+
+```jsonc
+{
+  "routing": {
+    "ui": {
+      "provider": "opencode",
+      "model": "glm/latest",
+      "keywords": ["ui", "layout", "component"],
+      "patterns": ["src/components/**", "*.css"]
+    },
+    "backend": {
+      "provider": "codex",
+      "model": "latest",
+      "keywords": ["api", "database", "migration"],
+      "patterns": ["server/**", "migrations/**"]
+    }
+  },
+  "default": { "provider": "codex" }
+}
+```
+
+These are examples, not built-in assignments. Set each `provider` to one of
+`opencode`, `codex`, `claude`, or `antigravity`, and use a model selector accepted
+by that provider's wrapper. The generated `available_models_on_host` field is
+informational; it does not select a model. No credentials belong in this file.
+
+`relay route ui "Update the settings layout"` runs a named route in the current
+repository. `relay route my-repo backend "Fix the API"` uses a configured workspace
+alias. MCP `run_agent` accepts `route: "ui"` with `prompt` and optional `workspace`;
+omit both `route` and `provider` to match task keywords, then `targetPath` patterns,
+then `default`. Rules are checked in file order and the first match wins. Pattern
+matching needs a `targetPath` supplied by the caller; relay does not infer touched
+files from the prompt. An explicit `provider` bypasses routing, and an explicit
+`model` overrides the route model.
+
+Relay searches the target workspace and its parent directories for
+`.agent-relay.json`, `.agent-relay.jsonc`, or `agent-relay.json`, then uses
+`~/.config/agent-relay/routing.json` if none is found. Set
+`AGENT_RELAY_ROUTING_CONFIG` to change the global path. The nearest repository
+config replaces the global config; they are not merged. A missing named route or
+invalid config fails the launch rather than silently choosing another model.
+Routing applies to launches made through `relay route` or MCP `run_agent`; direct
+provider commands and other agent tools do not consult this config.
 
 ## Model catalogues & Dynamic Family Aliases
 

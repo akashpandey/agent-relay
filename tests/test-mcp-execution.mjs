@@ -31,8 +31,9 @@ setTimeout(() => console.log(JSON.stringify({type:'item.completed',item:{type:'a
   const env = { ...process.env, PATH: bin + ':' + process.env.PATH,
       AGENT_RELAY_CODEX_BIN: path.join(bin, 'provider'), AGENT_RELAY_LOG_DIR: logs,
       CODEX_DATA: codexData, CLAUDE_DATA: path.join(dir, 'claude'),
-      OPENCODE_DB: path.join(dir, 'opencode.sqlite'), GEMINI_BRAIN: path.join(dir, 'gemini'),
-      AGENT_RELAY_DB_PATH: path.join(dir, 'agents.sqlite'), AGENT_RELAY_DATA_DIR: dir };
+       OPENCODE_DB: path.join(dir, 'opencode.sqlite'), GEMINI_BRAIN: path.join(dir, 'gemini'),
+       AGENT_RELAY_DB_PATH: path.join(dir, 'agents.sqlite'), AGENT_RELAY_DATA_DIR: dir,
+       AGENT_RELAY_ROUTING_CONFIG: path.join(dir, 'routing.json') };
   const child = spawn(process.execPath, [root + '/scripts/mcp-server.mjs'], {
     cwd: root, env,
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -79,6 +80,30 @@ setTimeout(() => console.log(JSON.stringify({type:'item.completed',item:{type:'a
     fs.rmSync(dir, { recursive: true, force: true });
   }
 }
+
+test('routing uses repository rules, then global rules, while explicit provider wins', { timeout: 20000 }, async () => {
+  await fixture(async ({ dir, workspace, env, tool }) => {
+    const repoConfig = path.join(workspace, '.agent-relay.json');
+    fs.writeFileSync(env.AGENT_RELAY_ROUTING_CONFIG, JSON.stringify({ default: { provider: 'codex', model: 'global-model' } }));
+    fs.writeFileSync(repoConfig, JSON.stringify({ routing: { backend: { provider: 'codex', model: 'gpt-5.5', keywords: ['api'] } } }));
+
+    const routed = await tool('run_agent', { workspace, route: 'backend', prompt: 'Check the API' });
+    assert.equal(routed.provider, 'codex');
+    assert.equal(routed.model, 'gpt-5.5');
+    const automatic = await tool('run_agent', { workspace, prompt: 'Check the API' });
+    assert.equal(automatic.provider, 'codex');
+    const explicit = await tool('run_agent', { workspace, provider: 'codex', model: 'manual', route: 'missing', prompt: 'Check the API' });
+    assert.equal(explicit.model, 'manual');
+    await assert.rejects(tool('run_agent', { workspace, route: 'missing', prompt: 'Check the API' }), /unknown route/);
+
+    const cli = execFileSync(root + '/relay', ['route', 'backend', 'Check the API'], { cwd: workspace, env, encoding: 'utf8' });
+    assert.match(cli, /workspace/);
+    fs.rmSync(repoConfig);
+    const global = await tool('run_agent', { workspace, prompt: 'Check the API' });
+    assert.equal(global.provider, 'codex');
+    assert.equal(global.model, 'global-model');
+  });
+});
 
 test('MCP preserves worktree paths, drains verbose output and remains responsive', { timeout: 20000 }, async () => {
   await fixture(async ({ dir, workspace, env, tool, request, ready }) => {

@@ -25,6 +25,7 @@ relay doctor
 relay dashboard
 relay my-app opencode "Task prompt..."
 relay codex "Task prompt in the current directory..."
+relay route my-app ui "Update the settings layout"
 relay attention my-app
 relay prune --dry-run --older-than 30d
 relay result my-app
@@ -219,7 +220,7 @@ Do not use `/api/logs/<log-filename>`, `tail`, or the Live Terminal as the norma
 
 When the host supports MCP, prefer the local `agent-relay-mcp` server over ad-hoc shell parsing. It exposes structured tools: `run_agent`, `list_workspaces`, `list_runs`, `get_session_history`, `get_run_result`, `wait_for_run`, `get_log_tail`, `search_log`, `continue_run`, `takeover_run`, `doctor`, `list_models`, and `kill_run`.
 
-- Use `run_agent` to delegate tasks directly without shell syntax (`provider`, `prompt`, `workspace`, `model`, `effort`, `sessionId`, `continueLatest`, `sandbox`, `fallbackChain`, `wait`).
+- Use `run_agent` to delegate tasks directly without shell syntax (`provider`, `route`, `prompt`, `workspace`, `model`, `effort`, `sessionId`, `continueLatest`, `sandbox`, `fallbackChain`, `wait`). When a workspace has routing rules, pass a named `route` and omit `provider`, or omit both to match keywords and the configured default. An explicit `provider` bypasses routing.
 - Use `list_runs` with keyword search `q` and date filters `since` / `until` (e.g. `since: "2026-09-16"`) to find past tasks across any provider or workspace.
 - Use `get_session_history` to inspect the full conversational context, original goals, touched files, tokens, and assistant reasoning from past sessions.
 - Use `takeover_run` with `execute: false` (default) to synthesize a complete cross-harness baton handoff prompt (original goal, touched files in flight, uncommitted git diffs, previous reasoning), or `execute: true` to immediately run the takeover on another harness.

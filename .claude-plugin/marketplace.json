@@ -7,7 +7,7 @@
       "name": "agent-relay",
       "source": "./plugins/agent-relay",
       "description": "Delegate local coding-agent tasks with CLI, MCP, and dashboard observability.",
-      "version": "1.0.4"
+      "version": "1.1.0"
     }
   ]
 }

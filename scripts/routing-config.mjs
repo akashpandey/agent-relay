@@ -100,12 +100,16 @@ export function loadRoutingConfig(workspace = process.cwd()) {
   }
 }
 
-export function matchRoute(config, prompt = '', targetPath = '') {
-  if (!config || !config.routing) return null;
+export function matchRoute(config, prompt = '', targetPath = '', routeName = '') {
+  if (!config) return null;
+  if (routeName) {
+    const route = config.routing?.[routeName];
+    return route?.provider ? { routeName, provider: route.provider, model: route.model, reason: 'named route' } : null;
+  }
   const promptLower = String(prompt).toLowerCase();
   const pathLower = String(targetPath).toLowerCase();
 
-  for (const [routeName, route] of Object.entries(config.routing)) {
+  for (const [routeName, route] of Object.entries(config.routing || {})) {
     if (!route || typeof route !== 'object') continue;
 
     // Match keywords against prompt

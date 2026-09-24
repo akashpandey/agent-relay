@@ -8,6 +8,7 @@ import { getFilteredRuns, getRun, getWorkspacesFromDb, upsertRun } from '../dash
 import { buildRunCommands } from '../dashboard/commands.js';
 import { resolveWorkspacePath, configuredWorkspaceEntries } from '../dashboard/workspaces.js';
 import { findLatestWorkspaceSession, buildRelayTakeoverPrompt, getWorkspaceGitContext } from './relay-handoff.mjs';
+import { loadRoutingConfig, matchRoute } from './routing-config.mjs';
 import {
   getOpenCodeSessionDetails,
   getClaudeSessionDetails,
@@ -31,8 +32,10 @@ const tools = [
         provider: {
           type: 'string',
           enum: [...providers],
-          description: 'The agent provider to run (opencode, codex, claude, antigravity).',
+          description: 'Explicit provider. Omit to select one from the workspace routing config.',
         },
+        route: { type: 'string', description: 'Named routing rule in the workspace config (for example, backend or ui).' },
+        targetPath: { type: 'string', description: 'Optional workspace-relative file path for pattern matching when provider and route are omitted.' },
         prompt: {
           type: 'string',
           description: 'The task instructions for the delegated agent.',
@@ -78,7 +81,7 @@ const tools = [
           description: 'Wait for completion and return structured result contract (default true). If false, launches in background.',
         },
       },
-      required: ['provider', 'prompt'],
+      required: ['prompt'],
       additionalProperties: false,
     },
   },
@@ -380,7 +383,7 @@ async function callTool(name, args = {}) {
   }
   if (args.sessionId && args.continueLatest) throw new Error('sessionId and continueLatest cannot be combined');
   if (name === 'run_agent') {
-    if (!args.provider || !providers.has(args.provider)) {
+    if (args.provider && !providers.has(args.provider)) {
       throw new Error(`unknown provider: ${args.provider}. Supported: ${[...providers].join(', ')}`);
     }
     if (!args.prompt || typeof args.prompt !== 'string') {
@@ -388,6 +391,15 @@ async function callTool(name, args = {}) {
     }
 
     const targetWorkspace = executionWorkspace(args.workspace);
+    if (!args.provider) {
+      const loaded = loadRoutingConfig(targetWorkspace);
+      if (!loaded) throw new Error('no routing config found; specify a provider or run relay config init');
+      if (loaded.error) throw new Error(`invalid routing config ${loaded.configFile}: ${loaded.error}`);
+      const route = matchRoute(loaded.config, args.prompt, args.targetPath, args.route);
+      if (!route) throw new Error(args.route ? `unknown route: ${args.route}` : 'no routing rule matched and no default provider is configured');
+      args = { ...args, provider: route.provider, model: args.model || route.model };
+    }
+    if (!providers.has(args.provider)) throw new Error(`unknown provider in routing config: ${args.provider}`);
 
     let wrapperName = `${args.provider}-agent`;
     const env = { ...process.env };

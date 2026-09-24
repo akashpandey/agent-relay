@@ -12,6 +12,8 @@ import {
   GLOBAL_CONFIG_PATH,
   discoverHostModels,
   generateConfigFileContent,
+  loadRoutingConfig,
+  matchRoute,
 } from './routing-config.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -31,6 +33,7 @@ function usage() {
   console.log(`Usage:
   ${cmdName} <provider> [wrapper-args...] "task"
   ${cmdName} <workspace> <provider> [wrapper-args...] "task"
+  ${cmdName} route [workspace] <route> "task"
   ${cmdName} takeover [workspace] <provider> [instructions...]
   ${cmdName} init
   ${cmdName} config init [--global]
@@ -465,13 +468,15 @@ function pruneRuns(argv) {
   console.error(`subagent: ${confirm ? 'deleted' : 'would delete'} ${targets.length} runs${confirm ? '' : ' (dry run; add --confirm)'}`);
 }
 
-function runProvider(provider, args, workspace = null) {
+function runProvider(provider, args, workspace = null, model = null) {
   const bin = providers.get(provider);
   if (!bin) {
     console.error(`subagent: unknown provider: ${provider}`);
     process.exit(2);
   }
-  const child = spawnSync(path.join(repoDir, bin), args, { cwd: workspace || process.cwd(), stdio: 'inherit', env: process.env });
+  const modelEnv = { opencode: 'OPENCODE_MODEL', codex: 'CODEX_MODEL', claude: 'CLAUDE_MODEL', antigravity: 'AGY_MODEL' };
+  const env = model ? { ...process.env, [modelEnv[provider]]: model } : process.env;
+  const child = spawnSync(path.join(repoDir, bin), args, { cwd: workspace || process.cwd(), stdio: 'inherit', env });
   process.exit(child.status ?? 1);
 }
 
@@ -568,6 +573,10 @@ if (args[0] === 'config') {
   if (args[1] === 'init') {
     const isGlobal = args.includes('--global');
     const targetPath = isGlobal ? GLOBAL_CONFIG_PATH : path.join(process.cwd(), '.agent-relay.json');
+    if (fs.existsSync(targetPath)) {
+      console.error(`${cmdName}: routing config already exists: ${displayPath(targetPath)}`);
+      process.exit(2);
+    }
     console.log('Auto-discovering host models...');
     const discovered = discoverHostModels(repoDir);
     const totalModels = Object.values(discovered).reduce((sum, list) => sum + list.length, 0);
@@ -581,6 +590,28 @@ if (args[0] === 'config') {
   }
   console.error(`Usage: ${cmdName} config init [--global]`);
   process.exit(2);
+}
+
+if (args[0] === 'route') {
+  const workspace = resolveWorkspace(args[1]);
+  const routeName = args[workspace ? 2 : 1];
+  const task = args.slice(workspace ? 3 : 2).join(' ');
+  if (!routeName || !task) {
+    console.error(`Usage: ${cmdName} route [workspace] <route> "task"`);
+    process.exit(2);
+  }
+  const targetWorkspace = workspace || process.cwd();
+  const loaded = loadRoutingConfig(targetWorkspace);
+  if (!loaded || loaded.error) {
+    console.error(`${cmdName}: ${loaded?.error || 'no routing config found'}`);
+    process.exit(2);
+  }
+  const route = matchRoute(loaded.config, task, '', routeName);
+  if (!route || !providers.has(route.provider)) {
+    console.error(`${cmdName}: unknown or invalid route: ${routeName}`);
+    process.exit(2);
+  }
+  runProvider(route.provider, [task], targetWorkspace, route.model);
 }
 
 if (args[0] === 'doctor') {

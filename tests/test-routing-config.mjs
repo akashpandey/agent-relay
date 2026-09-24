@@ -86,6 +86,10 @@ test('matchRoute resolves provider based on prompt keywords and file patterns', 
   const match4 = matchRoute(config, 'Something completely different');
   assert.equal(match4?.provider, 'antigravity');
   assert.equal(match4?.routeName, 'default');
+
+  const named = matchRoute(config, 'Unrelated text', '', 'backend');
+  assert.equal(named?.provider, 'codex');
+  assert.equal(matchRoute(config, '', '', 'missing'), null);
 });
 
 test('loadRoutingConfig finds and parses JSONC config files with comments', () => {

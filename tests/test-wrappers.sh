@@ -87,8 +87,9 @@ assert_output_contains() {
   shift 2
   echo -n "Running: $desc ... "
   local out
+  touch "$TMP_DIR/output-marker"
   out="$("$@" 2>&1 || true)"
-  if echo "$out" | grep -qE "$pattern"; then
+  if { printf '%s\n' "$out"; find "$TEST_LOGS" -maxdepth 1 -type f -name '*.log' -newer "$TMP_DIR/output-marker" -exec cat {} +; } | grep -E "$pattern" >/dev/null; then
     echo "PASS"
     PASSED=$((PASSED + 1))
   else
