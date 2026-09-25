@@ -117,6 +117,30 @@ function reconcileActiveRuns(activeRuns) {
 }
 
 /**
+ * Build a process-tree snapshot from /proc in a single pass.
+ * Returns ppidOf (pid→ppid) and childrenOf (ppid→Set<pid>).
+ */
+function buildProcessTree(procDir) {
+  const ppidOf = new Map();
+  const childrenOf = new Map();
+  try {
+    for (const entry of fs.readdirSync(procDir)) {
+      if (!/^\d+$/.test(entry)) continue;
+      try {
+        const stat = fs.readFileSync(path.join(procDir, entry, 'stat'), 'utf8');
+        const parts = stat.split(' ');
+        const pid = parseInt(parts[0], 10);
+        const ppid = parseInt(parts[3], 10);
+        ppidOf.set(pid, ppid);
+        if (!childrenOf.has(ppid)) childrenOf.set(ppid, new Set());
+        childrenOf.get(ppid).add(pid);
+      } catch {}
+    }
+  } catch {}
+  return { ppidOf, childrenOf };
+}
+
+/**
  * Find all dangling (orphaned) agent processes on the system
  */
 function findDanglingSubagentProcesses(activeRuns = []) {
@@ -134,6 +158,28 @@ function findDanglingSubagentProcesses(activeRuns = []) {
       activeUnits.add(`local-subagent-${r.provider}-${r.pid}`);
       activeUnits.add(`local-subagent-${r.pid}`);
     }
+  }
+
+  // Expand activePids to cover the full process tree so that child/grandchild
+  // processes and wrapper parent processes are not falsely flagged as dangling.
+  const { ppidOf, childrenOf } = buildProcessTree(PROC_DIR);
+
+  // BFS downward: add all descendants of every known active PID
+  const queue = [...activePids];
+  while (queue.length) {
+    const pid = queue.shift();
+    for (const child of (childrenOf.get(pid) || [])) {
+      if (!activePids.has(child)) {
+        activePids.add(child);
+        queue.push(child);
+      }
+    }
+  }
+
+  // One level upward: protect the direct parent (wrapper script) of each active PID
+  for (const pid of [...activePids]) {
+    const ppid = ppidOf.get(pid);
+    if (ppid && ppid > 1) activePids.add(ppid);
   }
 
   try {

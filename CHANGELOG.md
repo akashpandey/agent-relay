@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-09-25
+
+### Fixed
+
+- Dashboard dangling process detection no longer produces false positives for
+  child/grandchild processes spawned by active agent runs or for wrapper parent
+  processes whose PIDs were not directly tracked in the database. A single-pass
+  `/proc` tree snapshot is built upfront; `activePids` is expanded via BFS to
+  all descendants and one level upward to direct parents before the cmdline scan.
+
 ## [1.1.0] - 2026-09-24
 
 ### Added
