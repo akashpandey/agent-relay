@@ -1,6 +1,6 @@
 {
   "name": "@akashpandey/agent-relay",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "Pass the baton between Claude Code, Codex, Antigravity, and OpenCode with a single Unix command.",
   "type": "module",
   "license": "MIT",
@@ -11,22 +11,22 @@
   "homepage": "https://github.com/akashpandey/agent-relay",
   "repository": {
     "type": "git",
-    "url": "https://github.com/akashpandey/agent-relay.git"
+    "url": "git+https://github.com/akashpandey/agent-relay.git"
   },
   "bugs": {
     "url": "https://github.com/akashpandey/agent-relay/issues"
   },
   "bin": {
-    "relay": "./agent",
-    "agent-relay": "./agent",
-    "agent-relay-mcp": "./agent-relay-mcp",
-    "opencode-agent": "./opencode-agent",
-    "opencode-agent-fallback": "./opencode-agent-fallback",
-    "antigravity-agent": "./antigravity-agent",
-    "claude-agent": "./claude-agent",
-    "codex-agent": "./codex-agent",
-    "agent-doctor": "./agent-doctor",
-    "agent-wait": "./agent-wait"
+    "relay": "agent",
+    "agent-relay": "agent",
+    "agent-relay-mcp": "agent-relay-mcp",
+    "opencode-agent": "opencode-agent",
+    "opencode-agent-fallback": "opencode-agent-fallback",
+    "antigravity-agent": "antigravity-agent",
+    "claude-agent": "claude-agent",
+    "codex-agent": "codex-agent",
+    "agent-doctor": "agent-doctor",
+    "agent-wait": "agent-wait"
   },
   "engines": {
     "node": ">=22.5.0"

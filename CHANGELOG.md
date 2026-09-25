@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-09-25
+
+### Fixed
+
+- Completed agent runs no longer show `outcome=unknown` in the dashboard and
+  API. `registerRunComplete` (called by `subagent-tracker.js` at the end of
+  every wrapper run) now reads the `.done` sentinel file and persists
+  `outcome`, `attention_required`, and `result_json` to the DB row directly.
+  Previously those columns were left at their schema defaults (`'unknown'`,
+  `0`, `NULL`) because `reconcileActiveRuns` only processes rows still in
+  `status='running'`, which these rows are not by the time reconcile runs.
+- Existing stale rows in the database are backfilled from on-disk `.done`
+  files on startup.
+
 ## [1.1.2] - 2026-09-25
 
 ### Fixed

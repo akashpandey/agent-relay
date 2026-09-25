@@ -310,7 +310,7 @@ export function registerRunStart({ filename, pid, provider, model, workspace, se
 /**
  * Register an agent run completion
  */
-export function registerRunComplete({ filename, exitCode, status, sessionId, endTime, markdownSummary, durationSec }) {
+export function registerRunComplete({ filename, exitCode, status, sessionId, endTime, markdownSummary, durationSec, outcome, attentionRequired, resultJson }) {
   const db = getDatabase();
   const stmt = db.prepare(`
     UPDATE runs SET
@@ -320,6 +320,9 @@ export function registerRunComplete({ filename, exitCode, status, sessionId, end
       end_time = ?,
       duration_sec = COALESCE(?, duration_sec),
       markdown_summary = COALESCE(?, markdown_summary),
+      outcome = COALESCE(?, outcome),
+      attention_required = COALESCE(?, attention_required),
+      result_json = COALESCE(?, result_json),
       current_action = 'Finished',
       updated_at = datetime('now')
     WHERE filename = ?
@@ -332,6 +335,9 @@ export function registerRunComplete({ filename, exitCode, status, sessionId, end
     endTime || new Date().toISOString(),
     durationSec !== undefined ? durationSec : null,
     markdownSummary || null,
+    outcome || null,
+    attentionRequired != null ? (attentionRequired ? 1 : 0) : null,
+    resultJson || null,
     filename
   );
 }
