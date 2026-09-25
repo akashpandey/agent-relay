@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-09-25
+
+### Fixed
+
+- MCP `run_agent` (synchronous mode) no longer returns `outcome='unknown'` /
+  `accepted=false` when the run completed successfully. After the child process
+  closes, the server now waits up to 2 s (20 × 100 ms polls) for the `.done`
+  sentinel file written by `write-done.mjs` before reading the structured
+  result, eliminating the race between the wrapper shell exiting and the
+  final node child finishing disk I/O.
+
 ## [1.1.1] - 2026-09-25
 
 ### Fixed

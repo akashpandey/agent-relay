@@ -498,7 +498,21 @@ async function callTool(name, args = {}) {
     clearTimeout(timer);
     if (cancellation) await cancellation;
     if (escalation) clearTimeout(escalation);
-    const run = launchedRun(child.pid, args.provider, previousLogs);
+
+    // Brief wait for write-done.mjs to finish writing the .done sentinel.
+    // The child 'close' event fires when the wrapper shell exits, but write-done
+    // runs as the last node child of that shell -- on a loaded system it may not
+    // have flushed the file yet. Poll up to 2 s before falling back to the raw
+    // exit status so the caller never receives a spurious outcome='unknown'.
+    let run = launchedRun(child.pid, args.provider, previousLogs);
+    if (run && !run.result) {
+      const doneFile = run.filename && path.join(logsDir, run.filename.replace(/\.log$/, '.done'));
+      for (let i = 0; i < 20 && doneFile && !fs.existsSync(doneFile); i++) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      run = launchedRun(child.pid, args.provider, previousLogs);
+    }
+
     if (run) {
       return { ...runResult(run), timedOut };
     }
