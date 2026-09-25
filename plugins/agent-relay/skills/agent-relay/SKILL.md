@@ -200,7 +200,7 @@ Caller contract:
 }
 ```
 
-If `accepted=false` or `outcome` is `partial`, `blocked`, `failed`, or `unknown`, do not mark the parent task complete. Continue with a follow-up agent prompt, fix the issue directly, or report the blocker to the user. `outcome=unknown` can mean the process exited without writing a `.done` sentinel, so completion could not be verified.
+If `accepted=false` or `outcome` is `partial`, `blocked`, `failed`, or `unknown`, do not mark the parent task complete. Continue with a follow-up agent prompt, fix the issue directly, or report the blocker to the user. `outcome=unknown` means the process exited without writing a valid structured `.done` sentinel — the task completion could not be verified and attention is required.
 
 If the original agent caused a defect and the compact result includes `continuation`, prefer `continuation.sameSessionCommand` so the same agent can repair its own work with full context. Include the exact issue, failing check, and acceptance condition in the follow-up prompt.
 
@@ -261,12 +261,14 @@ OPENCODE_MODEL_CHAIN='zai-coding-plan/glm-5.3,openai/gpt-5.4-mini,opencode-go/qw
 
 ## Emergency Process Control
 
-If a agent is runaway, stuck, or orphaned:
+If an agent is runaway, stuck, or orphaned:
 ```sh
 # Kill through the dashboard UI or POST these local API endpoints:
 http://localhost:4242/api/runs/<log-filename>/kill
 http://localhost:4242/api/dangling/kill-all
 ```
+
+The dashboard's **Dangling** chip shows processes whose cmdline matches an agent wrapper but are not tracked as active runs. Detection correctly excludes child/grandchild processes spawned by active agents and wrapper parent processes, so only genuinely orphaned processes appear. Use `kill-all` only when you are confident the listed PIDs are not part of an active run.
 
 ---
 
