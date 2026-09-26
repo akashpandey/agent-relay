@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-09-26
+
+### Changed
+
+- `plugins/agent-relay/skills/` is now a derived artifact: gitignored and
+  regenerated from the canonical `skills/agent-relay/` source by the `prepack`
+  script before every npm publish. Previously both copies were tracked in git,
+  causing them to drift whenever a commit touched `skills/` outside of a
+  publish cycle.
+
 ## [1.1.3] - 2026-09-25
 
 ### Fixed
