@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-26
+
+### Added
+
+- Interactive Terminal User Interface (TUI) for installation and environment setup (`scripts/install-tui.mjs`):
+  - Accessible via `relay install --tui` or `relay init --tui` (and automatically invoked when `relay install` runs interactively in a TTY).
+  - Automatically scans `$PATH` for installed AI harnesses (`claude`, `codex`, `opencode`, `agy`) and shows live detection status.
+  - Interactive keyboard-driven checkbox multi-select menu (arrows/hjkl, space to toggle, enter to confirm, 'A' to toggle all).
+  - Prompts for optional Claude Code `SessionStart` reminder hook.
+  - Interactive selection of dashboard deployment method (Docker container, native background process, or skip).
+  - Zero external dependencies: pure Node.js standard library with ANSI terminal escape sequences.
+
 ## [1.1.6] - 2026-09-26
 
 ### Fixed

@@ -7,12 +7,15 @@ Run these two commands in any Linux terminal or WSL2 environment with Node.js 24
 ```bash
 npm install -g @akashpandey/agent-relay
 relay install
+# or launch the full interactive setup wizard:
+relay install --tui
 ```
 
 ### What happens automatically:
 
 1. **`npm install -g @akashpandey/agent-relay`** — installs the unified `relay` CLI, MCP server, and provider wrappers.
-2. **`relay install`** — sets up your environment end-to-end:
+2. **`relay install`** (or `relay install --tui`) — sets up your environment end-to-end:
+   - **Interactive TUI Selection**: Beautiful terminal wizard with live PATH detection, keyboard navigation, and checkbox selection.
    - **Installs the Skill**: Automatically links the `agent-relay` skill into Claude Code, Codex, Antigravity, and OpenCode.
    - **Registers MCP Tools**: Wires the MCP server into all detected harnesses.
    - **Claude Code SessionStart Hook**: Prompts to add an opt-in reminder so Claude knows delegation is available.

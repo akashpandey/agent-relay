@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { resolveWorkspacePath, configuredWorkspaceEntries } from '../dashboard/workspaces.js';
 import { deleteRun, getFilteredRuns, getRun, getWorkspacesFromDb } from '../dashboard/db.js';
 import { findLatestWorkspaceSession, buildRelayTakeoverPrompt } from './relay-handoff.mjs';
+import { runInstallationTui } from './install-tui.mjs';
 import {
   GLOBAL_CONFIG_PATH,
   discoverHostModels,
@@ -35,9 +36,9 @@ function usage() {
   ${cmdName} <workspace> <provider> [wrapper-args...] "task"
   ${cmdName} route [workspace] <route> "task"
   ${cmdName} takeover [workspace] <provider> [instructions...]
-  ${cmdName} init
+  ${cmdName} init [--tui]
   ${cmdName} config init [--global]
-  ${cmdName} install [--dashboard|--no-dashboard] [--hooks|--no-hooks]
+  ${cmdName} install [--tui] [--dashboard|--no-dashboard] [--hooks|--no-hooks]
   ${cmdName} mcp install
   ${cmdName} workspaces
   ${cmdName} doctor
@@ -319,11 +320,15 @@ function colorSummaryLine(line, useColor) {
 }
 
 async function installRelay(argv) {
-  const validFlags = ['--dashboard', '--no-dashboard', '--hooks', '--no-hooks'];
+  if (argv.includes('--tui') || (!argv.length && process.stdout.isTTY && !process.env.CI)) {
+    return runInstallationTui();
+  }
+
+  const validFlags = ['--tui', '--dashboard', '--no-dashboard', '--hooks', '--no-hooks'];
   const invalid = argv.filter(arg => !validFlags.includes(arg));
   if (invalid.length || (argv.includes('--dashboard') && argv.includes('--no-dashboard')) ||
       (argv.includes('--hooks') && argv.includes('--no-hooks'))) {
-    console.error(`Usage: ${cmdName} install [--dashboard|--no-dashboard] [--hooks|--no-hooks]`);
+    console.error(`Usage: ${cmdName} install [--tui] [--dashboard|--no-dashboard] [--hooks|--no-hooks]`);
     process.exit(2);
   }
 
@@ -551,6 +556,10 @@ if (args[0] === 'workspaces') {
 }
 
 if (args[0] === 'init') {
+  if (args.includes('--tui')) {
+    await runInstallationTui();
+    process.exit(0);
+  }
   await initWorkspaces();
   process.exit(0);
 }
