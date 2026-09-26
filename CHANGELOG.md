@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [1.1.5] - 2026-09-26
+
+### Fixed
+
+- `antigravity-agent` watchdog no longer prematurely kills `agy` mid-response,
+  causing the recurring "response loop" where the agent produced only an opening
+  line before exiting. Two bugs in the completion-detection condition:
+  1. The event key was `"event":"result"` but agy stream-json emits
+     `"type":"result"` — so the primary check **never fired**.
+  2. The fallback grep matched `"outcome":"done"` anywhere in raw log text,
+     which false-positives the moment Gemini mentions the output format in its
+     introductory text (before doing any actual work).
+  Fix: correct the event key to `"type":"result"` and tighten the fallback to
+  require `"outcome"` AND `"changedFiles"` on the same line — only satisfiable
+  by the real complete JSON block, not a casual inline mention.
+
 ## [1.1.4] - 2026-09-26
 
 ### Changed

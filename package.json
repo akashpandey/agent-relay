@@ -1,6 +1,6 @@
 {
   "name": "@akashpandey/agent-relay",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "Pass the baton between Claude Code, Codex, Antigravity, and OpenCode with a single Unix command.",
   "type": "module",
   "license": "MIT",

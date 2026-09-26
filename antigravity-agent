@@ -269,8 +269,11 @@ tail_pid=$!
 (
   while kill -0 "$cmd_pid" 2>/dev/null; do
     sleep 2
-    if grep -qE '"event":"result"' "$log_file" 2>/dev/null || \
-       awk '/^---$/{f=1; next} f' "$log_file" 2>/dev/null | grep -qE '(\\"|")outcome(\\"|"):[[:space:]]*(\\"|")(done|partial|blocked|failed)'; then
+    # Primary: agy stream-json emits "type":"result" on completion (not "event":"result").
+    # Fallback: require "outcome" AND "changedFiles" on the same line -- impossible
+    # to satisfy from a casual mention of the output format in the model's intro text.
+    if grep -qE '"type":"result"' "$log_file" 2>/dev/null || \
+       awk '/^---$/{f=1; next} f' "$log_file" 2>/dev/null | grep -qE '"outcome"[[:space:]]*:[[:space:]]*"(done|partial|blocked|failed)".*"changedFiles"'; then
       grace=6
       while [ "$grace" -gt 0 ] && kill -0 "$cmd_pid" 2>/dev/null; do
         sleep 1
