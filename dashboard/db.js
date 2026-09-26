@@ -83,6 +83,14 @@ export function getDatabase() {
   return dbInstance;
 }
 
+function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
 function formatDuration(seconds) {
   if (!seconds || seconds <= 0) return '< 1s';
   if (seconds < 60) return `${seconds}s`;
@@ -104,6 +112,7 @@ export function rowToRunMeta(row, isAlive = false) {
     ? Math.max(0, Math.round((Date.now() - startMs) / 1000))
     : (row.duration_sec || 0);
   const workspace = canonicalWorkspacePath(row.workspace) || row.workspace || 'Unknown';
+  const size = row.log_size || 0;
 
   return {
     filename: row.filename,
@@ -143,7 +152,8 @@ export function rowToRunMeta(row, isAlive = false) {
     cliCommand: row.cli_command || '',
     exitCode: row.exit_code,
     logAvailable: row.log_available !== 0,
-    size: row.log_size || 0,
+    size,
+    fileSizeHuman: formatBytes(size),
     mtime: row.log_mtime || 0,
   };
 }

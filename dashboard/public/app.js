@@ -537,7 +537,9 @@ function renderHistoryTable() {
     const outcomeClass = `status-${outcome.toLowerCase()}`;
     const workspaceName = run.workspaceName || run.workspace || 'workspace';
 
-    const tokenDisplay = run.tokens && run.tokens.total ? `${formatNumber(run.tokens.total)} tok` : (run.fileSizeHuman || '0 B');
+    const tokenDisplay = run.tokens && run.tokens.total 
+      ? `${formatNumber(run.tokens.total)} tok` 
+      : (run.fileSizeHuman || (run.size ? formatBytes(run.size) : '0 B'));
     const timeObj = formatTableTime(run.startTimeIST || run.startTime);
 
     tr.innerHTML = `
@@ -1306,6 +1308,14 @@ function formatNumber(num) {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
   if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
   return String(num);
+}
+
+function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
 function escapeHtml(str) {

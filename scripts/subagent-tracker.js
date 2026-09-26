@@ -2,7 +2,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { registerRunStart, registerRunComplete } from '../dashboard/db.js';
+import { registerRunStart, registerRunComplete, upsertRun } from '../dashboard/db.js';
+import { parseLogMetadata } from '../dashboard/parser.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const repoDir = path.resolve(path.dirname(__filename), '..');
@@ -37,6 +38,23 @@ if (action === 'start') {
         outcome = done.result.outcome || null;
         attentionRequired = Boolean(done.result.attentionRequired);
         resultJson = JSON.stringify(done.result);
+      }
+    }
+  } catch {}
+
+  // Enrich run metadata (tokens, costs, diffs, tool calls) from provider databases/logs
+  try {
+    const logFilePath = path.join(logsDir, filename);
+    if (fs.existsSync(logFilePath)) {
+      const meta = parseLogMetadata(filename, logFilePath, '/proc', { enrich: true });
+      if (meta) {
+        meta.exitCode = parseInt(exitCode, 10);
+        meta.status = meta.exitCode === 0 ? 'completed' : 'failed';
+        if (outcome) meta.outcome = outcome;
+        if (attentionRequired !== null) meta.attentionRequired = attentionRequired;
+        if (resultJson) meta.result = JSON.parse(resultJson);
+        upsertRun(meta);
+        return;
       }
     }
   } catch {}

@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [1.1.6] - 2026-09-26
+
+### Fixed
+
+- Dashboard **Tokens / Size** column now displays the real log file size (e.g. `512 KB`)
+  when a run does not have token metrics, instead of incorrectly showing `0 B`:
+  1. `rowToRunMeta` in `dashboard/db.js` now exports `fileSizeHuman` formatted via `formatBytes(size)`.
+  2. `dashboard/public/app.js` now includes a `formatBytes()` fallback utility for `run.size`.
+  3. `scripts/subagent-tracker.js` now enriches finished runs with `parseLogMetadata({ enrich: true })`
+     on completion so token metrics, tool calls, and diffs are immediately saved into SQLite.
+
 ## [1.1.5] - 2026-09-26
 
 ### Fixed
