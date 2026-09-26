@@ -12,6 +12,7 @@ const json = name => JSON.parse(fs.readFileSync(path.join(root, name), 'utf8'));
 test('packaged plugin skill exactly matches the canonical skill directory', () => {
   const source = path.join(root, 'skills/agent-relay');
   const destination = path.join(root, 'plugins/agent-relay/skills/agent-relay');
+  assert.ok(fs.existsSync(destination), 'Plugin skill directory missing. Run npm run sync:skills');
   const files = directory => fs.readdirSync(directory, { recursive: true })
     .filter(file => fs.statSync(path.join(directory, file)).isFile()).sort();
   const expected = files(source);

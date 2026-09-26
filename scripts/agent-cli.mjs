@@ -332,7 +332,14 @@ async function installRelay(argv) {
     process.exit(2);
   }
 
-  const detected = new Set(installHarnesses.filter(([, command]) => commandOnPath(command)).map(([provider]) => provider));
+  const envSelected = process.env.AGENT_RELAY_SELECTED_PROVIDERS
+    ? new Set(process.env.AGENT_RELAY_SELECTED_PROVIDERS.split(',').map(s => s.trim()).filter(Boolean))
+    : null;
+  const detected = new Set(
+    installHarnesses
+      .filter(([provider, command]) => (!envSelected || envSelected.has(provider)) && commandOnPath(command))
+      .map(([provider]) => provider)
+  );
   const links = spawnSync(path.join(repoDir, 'install-skill'), [], { cwd: repoDir, stdio: 'inherit', env: process.env });
   const linksOk = links.status === 0;
   const mcp = await installMcp(detected);

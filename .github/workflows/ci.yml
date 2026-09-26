@@ -29,7 +29,7 @@ jobs:
 
       - name: Node.js syntax check
         run: |
-          node --check scripts/mcp-server.mjs scripts/agent-cli.mjs scripts/relay-handoff.mjs scripts/workspace-canonical.mjs scripts/agent-result.js scripts/subagent-tracker.js
+          node --check scripts/mcp-server.mjs scripts/agent-cli.mjs scripts/relay-handoff.mjs scripts/workspace-canonical.mjs scripts/agent-result.js scripts/subagent-tracker.js scripts/install-tui.mjs
 
       - name: MCP server smoke test
         run: |
@@ -37,6 +37,7 @@ jobs:
 
       - name: Run Node.js Test Suite
         run: |
+          npm run sync:skills
           if test -n "$(find tests -name '*.mjs' -print -quit)"; then
             node --test tests/*.mjs
           else

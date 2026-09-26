@@ -282,7 +282,7 @@ if [ "$use_systemd" -eq 0 ]; then
     fi
     for pid in $new_pids; do
       [ "$pid" = "$$" ] && continue
-      pid_cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+      pid_cmd="$([ -f "/proc/$pid/cmdline" ] && cat "/proc/$pid/cmdline" 2>/dev/null | tr '\0' ' ' || true)"
       case "$pid_cmd" in
         *-subagent*|*systemd-run*|*claude*|*codex*|*opencode*|*antigravity*|*agy*)
           continue

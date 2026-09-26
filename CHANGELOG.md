@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-09-26
+
+### Fixed
+
+- Eliminated `/proc/$pid/cmdline` missing file stderr noise across all 4 agent wrappers (`antigravity-agent`, `claude-agent`, `codex-agent`, `opencode-agent`) by silently verifying file existence before reading.
+- Fixed GitHub Actions CI failure on clean checkouts by adding `pretest` npm script to auto-generate derived plugin skills and updating CI workflow to run `npm run sync:skills` before testing.
+- Added `scripts/install-tui.mjs` to CI Node.js syntax check step.
+
 ## [1.2.0] - 2026-09-26
 
 ### Added
