@@ -111,6 +111,9 @@ assert_output_contains "opencode-agent --help" "Usage:" "$REPO_DIR/opencode-agen
 # Test models commands
 assert_output_contains "antigravity-agent --models" "Gemini 3.8 Flash" "$REPO_DIR/antigravity-agent" --models
 assert_output_contains "opencode-agent --models" "openai/gpt-5.6-sol" "$REPO_DIR/opencode-agent" --models
+assert_output_contains "codex-agent --models" "gpt" "$REPO_DIR/codex-agent" --models
+assert_output_contains "claude-agent --models" "opus" "$REPO_DIR/claude-agent" --models
+assert_output_contains "relay models" "codex" "$REPO_DIR/relay" models
 
 # Test argument invocation
 assert_output_contains "claude-agent argument task" "Mock claude done" "$REPO_DIR/claude-agent" "Test task"

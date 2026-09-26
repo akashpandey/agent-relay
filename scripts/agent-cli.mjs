@@ -48,6 +48,7 @@ function usage() {
   ${cmdName} result [--last | workspace | log-or-pid]
   ${cmdName} open [--browser] [--last | workspace | log]
   ${cmdName} last [workspace]
+  ${cmdName} models [provider]
   ${cmdName} continue [workspace] "task" [--to <provider>]
 
 Aliases: relay, agent (takeover alias: handoff)
@@ -772,6 +773,13 @@ if (args[0] === 'continue') {
     process.exit(1);
   }
   runProvider(run.provider, ['--resume', run.sessionId, task], maybeWorkspace || run.rawWorkspace || run.workspace);
+}
+
+if (args[0] === 'models') {
+  const provider = args[1]?.toLowerCase();
+  const script = path.join(repoDir, 'scripts/resolve-models.mjs');
+  const res = spawnSync(process.execPath, [script, provider || 'all'], { stdio: 'inherit' });
+  process.exit(res.status || 0);
 }
 
 if (providers.has(args[0])) runProvider(args[0], args.slice(1));

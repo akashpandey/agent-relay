@@ -20,8 +20,11 @@ if [ "${1:-}" = "--models" ]; then
     echo "Usage: claude-agent --models" >&2
     exit 2
   fi
-  echo "claude-agent: Claude Code has no live model-list command; showing documented selectors." >&2
-  printf '%s\n' opus sonnet
+  if command -v node >/dev/null 2>&1 && [ -f "$repo_dir/scripts/resolve-models.mjs" ]; then
+    node "$repo_dir/scripts/resolve-models.mjs" claude
+  else
+    printf '%s\n' opus sonnet
+  fi
   exit 0
 fi
 

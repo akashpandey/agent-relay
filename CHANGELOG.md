@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-26
+
+### Added
+
+- Zero-API-key dynamic model resolution across all providers (`scripts/resolve-models.mjs`):
+  - **Codex:** Dynamically extracts models from local client cache (`~/.codex/models_cache.json`).
+  - **Claude Code:** Dynamically extracts configured models and tiers from `~/.claude.json` and `~/.claude/settings.json`.
+  - **Antigravity:** Live query via `agy models`.
+  - **OpenCode:** Live query of supported providers (`opencode-go`, `openai`, `zai-coding-plan`).
+  - Supports custom model additions via `.agent-relay.json` or `~/.agent-relay/models.json`.
+- New CLI command: `relay models [provider]` to inspect available models directly from the terminal.
+- Updated `codex-agent --models` and `claude-agent --models` to use dynamic resolution with graceful fallback.
+- Added test coverage in `tests/test-models.mjs` and `tests/test-wrappers.sh`.
+
 ## [1.2.1] - 2026-09-26
 
 ### Fixed
