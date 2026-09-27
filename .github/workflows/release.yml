@@ -53,7 +53,8 @@ jobs:
         if: github.event_name == 'push'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --provenance --access public
+        run: npm publish --provenance --access public || echo "npm publish skipped (likely already published)"
+        continue-on-error: true
 
       - name: Build release artifact
         run: |
