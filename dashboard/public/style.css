@@ -1966,6 +1966,12 @@ kbd {
   transform: scale(1.1);
 }
 
+.btn-copied-flash {
+  border-color: var(--success) !important;
+  color: var(--success) !important;
+  transition: all 0.2s ease;
+}
+
 .tool-card-body {
   padding: 0.75rem 0.9rem;
   font-family: var(--font-mono);

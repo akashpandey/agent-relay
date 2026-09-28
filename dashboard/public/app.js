@@ -641,20 +641,57 @@ function applyModalMetadata(meta) {
   }
 
   // Left Sidebar: Task Prompt
-  el.modalTaskContent.textContent = meta.fullTask || meta.task || 'No task prompt recorded';
-  el.btnTaskCopySmall.onclick = () => copyToClipboard(meta.fullTask || meta.task, 'Task prompt copied!');
-  el.btnModalCopyPrompt.onclick = () => copyToClipboard(meta.fullTask || meta.task, 'Task prompt copied!');
+  const taskPrompt = meta.fullTask || meta.task || '';
+  el.modalTaskContent.textContent = taskPrompt || 'No task prompt recorded';
+  const handleCopyTask = (btn) => {
+    if (taskPrompt) {
+      copyToClipboard(taskPrompt, 'Task prompt copied!').then(ok => {
+        if (ok) flashButtonCopied(btn);
+      });
+    } else {
+      showToast('No task prompt recorded');
+    }
+  };
+  el.btnTaskCopySmall.onclick = () => handleCopyTask(el.btnTaskCopySmall);
+  el.btnModalCopyPrompt.onclick = () => handleCopyTask(el.btnModalCopyPrompt);
 
   // Left Sidebar: CLI Command
-  el.modalCliCode.textContent = meta.cliCommand || 'No command available';
-  el.btnCliCopySmall.onclick = () => copyToClipboard(meta.cliCommand, 'CLI command copied!');
-  el.btnModalCopyCli.onclick = () => copyToClipboard(meta.cliCommand, 'CLI command copied!');
+  const effectiveCliCmd = meta.cliCommand || meta.runAgainCommand || '';
+  el.modalCliCode.textContent = effectiveCliCmd || 'No command available';
+  const handleCopyCli = (btn) => {
+    if (effectiveCliCmd) {
+      copyToClipboard(effectiveCliCmd, 'CLI command copied!').then(ok => {
+        if (ok) flashButtonCopied(btn);
+      });
+    } else {
+      showToast('No CLI command available for this run');
+    }
+  };
+  el.btnCliCopySmall.onclick = () => handleCopyCli(el.btnCliCopySmall);
+  el.btnModalCopyCli.onclick = () => handleCopyCli(el.btnModalCopyCli);
 
   const continueCommand = meta.continuation?.agentContinueCommand || meta.continuation?.subagentContinueCommand || meta.continuation?.sameSessionCommand || '';
-  el.btnModalCopyContinue.style.display = continueCommand ? 'inline-flex' : 'none';
-  el.btnModalCopyContinue.onclick = () => copyToClipboard(continueCommand, 'Continue command copied!');
-  el.btnModalCopyRerun.style.display = meta.runAgainCommand ? 'inline-flex' : 'none';
-  el.btnModalCopyRerun.onclick = () => copyToClipboard(meta.runAgainCommand, 'Run-again command copied!');
+  if (continueCommand) {
+    el.btnModalCopyContinue.style.display = 'inline-flex';
+    el.btnModalCopyContinue.onclick = () => {
+      copyToClipboard(continueCommand, 'Continue command copied!').then(ok => {
+        if (ok) flashButtonCopied(el.btnModalCopyContinue);
+      });
+    };
+  } else {
+    el.btnModalCopyContinue.style.display = 'none';
+  }
+
+  if (meta.runAgainCommand) {
+    el.btnModalCopyRerun.style.display = 'inline-flex';
+    el.btnModalCopyRerun.onclick = () => {
+      copyToClipboard(meta.runAgainCommand, 'Run-again command copied!').then(ok => {
+        if (ok) flashButtonCopied(el.btnModalCopyRerun);
+      });
+    };
+  } else {
+    el.btnModalCopyRerun.style.display = 'none';
+  }
 
   // Left Sidebar: Relay Takeover
   if (el.fsRelayCard && el.modalRelayActions) {
@@ -668,7 +705,11 @@ function applyModalMetadata(meta) {
         const label = formatProviderName(targetProvider);
         btn.title = `Copy takeover command for ${label}: ${cmd}`;
         btn.innerHTML = `${ICONS.arrowRight} ${escapeHtml(label)}`;
-        btn.onclick = () => copyToClipboard(cmd, `Relay takeover command for ${label} copied!`);
+        btn.onclick = () => {
+          copyToClipboard(cmd, `Relay takeover command for ${label} copied!`).then(ok => {
+            if (ok) flashButtonCopied(btn);
+          });
+        };
         el.modalRelayActions.appendChild(btn);
       }
     } else {
@@ -762,6 +803,14 @@ async function openWorkspaceModal(filename) {
   el.workspaceModalOverlay.classList.add('open');
   el.workspaceModal.classList.add('open');
   updateModalBodyLock();
+
+  // Reset copy button handlers while run metadata is loading
+  el.btnModalCopyCli.onclick = () => showToast('Run details are loading...');
+  el.btnCliCopySmall.onclick = () => showToast('Run details are loading...');
+  el.btnTaskCopySmall.onclick = () => showToast('Run details are loading...');
+  el.btnModalCopyPrompt.onclick = () => showToast('Run details are loading...');
+  el.btnModalCopyContinue.style.display = 'none';
+  el.btnModalCopyRerun.style.display = 'none';
 
   try {
     const res = await fetch(`/api/runs/${encodeURIComponent(filename)}`);
@@ -874,9 +923,12 @@ function renderToolsTab() {
       const idx = parseInt(btn.dataset.copyIdx, 10);
       const item = filtered[idx];
       if (item && item.detail) {
-        copyToClipboard(item.detail, 'Copied tool command!');
-        btn.innerHTML = ICONS.check;
-        setTimeout(() => { btn.innerHTML = ICONS.copy; }, 1500);
+        copyToClipboard(item.detail, 'Copied tool command!').then(ok => {
+          if (ok) {
+            btn.innerHTML = ICONS.check;
+            setTimeout(() => { btn.innerHTML = ICONS.copy; }, 1500);
+          }
+        });
       }
     });
   });
@@ -1421,9 +1473,12 @@ function renderDiffsTab(meta) {
       e.stopPropagation();
       const p = btn.dataset.copyPath;
       if (p) {
-        copyToClipboard(p, `Copied: ${p}`);
-        btn.innerHTML = ICONS.check;
-        setTimeout(() => { btn.innerHTML = ICONS.copy; }, 1500);
+        copyToClipboard(p, `Copied: ${p}`).then(ok => {
+          if (ok) {
+            btn.innerHTML = ICONS.check;
+            setTimeout(() => { btn.innerHTML = ICONS.copy; }, 1500);
+          }
+        });
       }
     });
   });
@@ -1461,13 +1516,73 @@ function renderMarkdownToHtml(md) {
   return html;
 }
 
-function copyToClipboard(text, successMsg = 'Copied to clipboard!') {
-  if (!text) return;
-  navigator.clipboard.writeText(text).then(() => {
+function flashButtonCopied(btn, text = 'Copied!') {
+  if (!btn) return;
+  const originalHtml = btn.dataset.origHtml || btn.innerHTML;
+  btn.dataset.origHtml = originalHtml;
+  btn.classList.add('btn-copied-flash');
+  if (btn.querySelector('.ui-icon') && !btn.textContent.trim()) {
+    btn.innerHTML = ICONS.check;
+  } else {
+    btn.textContent = text;
+  }
+  setTimeout(() => {
+    btn.innerHTML = originalHtml;
+    btn.classList.remove('btn-copied-flash');
+    delete btn.dataset.origHtml;
+  }, 1500);
+}
+
+async function copyToClipboard(text, successMsg = 'Copied to clipboard!') {
+  if (!text) return false;
+  let copied = false;
+
+  // 1. Modern Async Clipboard API (Secure Context)
+  if (navigator?.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    try {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    } catch (err) {
+      // Focus or permissions failure; fall through to execCommand
+    }
+  }
+
+  // 2. Universal execCommand fallback (works on non-localhost HTTP, LAN, iframes, older browsers)
+  if (!copied && typeof document !== 'undefined') {
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.contain = 'strict';
+      textarea.style.position = 'fixed';
+      textarea.style.top = '0';
+      textarea.style.left = '-9999px';
+      textarea.style.opacity = '0';
+      textarea.style.pointerEvents = 'none';
+      document.body.appendChild(textarea);
+      textarea.select();
+      textarea.setSelectionRange(0, textarea.value.length);
+      copied = document.execCommand('copy');
+      document.body.removeChild(textarea);
+    } catch (err) {
+      copied = false;
+    }
+  }
+
+  // 3. Fallback to prompt as last resort
+  if (!copied) {
+    try {
+      window.prompt('Copy to clipboard: Ctrl+C, Enter', text);
+      copied = true;
+    } catch (err) {
+      copied = false;
+    }
+  }
+
+  if (copied && successMsg) {
     showToast(successMsg);
-  }).catch(() => {
-    prompt('Copy to clipboard:', text);
-  });
+  }
+  return copied;
 }
 
 function formatProviderName(p) {
@@ -1620,7 +1735,14 @@ function initEventListeners() {
   el.workspaceModalOverlay.addEventListener('click', closeWorkspaceModal);
   el.btnToggleFullscreen.addEventListener('click', toggleFullscreenModal);
   el.btnModalCopyLog.addEventListener('click', () => {
-    copyToClipboard(getRenderedLogLines().join('\n'), 'Visible log window copied to clipboard!');
+    const logText = getRenderedLogLines().join('\n');
+    if (logText && logText.trim()) {
+      copyToClipboard(logText, 'Visible log window copied to clipboard!').then(ok => {
+        if (ok) flashButtonCopied(el.btnModalCopyLog);
+      });
+    } else {
+      showToast('No log content available to copy');
+    }
   });
 
   // Mobile Details / Sidebar Toggle
