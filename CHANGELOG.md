@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-09-28
+
+### Fixed
+
+- Fixed non-functional copy buttons in the dashboard modal window:
+  - Made `copyToClipboard` resilient across all environments with a 3-tier fallback: modern async `navigator.clipboard.writeText` in secure contexts, universal `document.execCommand('copy')` via offscreen textarea for non-secure HTTP / LAN / iframes, and prompt fallback.
+  - Added CLI reproduction command fallback (`meta.runAgainCommand`) when `meta.cliCommand` is empty so "Copy CLI" and reproduction cards copy executable agent commands.
+  - Added temporary in-button visual confirmation (`flashButtonCopied`) flashing "Copied!" or checkmark on click.
+  - Added user feedback toasts when copying empty or still-loading task prompts, CLI commands, or logs instead of failing silently.
+  - Added placeholder click handlers when opening run modals to handle early clicks gracefully during metadata loading.
+
 ## [1.3.0] - 2026-09-26
 
 ### Added
