@@ -547,6 +547,12 @@ const server = http.createServer(async (req, res) => {
     if (!meta && fs.existsSync(filePath)) {
       meta = parseLogMetadata(safeFile, filePath, PROC_DIR);
       if (meta) upsertRun(meta);
+    } else if (meta && (!meta.fullTask || (meta.fullTask === meta.task && meta.task.endsWith('...'))) && fs.existsSync(filePath)) {
+      const freshMeta = parseLogMetadata(safeFile, filePath, PROC_DIR);
+      if (freshMeta?.fullTask && freshMeta.fullTask !== meta.fullTask) {
+        meta.fullTask = freshMeta.fullTask;
+        upsertRun({ ...meta, fullTask: freshMeta.fullTask });
+      }
     }
 
     if (!meta) {

@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-09-30
+
+### Fixed
+
+- Fixed modal "Copy" and "Copy Prompt" buttons copying only truncated 300-character task previews:
+  - Added `full_task TEXT` column to SQLite `runs` table schema with automatic migration.
+  - Persisted `fullTask` in `upsertRun` and `registerRunStart`, returning complete prompt strings via `rowToRunMeta`.
+  - Added self-healing in `GET /api/runs/:filename` to re-extract complete `fullTask` from on-disk log files for legacy database records.
+  - Extended dashboard search query filtering to match keywords in `full_task`.
+  - Updated `scripts/subagent-tracker.js` to pass both short preview and full prompt on run start.
+  - Added unit test suite in `tests/test-runs-task.mjs`.
+
 ## [1.3.1] - 2026-09-28
 
 ### Fixed

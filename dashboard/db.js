@@ -36,6 +36,7 @@ export function getDatabase() {
         workspace_name TEXT,
         session_id TEXT,
         task TEXT,
+        full_task TEXT,
         status TEXT NOT NULL DEFAULT 'running',
         start_time TEXT NOT NULL,
         end_time TEXT,
@@ -76,6 +77,7 @@ export function getDatabase() {
       "ALTER TABLE runs ADD COLUMN attention_required INTEGER DEFAULT 0",
       "ALTER TABLE runs ADD COLUMN result_json TEXT",
       "ALTER TABLE runs ADD COLUMN log_available INTEGER DEFAULT 1",
+      "ALTER TABLE runs ADD COLUMN full_task TEXT",
     ]) {
       try { dbInstance.exec(sql); } catch {}
     }
@@ -125,6 +127,7 @@ export function rowToRunMeta(row, isAlive = false) {
     session: row.session_id || 'new',
     sessionId: row.session_id || null,
     task: row.task || '',
+    fullTask: row.full_task || row.task || '',
     status: isAlive ? 'running' : row.status,
     isAlive: isAlive,
     startTime: row.start_time,
@@ -174,13 +177,13 @@ export function upsertRun(run) {
   const stmt = db.prepare(`
     INSERT INTO runs (
       filename, pid, provider, model, workspace, workspace_name, session_id,
-      task, status, start_time, end_time, duration_sec, current_action,
+      task, full_task, status, start_time, end_time, duration_sec, current_action,
       tokens_total, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write,
       cost, markdown_summary, outcome, attention_required, result_json, files_modified, diffs, tool_calls, cli_command,
       exit_code, log_available, log_size, log_mtime, updated_at
     ) VALUES (
       ?, ?, ?, ?, ?, ?, ?,
-      ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, datetime('now')
@@ -193,6 +196,7 @@ export function upsertRun(run) {
       workspace_name = excluded.workspace_name,
       session_id = excluded.session_id,
       task = CASE WHEN excluded.task IS NOT NULL AND excluded.task != '' THEN excluded.task ELSE runs.task END,
+      full_task = CASE WHEN excluded.full_task IS NOT NULL AND excluded.full_task != '' THEN excluded.full_task ELSE runs.full_task END,
       status = excluded.status,
       end_time = excluded.end_time,
       duration_sec = excluded.duration_sec,
@@ -233,6 +237,7 @@ export function upsertRun(run) {
     run.workspaceName || (run.workspace ? path.basename(run.workspace) : 'Unknown'),
     run.session || run.sessionId || null,
     run.task || '',
+    run.fullTask || run.task || '',
     run.status || 'running',
     run.startTime,
     run.endTime || null,
@@ -285,13 +290,15 @@ export function updateRunProgress({ filename, currentAction, status, durationSec
 /**
  * Register an agent run start immediately
  */
-export function registerRunStart({ filename, pid, provider, model, workspace, session, task, startTime }) {
+export function registerRunStart({ filename, pid, provider, model, workspace, session, task, fullTask, startTime }) {
   const db = getDatabase();
+  const effectiveFullTask = fullTask || task || '';
+  const effectiveTask = task ? (task.length > 300 ? task.slice(0, 300) + '...' : task) : (effectiveFullTask.length > 300 ? effectiveFullTask.slice(0, 300) + '...' : effectiveFullTask);
   const stmt = db.prepare(`
     INSERT INTO runs (
       filename, pid, provider, model, workspace, workspace_name, session_id,
-      task, status, start_time, current_action, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, 'Starting agent...', datetime('now'))
+      task, full_task, status, start_time, current_action, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, 'Starting agent...', datetime('now'))
     ON CONFLICT(filename) DO UPDATE SET
       pid = excluded.pid,
       provider = excluded.provider,
@@ -300,6 +307,7 @@ export function registerRunStart({ filename, pid, provider, model, workspace, se
       workspace_name = excluded.workspace_name,
       session_id = excluded.session_id,
       task = excluded.task,
+      full_task = excluded.full_task,
       status = 'running',
       updated_at = datetime('now')
   `);
@@ -312,7 +320,8 @@ export function registerRunStart({ filename, pid, provider, model, workspace, se
     workspace || 'Unknown',
     workspace ? path.basename(workspace) : 'Unknown',
     session || 'new',
-    task || '',
+    effectiveTask,
+    effectiveFullTask,
     startTime || new Date().toISOString()
   );
 }
@@ -397,9 +406,9 @@ export function getFilteredRuns({ provider, status, outcome, workspace, rawWorks
     params.push(until);
   }
   if (q) {
-    whereClauses.push('(filename LIKE ? OR workspace LIKE ? OR model LIKE ? OR task LIKE ? OR CAST(pid AS TEXT) LIKE ?)');
+    whereClauses.push('(filename LIKE ? OR workspace LIKE ? OR model LIKE ? OR task LIKE ? OR full_task LIKE ? OR CAST(pid AS TEXT) LIKE ?)');
     const qPattern = `%${q}%`;
-    params.push(qPattern, qPattern, qPattern, qPattern, qPattern);
+    params.push(qPattern, qPattern, qPattern, qPattern, qPattern, qPattern);
   }
 
   const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';

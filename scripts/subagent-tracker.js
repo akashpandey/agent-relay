@@ -13,6 +13,7 @@ const [action, ...args] = process.argv.slice(2);
 
 if (action === 'start') {
   const [filename, pid, provider, model, workspace, session, ...taskParts] = args;
+  const prompt = taskParts.join(' ');
   registerRunStart({
     filename,
     pid: parseInt(pid, 10) || null,
@@ -20,7 +21,8 @@ if (action === 'start') {
     model,
     workspace,
     session,
-    task: taskParts.join(' ')
+    task: prompt ? (prompt.length > 300 ? prompt.slice(0, 300) + '...' : prompt) : '',
+    fullTask: prompt || ''
   });
 } else if (action === 'complete') {
   const [filename, exitCode, sessionId, durationSec] = args;
