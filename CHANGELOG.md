@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-10-15
+
+### Fixed
+
+- Dashboard updates now batch all changed logs every 200 ms, preventing continuous output from postponing refreshes and simultaneous runs from losing updates.
+- Dashboard event streams send updates every 15 seconds to keep idle connections alive and include changes written directly to SQLite.
+- Reconnecting dashboards fetch current data immediately and poll every 15 seconds while disconnected.
+- Synchronized the Claude marketplace plugin version with the package release.
+
 ## [1.3.2] - 2026-09-30
 
 ### Fixed

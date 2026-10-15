@@ -399,19 +399,28 @@ function broadcastDashboardUpdate() {
 
 // Watch directory for changes and update SQLite
 let debounceTimer = null;
+const pendingLogFiles = new Set();
 try {
   fs.watch(LOGS_DIR, (eventType, filename) => {
     if (!filename || (!filename.endsWith('.log') && !filename.endsWith('.done'))) return;
     const logFilename = filename.endsWith('.done') ? filename.replace(/\.done$/, '.log') : filename;
-    if (debounceTimer) clearTimeout(debounceTimer);
+    pendingLogFiles.add(logFilename);
+    if (debounceTimer) return;
     debounceTimer = setTimeout(() => {
-      try { syncLogFile(logFilename); } catch {}
+      debounceTimer = null;
+      for (const pendingFilename of pendingLogFiles) {
+        try { syncLogFile(pendingFilename); } catch {}
+      }
+      pendingLogFiles.clear();
       broadcastDashboardUpdate();
     }, 200);
   });
 } catch (e) {
   console.warn('[Dashboard] Could not attach fs.watch to logs dir:', e.message);
 }
+
+// Keep idle SSE connections alive and include runs updated directly in SQLite.
+setInterval(broadcastDashboardUpdate, 15000);
 
 setTimeout(() => {
   try {

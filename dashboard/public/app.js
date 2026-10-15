@@ -1923,7 +1923,22 @@ function initSSE() {
 
   evtSource.onopen = () => {
     el.liveIndicator.innerHTML = '<span class="indicator-dot"></span> Live Sync';
+    fetchStats();
+    fetchAnalytics();
+    fetchRuns();
+    fetchWorkspaces();
+    scheduleModalMetadataRefresh();
   };
+
+  // Keep the dashboard current while EventSource retries a broken connection.
+  setInterval(() => {
+    if (evtSource.readyState === EventSource.OPEN) return;
+    fetchStats();
+    fetchAnalytics();
+    fetchRuns();
+    fetchWorkspaces();
+    scheduleModalMetadataRefresh();
+  }, 15000);
 }
 
 function scheduleDashboardRefresh() {
