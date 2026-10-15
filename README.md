@@ -318,6 +318,9 @@ relay init             # Auto-discover git repos and configure workspaces
 relay mcp install      # Auto-wire MCP server into Claude, OpenCode, Codex, Antigravity
 relay workspaces
 relay doctor
+relay models codex
+relay probe claude --model sonnet
+relay probe opencode --model zai-coding-plan/glm-5.2 --timeout 30 --json
 relay dashboard         # Check dashboard HTTP availability
 relay dashboard restart # Restart the configured Docker/hook setup
 relay my-app opencode "Review this repo"
@@ -337,6 +340,14 @@ Provider wrappers still work directly and use the current working directory as t
 Canonical workspace grouping is shared by the wrappers and dashboard. Optional config lives at `~/.config/agent-relay/workspaces.json` as either an array of absolute repo paths or an object of names to absolute repo paths. Override the path with `AGENT_RELAY_WORKSPACES_CONFIG` or the default code root with `AGENT_RELAY_CODE_ROOT`.
 
 Run `agent-doctor` to check Docker, the dashboard container, the compose symlink, and the post-commit restart hook.
+
+### Probe a model
+
+`relay probe <provider> --model <model> [--timeout 30] [--json]` sends a tiny request through your existing provider CLI login. Providers are `codex`, `claude`, `opencode`, and `antigravity` (`agy` alias). A model ID is required; use `relay models <provider>` to discover IDs. IDs are passed unchanged, without relay routing, alias expansion, or fallback chains.
+
+Results report `ready`, `quota_exhausted`, `rate_limited`, `auth_failed`, `model_unavailable`, `timeout`, `network_error`, or `unknown_error`, plus elapsed milliseconds and the requested model. `resolvedModel` is included as `null` unless the provider reports its identity; `retryAfter` preserves an explicit provider retry value. A generic 429 is rate limiting, not proof of exhausted quota. No remaining-quota estimate is inferred. Exit codes are 0 for ready, 1 for a failed probe, and 2 for invalid arguments. `--json` emits a single JSON object. The timeout accepts 1–300 seconds.
+
+Each probe consumes a small amount of usage. It runs in a temporary directory and creates no relay log, `.done` file, or dashboard task. Codex and Claude disable session persistence; OpenCode and Antigravity may retain native provider history. Claude disables tools; Codex uses read-only mode with shell tools, hooks, user configuration and web search disabled; OpenCode denies tool permissions. Antigravity has no all-tools-off switch, so it uses plan mode and sandboxing without permission bypasses. Probes ask for no tool use. Codex retains its login while ignoring custom user configuration, so custom endpoint/provider settings are not tested. Failures return a safe summary rather than raw provider output.
 
 ## Typical scenarios
 

@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-15
+
+### Added
+
+- `relay probe <provider> --model <model> [--timeout 30] [--json]` checks a model through the authenticated provider CLI using a tiny request in a temporary workspace, without relay run records or wrapper fallback chains.
+- Probe results distinguish ready, explicit quota exhaustion, rate limiting, authentication failure, unavailable models, timeouts, network errors, and unknown failures. Model identity and retry hints are included when reported by the provider.
+- Probes bound output and execution time, clean up child processes, and return script-friendly exit codes. Antigravity uses plan mode and sandboxing because its CLI lacks a switch to disable all tools.
+
 ## [1.3.3] - 2026-10-15
 
 ### Fixed

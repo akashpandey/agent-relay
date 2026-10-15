@@ -22,6 +22,9 @@ Prefer the unified `relay` (or `agent`) front door when using canonical workspac
 ```sh
 relay workspaces
 relay doctor
+relay models codex
+relay probe claude --model sonnet
+relay probe opencode --model zai-coding-plan/glm-5.2 --timeout 30 --json
 relay dashboard
 relay my-app opencode "Task prompt..."
 relay codex "Task prompt in the current directory..."
@@ -68,6 +71,16 @@ All wrappers dynamically resolve to the latest available model version for a giv
 - **OpenCode**: `OPENCODE_MODEL='openai/latest'` or `'openai/sol'`, `OPENCODE_MODEL='glm/latest'` (resolves latest Z.AI GLM), `OPENCODE_MODEL='opencode-go/qwen-latest'`.
 - **Codex**: `CODEX_MODEL='latest'` (resolves latest GPT Sol).
 - **Claude Code**: `CLAUDE_MODEL='opus'`, `CLAUDE_MODEL='sonnet'`.
+
+## Model Responsiveness and Quota Probes
+
+Use `relay probe <provider> --model <model> [--timeout 30] [--json]` when asked to check model responsiveness or quota. Supported providers: `codex`, `claude`, `opencode`, `antigravity` (`agy` alias). Discover model IDs with `relay models <provider>`. Pass an explicit model ID; probes do not use routing, wrapper alias expansion, fallback chains, or resume existing sessions.
+
+The command sends a small real request using the provider CLI's existing authentication. It consumes some usage. Do not probe all models automatically or on every task. Prefer one requested model. It creates no relay run log, `.done` sentinel, or dashboard record. The workspace is temporary and the timeout defaults to 30 seconds (1–300 seconds allowed); child processes and temporary files are cleaned up.
+
+Statuses: `ready`, `quota_exhausted`, `rate_limited`, `auth_failed`, `model_unavailable`, `timeout`, `network_error`, `unknown_error`. Require an actual assistant response for `ready`. Only explicit provider quota/credit exhaustion supports `quota_exhausted`; generic 429s and `RESOURCE_EXHAUSTED` are classified as throttling. Never infer remaining quota or reset times from a timeout. `resolvedModel` is null when the CLI does not report it; `retryAfter` appears only for explicit provider retry hints. Exit codes: 0 ready, 1 failed probe, 2 invalid arguments. `--json` returns one object without raw provider diagnostics or credentials.
+
+Codex/Claude disable session persistence; OpenCode/Antigravity may retain native CLI history. Claude disables tools; Codex uses read-only mode with shell tools, hooks, web search and user config disabled while retaining login; custom Codex endpoint/provider settings are therefore not tested. OpenCode denies tools. Antigravity lacks an all-tools-off switch: it uses plan mode and sandboxing without permission bypasses, with a no-tools prompt. Do not describe that as a guarantee of zero tool execution.
 
 ## Session Reuse & Continuation (Save Context)
 

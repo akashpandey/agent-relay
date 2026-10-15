@@ -9,6 +9,7 @@ import { resolveWorkspacePath, configuredWorkspaceEntries } from '../dashboard/w
 import { deleteRun, getFilteredRuns, getRun, getWorkspacesFromDb } from '../dashboard/db.js';
 import { findLatestWorkspaceSession, buildRelayTakeoverPrompt } from './relay-handoff.mjs';
 import { runInstallationTui } from './install-tui.mjs';
+import { runProbeCommand } from './model-probe.mjs';
 import {
   GLOBAL_CONFIG_PATH,
   discoverHostModels,
@@ -49,6 +50,7 @@ function usage() {
   ${cmdName} open [--browser] [--last | workspace | log]
   ${cmdName} last [workspace]
   ${cmdName} models [provider]
+  ${cmdName} probe <provider> --model <model> [--timeout 30] [--json]
   ${cmdName} continue [workspace] "task" [--to <provider>]
 
 Aliases: relay, agent (takeover alias: handoff)
@@ -781,6 +783,8 @@ if (args[0] === 'models') {
   const res = spawnSync(process.execPath, [script, provider || 'all'], { stdio: 'inherit' });
   process.exit(res.status || 0);
 }
+
+if (args[0] === 'probe') process.exit(await runProbeCommand(args.slice(1)));
 
 if (providers.has(args[0])) runProvider(args[0], args.slice(1));
 
