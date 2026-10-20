@@ -41,7 +41,7 @@ function probeCommand(provider, model) {
       '--setting-sources', '', '--settings', '{"disableAllHooks":true}', '--max-turns', '1', prompt,
     ]];
     case 'opencode': return ['opencode', [
-      'run', '--pure', '--format', 'json', '--title', 'relay-probe', '--agent', 'relay-probe', '--model', model, prompt,
+      'run', '--standalone', '--format', 'json', '--title', 'relay-probe', '--agent', 'relay-probe', '--model', model, prompt,
     ]];
     case 'antigravity': return ['agy', [
       '--print', prompt, '--output-format', 'stream-json', '--model', model,

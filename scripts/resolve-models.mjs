@@ -109,18 +109,13 @@ export function getOpencodeModels() {
   const models = new Set();
   const opencodeBin = process.env.AGENT_RELAY_OPENCODE_BIN || process.env.SUBAGENT_OPENCODE_BIN || 'opencode';
   const supportedProviders = ['opencode-go', 'openai', 'zai-coding-plan'];
-  for (const prov of supportedProviders) {
-    const res = spawnSync(opencodeBin, ['models', prov], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-    if (res.status === 0 && res.stdout) {
-      for (const line of res.stdout.split('\n')) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith('[') || trimmed.startsWith('#') || trimmed.startsWith('Fetching')) {
-          continue;
-        }
-        if (trimmed.includes('/') && !trimmed.includes(' ')) {
-          models.add(trimmed);
-        }
-      }
+  // opencode v2 `models` takes no provider argument: list all, filter by prefix.
+  const res = spawnSync(opencodeBin, ['models'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  if (res.status === 0 && res.stdout) {
+    for (const line of res.stdout.split('\n')) {
+      const trimmed = line.trim();
+      if (trimmed.includes(' ')) continue;
+      if (supportedProviders.some(prov => trimmed.startsWith(`${prov}/`))) models.add(trimmed);
     }
   }
   for (const custom of getCustomConfigModels('opencode')) {

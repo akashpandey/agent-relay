@@ -623,10 +623,10 @@ All wrappers support **dynamic model family aliases** so you never have to hardc
 | `codex-agent` | `latest` / `sol` / `gpt-sol` | Newest GPT Sol (e.g. `gpt-5.6-sol`) |
 | `claude-agent` | `opus` / `sonnet` / `latest` | Latest Anthropic model alias |
 
-Refresh or re-list available models before relying on snapshot lists:
+Re-list available models before relying on snapshot lists:
 
 ```bash
-opencode-agent --models --refresh
+opencode-agent --models
 antigravity-agent --models
 ```
 
@@ -712,7 +712,7 @@ Do not tail logs to determine task completeness. Logs are diagnostic output; `ag
 
 Behavior:
 
-- runs `opencode run --dir "$PWD" --auto`
+- runs `opencode run --standalone --auto` (from `$PWD`)
 - enables `--print-logs` by default
 - prints a startup banner (including the run log path) so hung runs are easier to identify
 - tees combined stdout+stderr to a timestamped file under `AGENT_RELAY_LOG_DIR`

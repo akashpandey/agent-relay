@@ -101,8 +101,9 @@ installation, put the link in the repository's `.opencode/plugins/` instead;
 do not install both. Restart OpenCode.
 
 The [native plugin](https://opencode.ai/docs/plugins/) adds delegation guidance
-through the system-prompt hook and registers the host MCP server through the
-config hook. Existing `agent-relay` MCP settings are preserved. There is no new
+through the v2 `context` session hook (OpenCode 2.x; the plugin uses the
+default-export `{ id, setup }` shape and does not load on 1.x). It does not
+register the MCP server: `relay install` writes that entry to `opencode.json`. There is no new
 npm dependency and no assumed published npm plugin. Confirm relay MCP tools
 appear; the shared skill from `./install-skill` remains available too.
 

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { AgentRelayPlugin } from '../plugins/opencode/agent-relay.js';
+import openCodePlugin from '../plugins/opencode/agent-relay.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const json = name => JSON.parse(fs.readFileSync(path.join(root, name), 'utf8'));
@@ -46,20 +46,12 @@ test('native plugin bundles point to real skills and the installed host server',
   assert.ok(fs.existsSync(path.join(root, codex.hooks.replace('./', 'plugins/agent-relay/'))));
 });
 
-test('OpenCode registers MCP, preserves user configuration, and adds acceptance guidance', async () => {
-  const hooks = await AgentRelayPlugin();
-  const config = { mcp: { other: { enabled: true } } };
-  await hooks.config(config);
-  assert.deepEqual(config.mcp['agent-relay'], {
-    type: 'local', command: [path.join(os.homedir(), '.local/bin/agent-relay-mcp')], enabled: true,
-  });
-  assert.equal(config.mcp.other.enabled, true);
-  const custom = { enabled: false, command: ['/custom/server'] };
-  config.mcp['agent-relay'] = custom;
-  await hooks.config(config);
-  assert.equal(config.mcp['agent-relay'], custom);
-  const output = { system: ['existing instructions'] };
-  await hooks['experimental.chat.system.transform']({}, output);
-  assert.equal(output.system[0], 'existing instructions');
-  assert.match(output.system[1], /Check accepted, blockers, incomplete work/);
+test('OpenCode v2 plugin exposes an id and appends acceptance guidance to the system prompt', async () => {
+  assert.equal(openCodePlugin.id, 'agent-relay');
+  const hooks = {};
+  await openCodePlugin.setup({ session: { hook: async (name, fn) => { hooks[name] = fn; } } });
+  const event = { system: [{ type: 'text', text: 'existing instructions' }] };
+  await hooks.context(event);
+  assert.equal(event.system[0].text, 'existing instructions');
+  assert.match(event.system[1].text, /Check accepted, blockers, incomplete work/);
 });

@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-21
+
+### Fixed
+
+- OpenCode 2.x compatibility: `opencode-agent` now runs `opencode run --standalone` and passes variants as `--model <model>#<variant>` (`--dir` and `--variant` were removed upstream).
+- Model discovery (`relay models`, `opencode-agent --models`) works again: `opencode models` no longer accepts a provider argument, so output is filtered by provider prefix. `--models --refresh` is accepted as a no-op.
+- `probe_model` / `relay probe` for OpenCode no longer fails on the removed `--pure` flag.
+
+### Changed
+
+- The native OpenCode plugin uses the v2 `{ id, setup }` default-export shape and injects guidance through the `context` session hook. It no longer loads on OpenCode 1.x and no longer registers the MCP server (`relay install` does).
+
 ## [1.4.1] - 2026-10-20
 
 ### Added

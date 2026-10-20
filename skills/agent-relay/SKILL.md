@@ -257,7 +257,7 @@ When the host supports MCP, prefer the local `agent-relay-mcp` server over ad-ho
 
 Inspect available models for each harness:
 ```sh
-opencode-agent --models --refresh
+opencode-agent --models
 antigravity-agent --models
 claude-agent --models
 codex-agent --models
