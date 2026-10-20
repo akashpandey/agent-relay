@@ -74,11 +74,20 @@ All wrappers dynamically resolve to the latest available model version for a giv
 
 ## Model Responsiveness and Quota Probes
 
-Use `relay probe <provider> --model <model> [--timeout 30] [--json]` when asked to check model responsiveness or quota. Supported providers: `codex`, `claude`, `opencode`, `antigravity` (`agy` alias). Discover model IDs with `relay models <provider>`. Pass an explicit model ID; probes do not use routing, wrapper alias expansion, fallback chains, or resume existing sessions.
+Before delegating tasks to a model via agent relay, the calling LLM should check if the target model is available and not quota-exhausted using `relay probe <provider> --model <model> [--timeout 30] [--json]` (or the `probe_model` MCP tool).
 
-The command sends a small real request using the provider CLI's existing authentication. It consumes some usage. Do not probe all models automatically or on every task. Prefer one requested model. It creates no relay run log, `.done` sentinel, or dashboard record. The workspace is temporary and the timeout defaults to 30 seconds (1–300 seconds allowed); child processes and temporary files are cleaned up.
+Supported providers: `codex`, `claude`, `opencode`, `antigravity` (`agy` alias). Discover model IDs with `relay models <provider>`. Pass an explicit model ID; probes do not use routing, wrapper alias expansion, fallback chains, or resume existing sessions.
+
+The command sends a small real request using the provider CLI's existing authentication. It consumes a minimal amount of usage. It creates no relay run log, `.done` sentinel, or dashboard record. The workspace is temporary and the timeout defaults to 30 seconds (1–300 seconds allowed); child processes and temporary files are cleaned up.
 
 Statuses: `ready`, `quota_exhausted`, `rate_limited`, `auth_failed`, `model_unavailable`, `timeout`, `network_error`, `unknown_error`. Require an actual assistant response for `ready`. Only explicit provider quota/credit exhaustion supports `quota_exhausted`; generic 429s and `RESOURCE_EXHAUSTED` are classified as throttling. Never infer remaining quota or reset times from a timeout. `resolvedModel` is null when the CLI does not report it; `retryAfter` appears only for explicit provider retry hints. Exit codes: 0 ready, 1 failed probe, 2 invalid arguments. `--json` returns one object without raw provider diagnostics or credentials.
+
+### Orchestrator Pre-flight Rule
+1. **Probe before dispatch**: Prior to calling `relay <workspace> <provider> "<prompt>"`, running wrappers, or executing `run_agent`, probe the target model with `relay probe <provider> --model <model> --json` (or MCP `probe_model`).
+2. **Handle quota and rate limits proactively**:
+   - If `status === 'ready'`: Proceed with delegation.
+   - If `status === 'quota_exhausted'` or `model_unavailable`: Do NOT call the model. Fall back to an alternate model discovered via `relay models <provider>` or switch providers.
+   - If `status === 'rate_limited'`: Respect `retryAfter` if provided, or switch to an alternate provider/model immediately.
 
 Codex/Claude disable session persistence; OpenCode/Antigravity may retain native CLI history. Claude disables tools; Codex uses read-only mode with shell tools, hooks, web search and user config disabled while retaining login; custom Codex endpoint/provider settings are therefore not tested. OpenCode denies tools. Antigravity lacks an all-tools-off switch: it uses plan mode and sandboxing without permission bypasses, with a no-tools prompt. Do not describe that as a guarantee of zero tool execution.
 
@@ -231,8 +240,9 @@ Do not use `/api/logs/<log-filename>`, `tail`, or the Live Terminal as the norma
 
 ### MCP Tool Surface
 
-When the host supports MCP, prefer the local `agent-relay-mcp` server over ad-hoc shell parsing. It exposes structured tools: `run_agent`, `list_workspaces`, `list_runs`, `get_session_history`, `get_run_result`, `wait_for_run`, `get_log_tail`, `search_log`, `continue_run`, `takeover_run`, `doctor`, `list_models`, and `kill_run`.
+When the host supports MCP, prefer the local `agent-relay-mcp` server over ad-hoc shell parsing. It exposes structured tools: `run_agent`, `probe_model`, `list_workspaces`, `list_runs`, `get_session_history`, `get_run_result`, `wait_for_run`, `get_log_tail`, `search_log`, `continue_run`, `takeover_run`, `doctor`, `list_models`, and `kill_run`.
 
+- Use `probe_model` before `run_agent` to verify model availability, responsiveness, and quota status.
 - Use `run_agent` to delegate tasks directly without shell syntax (`provider`, `route`, `prompt`, `workspace`, `model`, `effort`, `sessionId`, `continueLatest`, `sandbox`, `fallbackChain`, `wait`). When a workspace has routing rules, pass a named `route` and omit `provider`, or omit both to match keywords and the configured default. An explicit `provider` bypasses routing.
 - Use `list_runs` with keyword search `q` and date filters `since` / `until` (e.g. `since: "2026-09-16"`) to find past tasks across any provider or workspace.
 - Use `get_session_history` to inspect the full conversational context, original goals, touched files, tokens, and assistant reasoning from past sessions.
@@ -297,3 +307,4 @@ The dashboard's **Dangling** chip shows processes whose cmdline matches an agent
 8. **Never tail logs for acceptance**: Call `agent-wait` or `/api/runs/<log>/result`; only inspect logs when debugging a failed, blocked, partial, or unknown outcome.
 9. **Reuse sessions deliberately**: Use `continuation.sameSessionCommand` for fixes to the same task or closely related follow-ups. Do not reuse one session across unrelated tasks or parallel workers. Always invoke continuation through agent wrappers rather than raw CLIs to benefit from non-interactive enforcement and lingering process reaping.
 10. **Use relay takeover on quota or token exhaustion**: When a harness or agent hits rate limits or token exhaustion midway through a task, use `relay takeover <provider>` or `relay continue --to <provider>` to transfer the goal, touched files, and uncommitted git state to another model without starting over.
+11. **Probe models before dispatching**: Before delegating tasks to a model via agent relay, always verify the target model is available and not quota-exhausted using `relay probe <provider> --model <model> --json` (or the `probe_model` MCP tool) to avoid doomed runs and wasted context.

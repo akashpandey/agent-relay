@@ -16,6 +16,7 @@ import {
   findAntigravityTranscript,
   parseLogMetadata,
 } from '../dashboard/parser.js';
+import { probeModel } from './model-probe.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const repoDir = path.resolve(path.dirname(__filename), '..');
@@ -231,6 +232,32 @@ const tools = [
           description: 'Run filename, workspace name, or --last. Defaults to --last.',
         },
       },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'probe_model',
+    description: 'Check model availability, responsiveness, and quota status before delegating tasks.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        provider: {
+          type: 'string',
+          enum: [...providers],
+          description: 'Provider to probe (opencode, codex, claude, antigravity).',
+        },
+        model: {
+          type: 'string',
+          description: 'Exact model identifier to test (use list_models to discover IDs).',
+        },
+        timeoutSeconds: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 300,
+          description: 'Optional probe timeout in seconds (default 30, range 1-300).',
+        },
+      },
+      required: ['provider', 'model'],
       additionalProperties: false,
     },
   },
@@ -809,6 +836,20 @@ async function callTool(name, args = {}) {
     } catch (error) {
       return { filename: run.filename, pid: run.pid, killed: false, error: error.message };
     }
+  }
+  if (name === 'probe_model') {
+    if (!args.provider || !providers.has(args.provider)) {
+      throw new Error(`unknown provider: ${args.provider}. Supported: ${[...providers].join(', ')}`);
+    }
+    if (!args.model || typeof args.model !== 'string' || !args.model.trim()) {
+      throw new Error('model is required');
+    }
+    const timeoutMs = args.timeoutSeconds ? args.timeoutSeconds * 1000 : 30000;
+    return await probeModel({
+      provider: args.provider,
+      model: args.model.trim(),
+      timeoutMs,
+    });
   }
   throw new Error(`unknown tool: ${name}`);
 }

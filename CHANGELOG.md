@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-10-20
+
+### Added
+
+- Added `probe_model` MCP tool to `scripts/mcp-server.mjs` enabling calling LLMs and orchestrators to check model responsiveness, availability, and quota status directly over MCP prior to dispatching tasks.
+- Updated skill instructions in `skills/agent-relay/SKILL.md` (and plugin copies) with pre-flight guidelines requiring calling LLMs to probe target models before delegating work.
+
 ## [1.4.0] - 2026-10-15
 
 ### Added

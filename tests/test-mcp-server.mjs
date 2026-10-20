@@ -17,6 +17,7 @@ const tools = [
   'doctor',
   'list_models',
   'kill_run',
+  'probe_model',
 ];
 
 const mockModules = {
@@ -232,7 +233,7 @@ describe('MCP tool listing', () => {
       server.write({ jsonrpc: '2.0', id: 10, method: 'tools/list' });
       const [response] = await server.waitForResponses(1);
 
-      assert.equal(response.result.tools.length, 13);
+      assert.equal(response.result.tools.length, 14);
       assert.deepEqual(response.result.tools.map(tool => tool.name), tools);
       for (const tool of response.result.tools) {
         assert.equal(typeof tool.name, 'string');
@@ -330,6 +331,26 @@ describe('MCP tool errors', () => {
       const [, , , response4] = await server.waitForResponses(4);
       assert.equal(response4.result.isError, true);
       assert.match(response4.result.content[0].text, /workspace/);
+
+      server.write({
+        jsonrpc: '2.0',
+        id: 27,
+        method: 'tools/call',
+        params: { name: 'probe_model', arguments: { provider: 'invalid-provider', model: 'test' } },
+      });
+      const [, , , , response5] = await server.waitForResponses(5);
+      assert.equal(response5.result.isError, true);
+      assert.match(response5.result.content[0].text, /unknown provider/);
+
+      server.write({
+        jsonrpc: '2.0',
+        id: 28,
+        method: 'tools/call',
+        params: { name: 'probe_model', arguments: { provider: 'codex' } },
+      });
+      const [, , , , , response6] = await server.waitForResponses(6);
+      assert.equal(response6.result.isError, true);
+      assert.match(response6.result.content[0].text, /model is required/);
     });
   });
 });
