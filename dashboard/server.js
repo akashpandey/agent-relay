@@ -29,6 +29,7 @@ const PROC_DIR = process.env.PROC_DIR || '/proc';
 const PUBLIC_DIR = path.resolve(__dirname, 'public');
 const LOG_STREAM_CHUNK_BYTES = 256 * 1024;
 const LOG_SEARCH_MAX_RESULTS = 200;
+const detailRefreshTimes = new Map();
 
 // Ensure logs directory exists
 if (!fs.existsSync(LOGS_DIR)) {
@@ -561,6 +562,22 @@ const server = http.createServer(async (req, res) => {
       if (freshMeta?.fullTask && freshMeta.fullTask !== meta.fullTask) {
         meta.fullTask = freshMeta.fullTask;
         upsertRun({ ...meta, fullTask: freshMeta.fullTask });
+      }
+    }
+    if (meta && !meta.isAlive && fs.existsSync(filePath.replace(/\.log$/, '.done')) &&
+        (meta.status === 'completed' || meta.provider === 'opencode') &&
+        (!meta.markdownSummary || !meta.tokens || !meta.toolCalls?.length) &&
+        Date.now() - (detailRefreshTimes.get(safeFile) || 0) > 60000) {
+      detailRefreshTimes.set(safeFile, Date.now());
+      const fresh = parseLogMetadata(safeFile, filePath, PROC_DIR);
+      if (fresh) {
+        upsertRun({ ...fresh, fullTask: fresh.fullTask || meta.fullTask,
+          markdownSummary: fresh.markdownSummary || meta.markdownSummary,
+          tokens: fresh.tokens || meta.tokens,
+          toolCalls: fresh.toolCalls.length ? fresh.toolCalls : meta.toolCalls,
+          filesModified: fresh.filesModified.length ? fresh.filesModified : meta.filesModified,
+          diffs: fresh.diffs || meta.diffs });
+        meta = getRun(safeFile);
       }
     }
 

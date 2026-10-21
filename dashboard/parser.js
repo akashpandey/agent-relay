@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { execSync } from 'node:child_process';
+import { DatabaseSync } from 'node:sqlite';
+import { StringDecoder } from 'node:string_decoder';
 
 const opencodeDbPaths = [
   process.env.OPENCODE_DB,
@@ -34,7 +36,7 @@ export function normalizeToolCall({ tool, input, output, durationMs, status }) {
     cleanedInput = unquoted;
   }
 
-  if (toolLower.includes('bash') || toolLower.includes('run_command') || toolLower === 'exec' || toolLower === 'exec_command' || toolLower === 'shell') {
+  if (toolLower.includes('bash') || toolLower.includes('run_command') || toolLower === 'exec' || toolLower === 'exec_command' || toolLower === 'shell' || toolLower === 'execute') {
     type = 'command';
     detail = cleanedInput?.CommandLine || cleanedInput?.command || cleanedInput?.cmd || (typeof cleanedInput === 'string' ? cleanedInput : '');
     summary = detail ? detail.split('\n')[0].slice(0, 120) : 'Shell Command';
@@ -42,9 +44,10 @@ export function normalizeToolCall({ tool, input, output, durationMs, status }) {
     type = 'read';
     detail = cleanedInput?.AbsolutePath || cleanedInput?.file_path || cleanedInput?.filePath || cleanedInput?.path || (typeof cleanedInput === 'string' ? cleanedInput : '');
     summary = detail ? path.basename(detail) : 'Read File';
-  } else if (toolLower.includes('edit') || toolLower.includes('write') || toolLower.includes('replace_file_content') || toolLower.includes('write_to_file')) {
+  } else if (toolLower.includes('edit') || toolLower.includes('write') || toolLower.includes('patch') || toolLower.includes('replace_file_content') || toolLower.includes('write_to_file')) {
     type = 'edit';
-    detail = cleanedInput?.TargetFile || cleanedInput?.file_path || cleanedInput?.filePath || cleanedInput?.path || (typeof cleanedInput === 'string' ? cleanedInput : '');
+    detail = cleanedInput?.TargetFile || cleanedInput?.file_path || cleanedInput?.filePath || cleanedInput?.path ||
+      cleanedInput?.patchText?.match(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/m)?.[1] || (typeof cleanedInput === 'string' ? cleanedInput : '');
     summary = detail ? path.basename(detail) : 'Edit File';
   } else if (toolLower.includes('grep') || toolLower.includes('glob') || toolLower.includes('search')) {
     type = 'grep';
@@ -80,136 +83,124 @@ export function getOpenCodeSessionDetails(sessionId) {
   const dbPath = opencodeDbPaths.find(p => fs.existsSync(p));
   if (!dbPath) return null;
 
+  let db;
   try {
-    const safeSession = sessionId.replace(/[^a-zA-Z0-9_-]/g, '');
-    const sessionCmd = `sqlite3 -json "file:${dbPath}?immutable=1" "SELECT id, title, summary_files, summary_additions, summary_deletions, summary_diffs, cost, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write FROM session WHERE id = '${safeSession}';\" 2>/dev/null`;
-    const sessionOut = execSync(sessionCmd, { encoding: 'utf8', timeout: 1500 }).trim();
-    
-    let sessionRow = null;
-    if (sessionOut) {
-      const rows = JSON.parse(sessionOut);
-      if (Array.isArray(rows) && rows.length > 0) sessionRow = rows[0];
-    }
+    // WAL-aware reads are necessary while OpenCode is still writing its database.
+    db = new DatabaseSync(dbPath, { readOnly: true });
+    const hasV2 = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_v2'").get();
+    let sessionRow = hasV2 ? db.prepare('SELECT * FROM session_v2 WHERE id = ?').get(sessionId) : null;
+    const v2 = Boolean(sessionRow);
+    if (!v2) sessionRow = db.prepare('SELECT * FROM session WHERE id = ?').get(sessionId);
+    if (!sessionRow) return null;
 
-    // Query parts for prompt and final assistant response
-    const partsCmd = `sqlite3 -json "file:${dbPath}?immutable=1" "SELECT data FROM part WHERE session_id = '${safeSession}' AND data LIKE '%\\"type\\":\\"text\\"%' ORDER BY time_created ASC;" 2>/dev/null`;
-    const partsOut = execSync(partsCmd, { encoding: 'utf8', timeout: 2000 }).trim();
-
-    let task = null;
-    let markdownSummary = null;
-
-    if (partsOut) {
-      const partRows = JSON.parse(partsOut);
-      if (Array.isArray(partRows) && partRows.length > 0) {
-        // First part is user prompt
+    const rows = v2
+      ? db.prepare('SELECT type AS role, data FROM session_message WHERE session_id = ? ORDER BY seq').iterate(sessionId)
+      : db.prepare(`SELECT p.data, json_extract(m.data, '$.role') AS role FROM part p
+          JOIN message m ON m.id = p.message_id WHERE p.session_id = ? ORDER BY p.time_created, p.id`).iterate(sessionId);
+    function* parts() {
+      for (const row of rows) {
         try {
-          const firstPart = JSON.parse(partRows[0].data);
-          if (firstPart && firstPart.text) {
-            let rawText = firstPart.text;
-            if (typeof rawText === 'string') {
-              if (rawText.startsWith('"') && rawText.endsWith('"')) {
-                try { rawText = JSON.parse(rawText); } catch {}
-              }
-              const taskMatch = rawText.match(/Task:\s*([\s\S]*)/i);
-              task = taskMatch ? taskMatch[1].trim() : rawText.trim();
-            }
+          const data = JSON.parse(row.data);
+          const content = v2 ? (Array.isArray(data.content) ? data.content :
+            row.role === 'user' && typeof data.text === 'string' ? [{ type: 'text', text: data.text }] : []) : [data];
+          for (const part of content) {
+            yield { ...part, role: row.role };
           }
         } catch {}
-
-        // Last part is assistant final summary if more than 1 part
-        if (partRows.length > 1) {
-          try {
-            const lastPart = JSON.parse(partRows[partRows.length - 1].data);
-            if (lastPart && lastPart.text) {
-              let summaryText = lastPart.text;
-              if (typeof summaryText === 'string') {
-                if (summaryText.startsWith('"') && summaryText.endsWith('"')) {
-                  try { summaryText = JSON.parse(summaryText); } catch {}
-                }
-                markdownSummary = summaryText.trim();
-              }
-            }
-          } catch {}
-        }
       }
     }
-
-    // Query tool invocations
-    const toolCalls = [];
-    const touchedFiles = new Set();
-    const collectedDiffs = [];
-
-    const toolsCmd = `sqlite3 -json "file:${dbPath}?immutable=1" "SELECT data FROM part WHERE session_id = '${safeSession}' AND data LIKE '%\\"type\\":\\"tool\\"%' ORDER BY time_created ASC;" 2>/dev/null`;
-    try {
-      const toolsOut = execSync(toolsCmd, { encoding: 'utf8', timeout: 2000 }).trim();
-      if (toolsOut) {
-        const toolRows = JSON.parse(toolsOut);
-        for (const tr of toolRows) {
-          try {
-            const partObj = JSON.parse(tr.data);
-            if (partObj && partObj.tool) {
-              toolCalls.push(normalizeToolCall({
-                tool: partObj.tool,
-                input: partObj.state?.input,
-                output: partObj.state?.output,
-                status: partObj.state?.status,
-                durationMs: (partObj.state?.time?.end && partObj.state?.time?.start) ? (partObj.state.time.end - partObj.state.time.start) : null,
-              }));
-
-              // Extract modified files and unified diffs from edit/write tool parts
-              const toolName = (partObj.tool || '').toLowerCase();
-              if (toolName === 'edit' || toolName === 'write' || toolName === 'patch') {
-                const filePath = partObj.state?.input?.filePath ||
-                                 partObj.state?.input?.path ||
-                                 partObj.state?.metadata?.filediff?.file;
-                if (filePath && typeof filePath === 'string') {
-                  touchedFiles.add(filePath.trim());
-                }
-                const diffPatch = partObj.state?.metadata?.diff ||
-                                  partObj.state?.metadata?.filediff?.patch;
-                if (diffPatch && typeof diffPatch === 'string') {
-                  collectedDiffs.push(diffPatch.trim());
-                }
-              }
-            }
-          } catch {}
-        }
-      }
-    } catch {}
-
-    let tokens = null;
-    let cost = 0;
-    let diffs = null;
-
-    if (sessionRow) {
-      const totalTokens = (sessionRow.tokens_input || 0) + (sessionRow.tokens_output || 0) + (sessionRow.tokens_reasoning || 0);
-      tokens = {
-        total: totalTokens,
-        input: sessionRow.tokens_input || 0,
-        output: sessionRow.tokens_output || 0,
-        reasoning: sessionRow.tokens_reasoning || 0,
-        cacheRead: sessionRow.tokens_cache_read || 0,
-        cacheWrite: sessionRow.tokens_cache_write || 0,
-      };
-      cost = sessionRow.cost || 0;
-      diffs = sessionRow.summary_diffs || null;
-    }
-
-    if (!diffs && collectedDiffs.length > 0) {
-      diffs = collectedDiffs.join('\n\n');
-    }
-
-    return {
-      task,
-      markdownSummary,
-      tokens,
-      cost,
-      diffs,
-      toolCalls,
-      filesModified: Array.from(touchedFiles),
-    };
-  } catch (err) {}
+    return collectOpenCodeDetails(parts(), sessionRow);
+  } catch {} finally { db?.close(); }
   return null;
+}
+
+function collectOpenCodeDetails(parts, sessionRow = null) {
+  let task = null;
+  let markdownSummary = null;
+  let sessionId = null;
+  let cost = 0;
+  let hasUsage = false;
+  const tokens = { total: 0, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 };
+  const tools = new Map();
+  const files = new Set();
+  const diffs = [];
+  for (const part of parts) {
+    sessionId ||= part.sessionID;
+    if (part.type === 'text' && typeof part.text === 'string' && part.text.trim()) {
+      let text = part.text.trim();
+      if (text.startsWith('"') && text.endsWith('"')) {
+        try { text = JSON.parse(text); } catch {}
+      }
+      if (part.role === 'user' && !task) task = text.match(/Task:\s*([\s\S]*)/i)?.[1]?.trim() || text;
+      if (part.role === 'assistant') markdownSummary = text;
+    }
+    if (part.type === 'step-finish' && part.tokens) {
+      hasUsage = true;
+      for (const key of ['input', 'output', 'reasoning']) tokens[key] += part.tokens[key] || 0;
+      tokens.cacheRead += part.tokens.cache?.read || 0;
+      tokens.cacheWrite += part.tokens.cache?.write || 0;
+      cost += part.cost || 0;
+    }
+    const tool = part.tool || part.name;
+    if (part.type !== 'tool' || typeof tool !== 'string') continue;
+    const state = part.state || {};
+    const time = state.time || part.time;
+    tools.set(part.callID || part.id || tools.size, normalizeToolCall({
+      tool, input: state.input, status: state.status,
+      durationMs: time?.end && time?.start ? time.end - time.start : null,
+    }));
+    if (!['edit', 'write', 'patch', 'apply_patch'].includes(tool.toLowerCase()) || state.status !== 'completed') continue;
+    const file = state.input?.filePath || state.input?.path || state.metadata?.filediff?.file;
+    if (typeof file === 'string') files.add(file.trim());
+    const diff = state.metadata?.diff || state.metadata?.filediff?.patch;
+    if (typeof diff === 'string') diffs.push(diff.trim());
+    for (const changed of state.metadata?.files || state.metadata?.metadata?.files || []) {
+      const filename = changed.file || changed.filePath || changed.path;
+      if (typeof filename === 'string') files.add(filename);
+      if (typeof changed.patch === 'string') diffs.push(changed.patch.trim());
+    }
+  }
+  if (sessionRow) {
+    hasUsage = true;
+    for (const key of ['input', 'output', 'reasoning']) tokens[key] = sessionRow[`tokens_${key}`] || 0;
+    tokens.cacheRead = sessionRow.tokens_cache_read || 0;
+    tokens.cacheWrite = sessionRow.tokens_cache_write || 0;
+    cost = sessionRow.cost || 0;
+  }
+  tokens.total = tokens.input + tokens.output + tokens.reasoning;
+  return { task, sessionId, markdownSummary, tokens: hasUsage ? tokens : null, cost,
+    toolCalls: [...tools.values()], filesModified: [...files],
+    diffs: sessionRow?.summary_diffs || (diffs.length ? diffs.join('\n\n') : null) };
+}
+
+function* readOpenCodeLogParts(logFilePath, pid, sessionId) {
+  const fd = fs.openSync(logFilePath, 'r');
+  const decoder = new StringDecoder('utf8');
+  const buffer = Buffer.alloc(65536);
+  let pending = '';
+  let started = false;
+  try {
+    let bytes;
+    do {
+      bytes = fs.readSync(fd, buffer, 0, buffer.length, null);
+      pending += bytes ? decoder.write(buffer.subarray(0, bytes)) : decoder.end();
+      const lines = pending.split('\n');
+      pending = bytes ? lines.pop() : '';
+      for (const line of lines) {
+        if (!started) {
+          if (line.trim() === `agent-output-start: ${pid}`) started = true;
+          continue;
+        }
+        try {
+          const event = JSON.parse(line);
+          if (sessionId && sessionId !== 'new' && event.sessionID !== sessionId) continue;
+          if (['text', 'tool_use', 'step_finish'].includes(event.type) && event.part) {
+            yield { ...event.part, role: 'assistant', sessionID: event.sessionID };
+          }
+        } catch {}
+      }
+    } while (bytes);
+  } finally { fs.closeSync(fd); }
 }
 
 const geminiBrainDirs = [
@@ -1211,6 +1202,19 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc', { enr
       if (opencodeDetails.filesModified && opencodeDetails.filesModified.length > 0) filesModified = opencodeDetails.filesModified;
       if (opencodeDetails.toolCalls && opencodeDetails.toolCalls.length > 0) toolCalls = opencodeDetails.toolCalls;
     }
+  }
+
+  if (canEnrich && parsedName.provider === 'opencode' && (!markdownSummary || !tokens || toolCalls.length === 0)) {
+    try {
+      const logDetails = collectOpenCodeDetails(readOpenCodeLogParts(logFilePath, parsedName.pid, session));
+      if (!session && logDetails.sessionId) session = logDetails.sessionId;
+      if (!markdownSummary && logDetails.markdownSummary) markdownSummary = logDetails.markdownSummary;
+      if (!tokens && logDetails.tokens) tokens = logDetails.tokens;
+      if (!cost && logDetails.cost) cost = logDetails.cost;
+      if (toolCalls.length === 0) toolCalls = logDetails.toolCalls;
+      if (filesModified.length === 0) filesModified = logDetails.filesModified;
+      if (!diffs) diffs = logDetails.diffs;
+    } catch {}
   }
 
   // If Codex provider, query state_5.sqlite for tokens, cost, prompt, tool calls, and summary

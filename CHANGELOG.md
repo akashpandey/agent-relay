@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-10-21
+
+### Fixed
+
+- Dashboard run details now recover summaries, tools, commands, token usage, and changed files from OpenCode 2.x sessions and JSON logs.
+- Opening an incomplete run refreshes its cached details while preserving existing data.
+
 ## [1.5.0] - 2026-10-21
 
 ### Fixed
