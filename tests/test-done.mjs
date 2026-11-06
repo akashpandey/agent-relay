@@ -29,6 +29,12 @@ test('sentinel persists final result and parser preserves exit code without hist
     assert.equal(parsed.exitCode, 0);
     assert.equal(parsed.systemdUnit, unit);
     assert.equal(parsed.result.summary, result.summary);
+
+    // Verify cliCommand escapes backslashes before quotes
+    const slashLog = path.join(dir, '20260917T100001-codex-99999998.log');
+    fs.writeFileSync(slashLog, 'agent-unit: local-agent-codex-99999998\nTask: test \\"escaped\\" and \\path\n---\nagent-output-start: 99999998\n');
+    const slashParsed = parseLogMetadata(path.basename(slashLog), slashLog, dir, { enrich: false });
+    assert.match(slashParsed.cliCommand, /test \\\\\\"escaped\\\\\\" and \\\\path/);
     fs.writeFileSync(log, 'header\n---\nprovider exited without a final response\n');
     spawnSync(process.execPath, [root + '/scripts/write-done.mjs', log, 'codex', dir, 'test', 'new', '0']);
     const missing = JSON.parse(fs.readFileSync(log.replace('.log', '.done')));

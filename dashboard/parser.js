@@ -1385,7 +1385,11 @@ export function parseLogMetadata(filename, logFilePath, procDir = '/proc', { enr
   }
 
   // Reproducible CLI command
-  const cleanPrompt = (task || '').replace(/"/g, '\\"').replace(/\n/g, ' ').slice(0, 250);
+  const cleanPrompt = (task || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, ' ')
+    .slice(0, 250);
   let cliCommand = '';
   if (parsedName.provider === 'opencode') {
     cliCommand = `OPENCODE_MODEL='${model || 'glm-5.2'}' opencode-agent "${cleanPrompt}"`;
