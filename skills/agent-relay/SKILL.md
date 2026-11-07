@@ -139,6 +139,9 @@ relay takeover my-app opencode
 # Take over with an explicit goal/instruction
 relay takeover my-app claude "Complete the remaining tests and verify build"
 
+# Take over with a specific model on the target provider
+relay takeover my-app codex --model gpt-5.6-codex "Finish the implementation"
+
 # Continue a previous agent run while switching providers
 relay continue my-app --to codex "Finish the implementation"
 ```

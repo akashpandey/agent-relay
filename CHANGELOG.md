@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.8.0] - 2026-11-08
+
+### Added
+
+- `relay takeover [workspace] <provider> [instructions...] [--model <model>]` now accepts `--model <name>`; the model is resolved via the provider's model env var (`runProvider`), matching `relay <provider> --model`. Usage text and the agent-relay skill updated.
+
 ## [1.7.0] - 2026-11-07
 
 ### Added

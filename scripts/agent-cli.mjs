@@ -38,7 +38,7 @@ function usage() {
   ${cmdName} <provider> [wrapper-args...] "task"
   ${cmdName} <workspace> <provider> [wrapper-args...] "task"
   ${cmdName} route [workspace] <route> "task"
-  ${cmdName} takeover [workspace] <provider> [instructions...]
+  ${cmdName} takeover [workspace] <provider> [instructions...] [--model <model>]
   ${cmdName} init [--tui]
   ${cmdName} config init [--global]
   ${cmdName} install [--tui] [--dashboard|--no-dashboard] [--hooks|--no-hooks]
@@ -689,8 +689,18 @@ if (args[0] === 'prune') {
 }
 
 if (args[0] === 'takeover' || args[0] === 'handoff') {
+  const modelIndex = args.indexOf('--model');
+  let model = null;
+  if (modelIndex !== -1) {
+    if (!args[modelIndex + 1]) {
+      console.error(`${cmdName}: --model requires a value`);
+      process.exit(2);
+    }
+    model = args[modelIndex + 1];
+    args.splice(modelIndex, 2);
+  }
   if (args.length < 2) {
-    console.error(`Usage: ${cmdName} takeover [workspace] <provider> [instructions...]`);
+    console.error(`Usage: ${cmdName} takeover [workspace] <provider> [instructions...] [--model <model>]`);
     process.exit(2);
   }
 
@@ -738,7 +748,7 @@ if (args[0] === 'takeover' || args[0] === 'handoff') {
     console.log(`[relay] files in flight: ${session.touchedFiles.length}`);
   }
 
-  runProvider(targetProvider, [handoff.prompt], targetWorkspace);
+  runProvider(targetProvider, [handoff.prompt], targetWorkspace, model);
 }
 
 if (args[0] === 'continue') {
