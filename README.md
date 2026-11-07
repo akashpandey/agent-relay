@@ -850,10 +850,9 @@ without depending on upstream CLI verbosity flags. `opencode-agent-fallback`
 inherits this for free since it shells out to `opencode-agent` for both
 its probe and real task calls.
 
-The `logs/` directory is gitignored and not rotated. Clean it out periodically
-if it grows (`rm -rf ~/agent-relay/logs/*`); the dashboard keeps indexed run
-metadata in `data/subagents.db`, but full raw-log download/search is only
-available while the corresponding log file still exists.
+The `logs/` directory is gitignored and not rotated (they compound quickly — one busy month on this dev box produced 2k files / 383 MB). The SQLite run history is what relay treats as durable: summaries, changed files, verification verdicts, and provider session IDs stay queryable even after their raw log is gone.
+
+For bounded disk without losing history, set `AGENT_RELAY_LOG_RETENTION` (e.g. `30d`, `12h`, `90m`). The dashboard startup sweep then deletes only the raw `*.log`/`.done` files of **completed/failed** runs older than the horizon (runs still in progress are never touched; the DB keeps everything). Unset — the default — retains all logs forever. For one-off cleanup of both logs *and* history rows, use `relay prune --older-than 30d --confirm` (dry run without `--confirm`).
 
 ## Process Cleanup
 

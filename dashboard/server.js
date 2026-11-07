@@ -829,5 +829,13 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
+  // Opt-in raw-log reaper: never destroys the run history in SQLite, only
+  // the disposable *.log/*.done files when AGENT_RELAY_LOG_RETENTION is set.
+  import('../scripts/log-retention.mjs')
+    .then(({ applyLogRetention }) => applyLogRetention({
+      logsDir: process.env.AGENT_RELAY_LOG_DIR || process.env.SUBAGENT_LOG_DIR || path.resolve(__dirname, '../logs'),
+      write: message => console.log(`[Dashboard] ${message}`),
+    }))
+    .catch(() => {});
   console.log(`[Dashboard] Agent Relay Visualizer running with SQLite engine at: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
 });

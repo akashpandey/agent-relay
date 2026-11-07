@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Opt-in raw-log retention: set `AGENT_RELAY_LOG_RETENTION` (e.g. `30d`) and the dashboard startup sweep deletes `*.log`/`.done` sidecars of completed/failed runs past the horizon (in-progress runs are never touched); SQLite run history stays intact by design. Orphaned sidecars with no run row are reaped by file mtime. `relay prune --confirm` remains the explicit path for removing history rows as well as logs.
+
 ## [1.6.0] - 2026-11-07
 
 ### Fixed
