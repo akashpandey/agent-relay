@@ -36,3 +36,5 @@ trap 'rm -rf "$lock_dir" 2>/dev/null || true' EXIT HUP INT TERM
   docker compose -p "$project" --project-directory "$repo_dir" build "$service"
   docker compose -p "$project" --project-directory "$repo_dir" up -d --no-build --force-recreate "$service"
 } >> "$log_file" 2>&1
+
+echo "dashboard restart requested (build/recreate runs in background; details: $log_file)"

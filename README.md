@@ -15,7 +15,7 @@
    npm install -g @akashpandey/agent-relay
    relay install
    ```
-   *`relay install` auto-detects your installed AI tools, links the skills, registers MCP servers, and starts your local dashboard.*
+   *`relay install` auto-detects your installed AI tools, links the skills, registers MCP servers, and starts your local dashboard. You only need ONE provider CLI (Claude Code, Codex, OpenCode, or Antigravity) already installed and logged in.*
 
 2. **Stay in your AI conversation:**
    Prompt your assistant naturally:
@@ -31,7 +31,7 @@
 | What you might do today | With agent-relay |
 |---|---|
 | Open 3 terminal tabs to run Claude Code, Codex, and Gemini manually. | Stay in **one** tab. Your primary assistant delegates to the others for you. |
-| Copy-paste error messages and code diffs across different AI CLIs. | Structured handoffs with workspace context and automatic rollback on failure. |
+| Copy-paste error messages and code diffs across different AI CLIs. | Structured handoffs with workspace context and a verified pass/fail outcome — no rollback magic, but every backend always fact-checked. |
 | Wonder if an agent actually finished or just exited with 0. | Strict **acceptance contracts** — tasks only report `pass` when verified. |
 | Run out of tokens or hit provider rate limits mid-task. | Automatic failover chains (`relay takeover` or model fallback chains). |
 | Cloud dashboards and telemetry tracking your code. | **100% local.** Runs on SQLite on your own machine. Zero tracking. |
@@ -49,6 +49,8 @@ harness plugin names remain unchanged.
 - [The idea](#the-idea)
 - [Harness-friendly design](#harness-friendly-design)
 - [Why these wrappers exist](#why-these-wrappers-exist)
+- [Terms](#terms)
+- [Why these four harnesses, specifically](#why-these-four-harnesses-specifically)
 - [What they are good for](#what-they-are-good-for)
 - [Requirements](#requirements)
 - [Install](#install)
@@ -272,7 +274,9 @@ install-skill
 
 This links commands into `~/.local/bin` and the tracked skill at
 `skills/agent-relay/` into Codex, Claude, OpenCode, Gemini, and shared agent skill
-directories. Existing `agent-relay` skill directories are replaced. If a
+directories. A target that already holds a real (non-symlink)
+`agent-relay` skill directory is archived to
+`<target>.pre-relay-backup` rather than deleted. If a
 target CLI/skill link already points somewhere else, a warning prints the old
 and new target before replacing it; pass `--force` to skip that warning (the
 link is still replaced either way — the installer never prompts). Update the
@@ -623,7 +627,8 @@ All wrappers support **dynamic model family aliases** so you never have to hardc
 | `codex-agent` | `latest` / `sol` / `gpt-sol` | Newest GPT Sol (e.g. `gpt-5.6-sol`) |
 | `claude-agent` | `opus` / `sonnet` / `latest` | Latest Anthropic model alias |
 
-Re-list available models before relying on snapshot lists:
+Re-list available models before relying on snapshot lists — the wrappers are
+the live source of truth; never copy-paste model IDs from older docs:
 
 ```bash
 opencode-agent --models
@@ -632,40 +637,14 @@ antigravity-agent --models
 
 ### OpenCode
 
-`opencode-agent --models` exposes supported providers:
-
-```text
-opencode-go/deepseek-v4-flash
-opencode-go/deepseek-v4-pro
-opencode-go/glm-5.3
-opencode-go/gpt-5.6-luna
-opencode-go/qwen3.8-max
-openai/gpt-5.4-mini
-openai/gpt-5.6-sol
-openai/gpt-5.6-terra
-openai/gpt-5.6-luna
-zai-coding-plan/glm-5.2
-zai-coding-plan/glm-5.3
-zai-coding-plan/glm-5.3-flash
-```
+`opencode-agent --models` prints every reachable `provider/model` pair for your
+installed CLI, live (provider plans change often — see the alias table above for
+stable shortcuts).
 
 ### Antigravity
 
-`antigravity-agent --models` lists the models available via Antigravity CLI:
-
-```text
-gemini-3.8-flash-high
-gemini-3.8-flash-medium
-gemini-3.8-flash-low
-gemini-3.7-flash-high
-gemini-3.7-flash-medium
-gemini-3.7-flash-low
-gemini-3.6-flash-high
-gemini-3.1-pro-high
-claude-opus-4-6-thinking
-claude-sonnet-4-6
-gpt-oss-120b-medium
-```
+`antigravity-agent --models` lists the Gemini model labels your Antigravity CLI
+currently offers, live.
 
 ### Claude Code
 
@@ -857,6 +836,11 @@ watched live:
 OPENCODE_MODEL='openai/gpt-5.5' opencode-agent "long task" &
 tail -f ~/agent-relay/logs/<the-run-log-printed-above>.log
 ```
+
+Prefer a browser? Open the dashboard at `http://localhost:4242` and click any
+run: it offers a live terminal that renders the same stream readably — model
+turns as prose, tool calls as `EXEC` lines with exit codes, log noise collapsed
+— plus structured summaries, token/cost totals, and one-click takeover commands.
 
 This exists because, unmodified, `opencode` streams tool/loop progress to
 stderr while `agy --print` and `claude --print` may not print incrementally — a
