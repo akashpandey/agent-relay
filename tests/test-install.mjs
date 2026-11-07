@@ -14,7 +14,7 @@ function testEnv(providers = []) {
   const bin = path.join(dir, 'bin');
   fs.mkdirSync(home);
   fs.mkdirSync(bin);
-  for (const command of ['sh', 'dirname', 'mkdir', 'ln', 'readlink', 'realpath', 'rm']) {
+  for (const command of ['sh', 'dirname', 'mkdir', 'ln', 'readlink', 'realpath', 'rm', 'mv']) {
     const found = spawnSync('sh', ['-c', `command -v ${command}`], { encoding: 'utf8' }).stdout.trim();
     fs.symlinkSync(found, path.join(bin, command));
   }
@@ -132,3 +132,50 @@ test('relay install --no-hooks never writes settings.json', () => {
 });
 
 
+
+test('unreadable existing config is reported, not overwritten', () => {
+  const fixture = testEnv(['claude']);
+  try {
+    fs.writeFileSync(path.join(fixture.home, '.claude.json'), '{not valid json');
+    const result = runInstall(fixture.env);
+    // Install exits 1: config could not be updated safely (process.exitCode set).
+    assert.equal(result.status, 1, result.stderr || result.stdout);
+    assert.match(result.stderr, /✗ Claude Code: .*not overwriting/);
+    // The user's file is preserved byte-for-byte.
+    assert.equal(fs.readFileSync(path.join(fixture.home, '.claude.json'), 'utf8'), '{not valid json');
+  } finally {
+    fs.rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+test('AGENT_RELAY_SELECTED_PROVIDERS restricts MCP registration to the selected harnesses', () => {
+  const fixture = testEnv(['opencode', 'claude']);
+  const env = { ...fixture.env, AGENT_RELAY_SELECTED_PROVIDERS: 'opencode' };
+  try {
+    const result = runInstall(env);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /opencode: skill\+bin ok, mcp registered/);
+    // Providers excluded by the harness selection are treated as not detected.
+    assert.match(result.stdout, /claude: not found on PATH, skipped/);
+    assert.equal(fs.existsSync(path.join(fixture.home, '.claude.json')), false);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(fixture.home, '.config', 'opencode', 'opencode.json'))).mcp['agent-relay'].enabled, true);
+  } finally {
+    fs.rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+test('install-skill backs up a real (non-symlink) directory instead of deleting it', () => {
+  const fixture = testEnv();
+  const target = path.join(fixture.home, '.codex', 'skills', 'agent-relay');
+  fs.mkdirSync(target, { recursive: true });
+  fs.writeFileSync(path.join(target, 'custom-notes.md'), 'user content', 'utf8');
+  try {
+    const result = spawnSync(path.join(root, 'install-skill'), [], { env: fixture.env, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout || '', /Backed up non-symlink directory/);
+    assert.equal(fs.lstatSync(target).isSymbolicLink(), true);
+    assert.equal(fs.readFileSync(path.join(target + '.pre-relay-backup', 'custom-notes.md'), 'utf8'), 'user content');
+  } finally {
+    fs.rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});

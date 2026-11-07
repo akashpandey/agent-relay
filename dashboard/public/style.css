@@ -1633,6 +1633,79 @@ kbd {
   word-break: break-all;
 }
 
+/* Terminal formatting classes (striped JSON events, banners, payload blocks) */
+.term-dim { color: var(--text-dim); }
+
+.term-usage {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  opacity: 0.85;
+}
+
+.term-chrome {
+  color: var(--text-dim);
+  font-size: 0.775rem;
+  opacity: 0.8;
+}
+
+.term-sep {
+  color: var(--text-dim);
+  opacity: 0.4;
+}
+
+.term-banner {
+  display: inline-block;
+  margin: 6px 0 2px;
+  padding: 3px 10px;
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg-terminal);
+  color: var(--accent);
+  font-size: 0.775rem;
+}
+
+.term-msg {
+  display: block;
+  margin: 4px 0;
+  padding: 5px 10px;
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: rgba(125, 211, 252, 0.06);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.term-msg.term-done {
+  border-left-color: var(--success);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.term-exec {
+  display: block;
+  margin: 3px 0;
+}
+
+.term-thought .term-dim, .term-thinking {
+  opacity: 0.8;
+}
+
+.term-out {
+  display: block;
+  margin: 1px 0 3px 14px;
+  padding: 4px 8px;
+  border-left: 2px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: 0.775rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+
 /* Expansive Markdown */
 .fs-markdown-box {
   flex: 1;

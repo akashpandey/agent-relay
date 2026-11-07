@@ -1053,13 +1053,91 @@ async function startLogStream(filename) {
   };
 }
 
+// --- Terminal formatting helpers ---
+
+function streamBadge(kind) {
+  const cls = { EXEC: 'stream-tool', TOOL: 'stream-tool', THOUGHT: 'stream-thought', INIT: 'stream-init', DONE: 'stream-complete' }[kind] || 'stream-tool';
+  return `<span class="stream-badge ${cls}">${kind}</span>`;
+}
+
+function dimText(html) { return `<span class="term-dim">${html}</span>`; }
+
+// Trim HUGE payloads (mcp tool calls, command output) with a marker, escaped last.
+function clipEscaped(raw, max = 400) {
+  let text = raw == null ? '' : String(raw);
+  if (text.length > max) text = `${text.slice(0, max)} … (+${(text.length - max).toLocaleString()} chars)`;
+  return escapeHtml(text);
+}
+
+// Codex item.completed / claude content blocks → readable lines. '' = skip noise.
+function formatCodexItem(item) {
+  const it = item || {};
+  const out = [];
+  if (it.type === 'agent_message') {
+    let text = it.text || '';
+    // The structured outcome contract arrives as JSON inside the message text.
+    const contract = /^[{[]/.test(text.trim()) ? (function () { try { return JSON.parse(text); } catch { return null; } })() : null;
+    if (contract && (contract.outcome || contract.summary)) {
+      return `<div class="term-msg term-done"><span class="stream-badge stream-complete">COMPLETED</span> <span style="color: var(--success); font-weight: 600;">${escapeHtml(String(contract.outcome || 'done'))}</span><br>${clipEscaped(contract.summary, 600)}</div>`;
+    }
+    return `<div class="term-msg">${escapeHtml(text)}</div>`;
+  }
+  if (it.type === 'command_execution') {
+    out.push(`<div class="term-exec">${streamBadge('EXEC')} <span style="color: var(--badge-opencode); font-weight: 600;">bash</span> ${dimText(clipEscaped(it.command || '', 220))}` +
+      (it.exit_code != null ? dimText(` (exit ${it.exit_code})`) : '') + '</div>');
+    if (it.aggregated_output) out.push(`<div class="term-out">${clipEscaped(it.aggregated_output, 500)}</div>`);
+    return out.join('\n');
+  }
+  if (it.type === 'mcp_tool_call') {
+    out.push(`<div class="term-exec">${streamBadge('EXEC')} <span style="color: var(--badge-opencode); font-weight: 600;">${escapeHtml(it.server || 'mcp')}</span>▸${escapeHtml(it.tool || '')} ${dimText(clipEscaped(it.arguments ? JSON.stringify(it.arguments) : '{}', 200))}</div>`);
+    const resultText = (it.result?.content || []).filter(c => c.type === 'text' || c.text).map(c => c.text).join('\n') || it.result?.text || '';
+    if (resultText) out.push(`<div class="term-out">${clipEscaped(resultText, 500)}</div>`);
+    if (it.error) out.push(`<div class="term-out" style="color: #f87171;">${clipEscaped(it.error, 200)}</div>`);
+    return out.join('\n');
+  }
+  if (it.type === 'reasoning') {
+    const text = it.text || (it.summary || []).map(s => s.text).join(' ');
+    return text ? `<div class="term-exec term-thought">${streamBadge('THOUGHT')} ${clipEscaped(text, 400)}</div>` : '';
+  }
+  if (it.type === 'file_change') {
+    const files = Object.entries(it.changes || {}).map(([file, change]) => `${escapeHtml(file)}${change?.kind ? dimText(` (${escapeHtml(change.kind)})`) : ''}`).join(', ');
+    return `<div class="term-exec">${streamBadge('TOOL')} <span style="color: var(--badge-claude); font-weight: 600;">files</span> ${files || dimText('(no files)')}</div>`;
+  }
+  if (it.type === 'web_search') return `<div class="term-exec">${streamBadge('EXEC')} <span style="color: var(--badge-opencode); font-weight: 600;">web</span> ${dimText(clipEscaped(it.query || '', 120))}</div>`;
+  return null;
+}
+
+function formatClaudeBlocks(blocks) {
+  return (blocks || []).map(block => {
+    if (block.type === 'text') return block.text ? `<div class="term-msg">${escapeHtml(block.text)}</div>` : '';
+    if (block.type === 'thinking') return block.thinking ? `<div class="term-exec term-thought">${streamBadge('THOUGHT')} ${clipEscaped(block.thinking, 400)}</div>` : '';
+    if (block.type === 'tool_use') {
+      return `<div class="term-exec">${streamBadge('TOOL')} <span style="color: var(--badge-claude); font-weight: 600;">${escapeHtml(block.name || '')}</span> ${dimText(clipEscaped(block.input ? JSON.stringify(block.input) : '', 160))}</div>`;
+    }
+    return '';
+  }).filter(Boolean).join('\n');
+}
+
 function formatLogLine(rawLine) {
   const trimmed = rawLine.trim();
+  if (!trimmed) return '';
+  // Wrapper/runtime chrome: highlight banners, hide internal markers.
+  if (/^agent-output-(start|end):/.test(trimmed)) return '';
+  if (/^agent: provider=/.test(trimmed)) return `<div class="term-banner">${ansiToHtml(escapeHtml(trimmed))}</div>`;
+  if (trimmed === '---') return `<span class="term-sep">─────────────────────</span>`;
+  if (/^(agent-unit:|Reading additional input|codex-agent:|claude-agent:|opencode-agent:|antigravity-agent:)/.test(trimmed)) {
+    return `<span class="term-chrome">${ansiToHtml(escapeHtml(trimmed))}</span>`;
+  }
+  // OpenCode logfmt harness lines: INFO event noise is hidden; WARN+ stays visible.
+  if (trimmed.startsWith('timestamp=')) {
+    if (!/ level=(WARN|ERROR|FATAL)\b/.test(trimmed)) return '';
+    return `<span class="term-out" style="color: #fbbf24;">${escapeHtml(trimmed.slice(0, 400))}</span>`;
+  }
   if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
     try {
       const obj = JSON.parse(trimmed);
       if (obj.event === 'init') {
-        return `<span class="stream-badge stream-init">INIT</span> <span style="color: var(--text-dim);">${escapeHtml(obj.conversation_id || '')}</span> (Model: <span style="color: var(--accent);">${escapeHtml(obj.model || 'default')}</span>)`;
+        return `<span class="stream-badge stream-init">INIT</span> <span class="term-dim">${escapeHtml(obj.conversation_id || '')}</span> (Model: <span style="color: var(--accent);">${escapeHtml(obj.model || 'default')}</span>)`;
       }
       if (obj.event === 'step_update') {
         const su = obj.step_update || obj.step || {};
@@ -1075,7 +1153,7 @@ function formatLogLine(rawLine) {
             return escapeHtml(su.text_delta);
           }
           if (su.usage) {
-            return `<span style="color: var(--text-dim); font-size: 0.75rem;">[Step ${su.step_index || ''} Usage: ${su.usage.total_tokens || 0} tokens]</span>`;
+            return `<span class="term-usage">[Step ${su.step_index || ''} Usage: ${su.usage.total_tokens || 0} tokens]</span>`;
           }
         }
         if (su.thought || su.thinking) {
@@ -1092,12 +1170,65 @@ function formatLogLine(rawLine) {
         const tokens = resObj.usage?.total_tokens ? ` · ${formatNumber(resObj.usage.total_tokens)} tokens` : '';
         return `\n<div style="padding: 8px 12px; background: rgba(34, 197, 94, 0.1); border-left: 3px solid var(--success); margin: 8px 0; border-radius: 4px;"><span class="stream-badge stream-complete">COMPLETED</span> <span style="color: var(--success); font-weight: 600;">Task Completed${duration}${tokens}</span>\n${escapeHtml(respText)}</div>`;
       }
-      if (obj.type === 'tool_use') {
-        return `<span class="stream-badge stream-tool">TOOL</span> <span style="color: var(--badge-claude); font-weight: 600;">${escapeHtml(obj.name || '')}</span> <span style="color: var(--text-dim);">${escapeHtml(JSON.stringify(obj.input || {}).slice(0, 120))}</span>`;
+      // --- Codex stream-json ({"type": ...}) ---
+      if (obj.type === 'thread.started') {
+        return `<span class="stream-badge stream-init">THREAD</span> <span class="term-dim">${escapeHtml(String(obj.thread_id || ''))}</span>`;
+      }
+      if (obj.type === 'turn.started' || obj.type === 'turn.completed') {
+        const usage = obj.usage?.total_tokens || obj.usage?.input_tokens || '';
+        return usage ? `<span class="term-usage">${escapeHtml(obj.type)}${obj.type === 'turn.completed' && (obj.usage?.input_tokens || obj.usage?.cached_input_tokens) ? ` · in ${formatNumber(obj.usage.input_tokens || 0)} / cached ${formatNumber(obj.usage.cached_input_tokens || 0)} / out ${formatNumber(obj.usage.output_tokens || 0)} tokens` : ''}</span>` : '';
+      }
+      if (obj.type === 'turn.failed') {
+        return `<div style="color: #f87171; margin: 4px 0;"><span class="stream-badge stream-complete" style="background: rgba(239,68,68,0.12); color: #f87171; border-color: rgba(239,68,68,0.4);">TURN FAILED</span> ${escapeHtml(obj.error?.message || '')}</div>`;
+      }
+      if (obj.type === 'item.started' || obj.type === 'item.updated' || obj.type === 'stream_event' || obj.type === 'token_count') {
+        return ''; // progress noise; the completed counter-event carries the payload
+      }
+      if (obj.type === 'item.completed') {
+        return formatCodexItem(obj.item) ?? '';
+      }
+      // --- Claude Code stream-json ---
+      if (obj.type === 'system') {
+        return `<span class="stream-badge stream-init">INIT</span> <span class="term-dim">${escapeHtml(obj.subtype || 'system')}${obj.model ? ' · model ' + escapeHtml(obj.model) : ''}${obj.cwd ? ' · cwd ' + escapeHtml(obj.cwd) : ''}</span>`;
+      }
+      if (obj.type === 'assistant') {
+        return formatClaudeBlocks(obj.message?.content || obj.content) || '';
+      }
+      if (obj.type === 'user') {
+        const results = (obj.message?.content || obj.content || []).filter(b => b.type === 'tool_result');
+        if (!results.length) return '';
+        return results.map(r => {
+          const text = (typeof r.content === 'string' ? r.content : (r.content || []).map(c => c.text || '').join('\n'));
+          return `<div class="term-out">${clipEscaped(text, 300)}</div>` + (r.is_error ? `<div class="term-out" style="color: #f87171;">[tool error]</div>` : '');
+        }).join('\n');
+      }
+      if (obj.type === 'tool_use' && !obj.part) {
+        return `<span class="stream-badge stream-tool">TOOL</span> <span style="color: var(--badge-claude); font-weight: 600;">${escapeHtml(obj.name || '')}</span> <span class="term-dim">${escapeHtml(JSON.stringify(obj.input || {}).slice(0, 120))}</span>`;
+      }
+      // --- OpenCode JSONL: {"type": ..., part: {...}} ---
+      if (obj.type === 'step_start') return '';
+      if (obj.type === 'step_finish') {
+        const tokens = obj.part?.tokens;
+        return tokens ? `<span class="term-usage">step · in ${formatNumber(tokens.input || 0)} / cached ${formatNumber(tokens.cache?.read || 0)} / out ${formatNumber(tokens.output || 0)} tokens</span>` : '';
+      }
+      if (obj.type === 'tool_use' && obj.part) {
+        const part = obj.part;
+        const state = part.state || {};
+        const pending = state.status === 'pending';
+        const lines = [`<div class="term-exec">${streamBadge('EXEC')} <span style="color: var(--badge-opencode); font-weight: 600;">${escapeHtml(part.tool || 'tool')}</span>${pending ? dimText(' (running)') : state.status === 'error' ? dimText(' (error)') : ''} ${state.input ? dimText(clipEscaped(JSON.stringify(state.input), 200)) : ''}</div>`];
+        const output = typeof state.output === 'string' ? state.output : state.output != null ? JSON.stringify(state.output) : '';
+        if (state.status === 'error') lines.push(`<div class="term-out" style="color: #f87171;">${clipEscaped(state.error || output, 300)}</div>`);
+        else if (output) lines.push(`<div class="term-out">${clipEscaped(output, 500)}</div>`);
+        return lines.join('\n');
       }
       if (obj.type === 'text') {
-        return escapeHtml(obj.text || '');
+        const text = obj.part?.text ?? obj.text ?? '';
+        return text ? `<div class="term-msg">${escapeHtml(text)}</div>` : '';
       }
+      // Unknown structured event: show its type plus a short payload snippet
+      // instead of a wall of raw JSON.
+      const typeLabel = obj.type || obj.event || obj.kind || 'json';
+      return `<span class="term-usage">[compact ${escapeHtml(String(typeLabel))}]</span> <span class="term-dim">${clipEscaped(JSON.stringify(obj), 240)}</span>`;
     } catch {}
   }
   return ansiToHtml(escapeHtml(rawLine));
@@ -1113,7 +1244,7 @@ function renderTerminalLines() {
   const hiddenText = state.logTruncatedLines > 0 ? ` · ${formatNumber(state.logTruncatedLines)} older hidden` : '';
   el.logLinesCount.textContent = `${filtered.length} lines${hiddenText}`;
   el.btnLoadOlderLog.disabled = state.logViewMode !== 'live' || !state.selectedRun || state.logStartOffset <= 0;
-  const rendered = filtered.map(l => formatLogLine(l)).join('\n');
+  const rendered = filtered.map(l => formatLogLine(l)).filter(Boolean).join('\n');
   el.modalTerminalContent.innerHTML = rendered || '<span style="color: var(--text-dim);">No output lines recorded.</span>';
 
   if (state.autoscroll) {
@@ -1380,19 +1511,51 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+// SGR color map: basic + bright foregrounds. Other CSI sequences (cursor
+// moves, erases) are dropped — they only matter inside real terminal cells.
+const ANSI_FG = {
+  30: '#64748b', 31: '#f87171', 32: '#4ade80', 33: '#fbbf24',
+  34: '#60a5fa', 35: '#c084fc', 36: '#38bdf8', 37: '#e2e8f0',
+  90: '#64748b', 91: '#f87171', 92: '#4ade80', 93: '#fbbf24',
+  94: '#60a5fa', 95: '#c084fc', 96: '#38bdf8', 97: '#f8fafc',
+};
+
 function ansiToHtml(str) {
-  return str
-    .replace(/\x1B\[0m/g, '</span>')
-    .replace(/\x1B\[1m/g, '<span style="font-weight: bold;">')
-    .replace(/\x1B\[31m/g, '<span style="color: #f87171;">')
-    .replace(/\x1B\[32m/g, '<span style="color: #4ade80;">')
-    .replace(/\x1B\[33m/g, '<span style="color: #fbbf24;">')
-    .replace(/\x1B\[34m/g, '<span style="color: #60a5fa;">')
-    .replace(/\x1B\[35m/g, '<span style="color: #c084fc;">')
-    .replace(/\x1B\[36m/g, '<span style="color: #38bdf8;">')
-    .replace(/\x1B\[90m/g, '<span style="color: #64748b;">')
-    .replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+  const CSI = /\x1B\[([0-9;]*)([a-zA-Z])/g;
+  let out = '', at = 0, color = null, bold = false, dim = false, open = false, m;
+  const flush = () => { if (open) { out += '</span>'; open = false; } };
+  const style = () => {
+    const parts = [];
+    if (color) parts.push(`color: ${color}`);
+    if (bold) parts.push('font-weight: bold');
+    if (dim) parts.push('opacity: 0.55');
+    return parts.join('; ') || null;
+  };
+  const openSpan = () => { flush(); const s = style(); if (s) { out += `<span style="${s}">`; open = true; } };
+  while ((m = CSI.exec(str))) {
+    out += str.slice(at, m.index);
+    at = CSI.lastIndex;
+    if (m[2] !== 'm') continue; // non-color sequences (cursor/erase): drop
+    const params = m[1].split(';').filter(Boolean);
+    if (!params.length) params.push('0');
+    let changed = false;
+    for (let i = 0; i < params.length; i++) {
+      if (params[i] === '38' || params[i] === '48') { i += 2; continue; } // extended/256-color: skip
+      const n = Number(params[i]);
+      if (n === 0) { color = null; bold = false; dim = false; changed = true; }
+      else if (n === 1) { bold = true; changed = true; }
+      else if (n === 2) { dim = true; changed = true; }
+      else if (n === 22) { bold = false; dim = false; changed = true; }
+      else if (ANSI_FG[n]) { color = ANSI_FG[n]; changed = true; }
+      else if (n === 39) { color = null; changed = true; }
+    }
+    if (changed) openSpan();
+  }
+  out += str.slice(at);
+  flush();
+  return out;
 }
+
 
 function renderDiffToHtml(diffText) {
   if (!diffText) return '<div class="diff-empty">No diff captured.</div>';

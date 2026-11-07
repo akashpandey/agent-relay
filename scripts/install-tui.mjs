@@ -72,7 +72,7 @@ const HARNESSES = [
  * Interactive Checkbox Multi-Select Menu
  */
 async function selectCheckboxes(title, items, initialChecked = []) {
-  if (!isTTY) {
+  if (!isTTY || !process.stdin.isTTY) {
     return initialChecked;
   }
 
@@ -124,7 +124,7 @@ async function selectCheckboxes(title, items, initialChecked = []) {
  * Single-select radio menu
  */
 async function selectRadio(title, items, defaultIndex = 0) {
-  if (!isTTY) {
+  if (!isTTY || !process.stdin.isTTY) {
     return items[defaultIndex].id;
   }
 
@@ -174,6 +174,9 @@ ${c.dim}Interactive Setup Wizard & Environment Configurator${c.reset}
 `);
 
   console.log(`${c.bold}Scanning your environment for AI harnesses...${c.reset}\n`);
+  if (!process.stdin.isTTY) {
+    console.log(`${c.dim}stdin is not interactive — using defaults: detected harnesses, dashboard per availability.${c.reset}\n`);
+  }
 
   // Detect harnesses
   const detectedHarnesses = HARNESSES.map(h => {
@@ -271,13 +274,15 @@ ${c.dim}Interactive Setup Wizard & Environment Configurator${c.reset}
 
   // Execute relay install CLI internally with selected arguments
   const agentCliScript = path.join(repoDir, 'scripts', 'agent-cli.mjs');
+  const tuiEnv = {
+    ...process.env,
+    AGENT_RELAY_SELECTED_PROVIDERS: selectedHarnessIds.join(','),
+    AGENT_RELAY_DASHBOARD_MODE: dashboardChoice,
+  };
   const installChild = spawnSync(process.execPath, [agentCliScript, 'install', ...flags], {
     cwd: repoDir,
     stdio: 'inherit',
-    env: {
-      ...process.env,
-      AGENT_RELAY_SELECTED_PROVIDERS: selectedHarnessIds.join(','),
-    },
+    env: tuiEnv,
   });
 
   if (installChild.status === 0) {

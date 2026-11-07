@@ -23,7 +23,8 @@ the model that actually ran the task is printed on success.
 
 This exists because a model can be silently exhausted mid-session (monthly quota,
 rate limit) and the failure looks identical to "the model is slow/stuck" unless you
-check for it up front. See ~/subagents/README.md for the incident that motivated this.
+check for it up front. See the agent-relay repository README for the incident that
+motivated this.
 
 Environment:
   OPENCODE_MODEL_CHAIN   Required. Comma-separated provider/model list, in priority order.

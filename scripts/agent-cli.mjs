@@ -6,8 +6,10 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { resolveWorkspacePath, configuredWorkspaceEntries } from '../dashboard/workspaces.js';
+import { knownWorkspaces, resolveWorkspace } from './runs-shared.mjs';
 import { deleteRun, getFilteredRuns, getRun, getWorkspacesFromDb } from '../dashboard/db.js';
 import { findLatestWorkspaceSession, buildRelayTakeoverPrompt } from './relay-handoff.mjs';
+import { providerEnv } from './provider-env.mjs';
 import { runInstallationTui } from './install-tui.mjs';
 import { runProbeCommand } from './model-probe.mjs';
 import {
@@ -55,16 +57,6 @@ function usage() {
 
 Aliases: relay, agent (takeover alias: handoff)
 Providers: ${[...providers.keys()].join(', ')}`);
-}
-
-function knownWorkspaces() {
-  const byPath = new Map();
-  for (const ws of getWorkspacesFromDb()) byPath.set(ws.path, ws);
-  for (const ws of configuredWorkspaceEntries()) {
-    const actual = path.resolve(ws.path);
-    byPath.set(actual, { totalRuns: 0, activeRuns: 0, ...byPath.get(actual), path: actual, name: ws.name });
-  }
-  return [...byPath.values()];
 }
 
 function displayPath(value) {
@@ -138,7 +130,12 @@ async function installMcp(onlyProviders = null) {
     const claudePath = path.join(home, '.claude.json');
     let claudeConfig = {};
     if (fs.existsSync(claudePath)) {
-      try { claudeConfig = JSON.parse(fs.readFileSync(claudePath, 'utf8')); } catch {}
+      try { claudeConfig = JSON.parse(fs.readFileSync(claudePath, 'utf8')); }
+      catch (err) {
+        // Never overwrite an unreadable existing config; report and preserve it.
+        throw new Error(`unreadable ${displayPath(claudePath)} (${err.message}); not overwriting`);
+      }
+      if (typeof claudeConfig !== 'object' || claudeConfig === null) throw new Error(`${displayPath(claudePath)} is not a JSON object; not overwriting`);
     }
     claudeConfig.mcpServers = claudeConfig.mcpServers || {};
     claudeConfig.mcpServers['agent-relay'] = { command: targetBin };
@@ -158,7 +155,11 @@ async function installMcp(onlyProviders = null) {
     if (onlyProviders || fs.existsSync(opencodeDir) || fs.existsSync(opencodePath)) {
       let opencodeConfig = {};
       if (fs.existsSync(opencodePath)) {
-        try { opencodeConfig = JSON.parse(fs.readFileSync(opencodePath, 'utf8')); } catch {}
+        try { opencodeConfig = JSON.parse(fs.readFileSync(opencodePath, 'utf8')); }
+        catch (err) {
+          throw new Error(`unreadable ${displayPath(opencodePath)} (${err.message}); not overwriting`);
+        }
+        if (typeof opencodeConfig !== 'object' || opencodeConfig === null) throw new Error(`${displayPath(opencodePath)} is not a JSON object; not overwriting`);
       }
       opencodeConfig.mcp = opencodeConfig.mcp || {};
       opencodeConfig.mcp['agent-relay'] = {
@@ -184,7 +185,11 @@ async function installMcp(onlyProviders = null) {
     if (onlyProviders || fs.existsSync(path.join(home, '.gemini'))) {
       let agyConfig = {};
       if (fs.existsSync(agyConfigPath)) {
-        try { agyConfig = JSON.parse(fs.readFileSync(agyConfigPath, 'utf8')); } catch {}
+        try { agyConfig = JSON.parse(fs.readFileSync(agyConfigPath, 'utf8')); }
+        catch (err) {
+          throw new Error(`unreadable ${displayPath(agyConfigPath)} (${err.message}); not overwriting`);
+        }
+        if (typeof agyConfig !== 'object' || agyConfig === null) throw new Error(`${displayPath(agyConfigPath)} is not a JSON object; not overwriting`);
       }
       agyConfig.mcpServers = agyConfig.mcpServers || {};
       agyConfig.mcpServers['agent-relay'] = { command: targetBin };
@@ -257,20 +262,30 @@ async function installDashboard(mode) {
     return;
   }
 
-  const dockerReady = spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0;
-  const composePath = path.join(repoDir, 'docker-compose.yml');
-  if (dockerReady && fs.existsSync(composePath)) {
-    const answer = mode === 'yes' ? 'yes' : await ask('Start the dashboard with Docker? [y/N] ');
-    if (['y', 'yes'].includes(answer.toLowerCase())) {
-      const child = spawnSync('docker', ['compose', 'up', '-d'], { cwd: repoDir, stdio: 'inherit' });
-      if (child.status === 0) return;
-      console.error(`${cmdName}: docker compose failed`);
+  // The TUI records the user's explicit choice; mode 'yes' honors it instead of
+  // defaulting to Docker whenever it is available.
+  const requestedMode = mode === 'yes' ? (process.env.AGENT_RELAY_DASHBOARD_MODE || 'docker') : null;
+
+  if (requestedMode !== 'background') {
+    const dockerReady = spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0;
+    const composePath = path.join(repoDir, 'docker-compose.yml');
+    if (dockerReady && fs.existsSync(composePath)) {
+      const answer = requestedMode === 'docker' ? 'yes' : mode === 'yes' ? 'yes' : await ask('Start the dashboard with Docker? [y/N] ');
+      if (['y', 'yes'].includes(answer.toLowerCase())) {
+        const child = spawnSync('docker', ['compose', 'up', '-d'], { cwd: repoDir, stdio: 'inherit' });
+        if (child.status === 0) return;
+        console.error(`${cmdName}: docker compose failed`);
+      }
+    } else if (dockerReady) {
+      console.log('No docker-compose.yml found. Run: cp docker-compose.sample.yml docker-compose.yml');
     }
-  } else if (dockerReady) {
-    console.log('No docker-compose.yml found. Run: cp docker-compose.sample.yml docker-compose.yml');
+    if (requestedMode === 'docker') {
+      printDashboardCommands();
+      return;
+    }
   }
 
-  const answer = mode === 'yes' ? 'yes' : await ask('Launch the dashboard in the background instead? [y/N] ');
+  const answer = (requestedMode === 'background' || mode === 'yes') ? 'yes' : await ask('Launch the dashboard in the background instead? [y/N] ');
   if (['y', 'yes'].includes(answer.toLowerCase())) {
     const child = spawn(path.join(repoDir, 'agent-dashboard'), [], { cwd: repoDir, detached: true, stdio: 'ignore' });
     child.unref();
@@ -389,10 +404,6 @@ async function installRelay(argv) {
   console.log(`  Routing config: ${displayPath(GLOBAL_CONFIG_PATH)} (task-based provider & model routing)`);
 }
 
-function resolveWorkspace(value) {
-  return resolveWorkspacePath(value, knownWorkspaces());
-}
-
 function latestRun(workspaceArg = null) {
   const workspace = resolveWorkspace(workspaceArg);
   if (workspaceArg && workspaceArg !== 'all' && !workspace) throw new Error('unknown workspace: ' + workspaceArg);
@@ -406,7 +417,7 @@ function listAttention(workspaceArg = null) {
   for (const run of result.runs) {
     const workspaceName = run.workspaceName || run.workspace || 'workspace';
     const continueCommand = run.sessionId && run.sessionId !== 'new'
-      ? `subagent continue ${JSON.stringify(workspaceName)} "<follow-up task>"`
+      ? `\${cmdName} continue ${JSON.stringify(workspaceName)} "<follow-up task>"`
       : '';
     console.log([
       run.filename,
@@ -417,7 +428,7 @@ function listAttention(workspaceArg = null) {
     ].join('\t'));
   }
   if (result.total > result.runs.length) {
-    console.error(`subagent: showing ${result.runs.length} of ${result.total} attention runs`);
+    console.error(`${cmdName}: showing ${result.runs.length} of ${result.total} attention runs`);
   }
 }
 
@@ -443,19 +454,19 @@ function pruneRuns(argv) {
     } else if (arg === '--older-than') {
       olderThan = parseDurationMs(argv[++i]);
       if (olderThan === null) {
-        console.error('subagent: --older-than expects value like 30d, 12h, or 90m');
+        console.error(`${cmdName}: --older-than expects value like 30d, 12h, or 90m`);
         process.exit(2);
       }
     } else if (arg === '--workspace') {
       workspace = resolveWorkspace(argv[++i]);
       if (!workspace) {
-        console.error('subagent: unknown workspace');
+        console.error(`${cmdName}: unknown workspace`);
         process.exit(2);
       }
     } else if (arg === '--outcome') {
       outcome = argv[++i] || 'all';
     } else {
-      console.error(`subagent: unknown prune option: ${arg}`);
+      console.error(`${cmdName}: unknown prune option: ${arg}`);
       process.exit(2);
     }
   }
@@ -480,17 +491,19 @@ function pruneRuns(argv) {
     }
   }
 
-  console.error(`subagent: ${confirm ? 'deleted' : 'would delete'} ${targets.length} runs${confirm ? '' : ' (dry run; add --confirm)'}`);
+  console.error(`${cmdName}: ${confirm ? 'deleted' : 'would delete'} ${targets.length} runs${confirm ? '' : ' (dry run; add --confirm)'}`);
 }
 
 function runProvider(provider, args, workspace = null, model = null) {
   const bin = providers.get(provider);
   if (!bin) {
-    console.error(`subagent: unknown provider: ${provider}`);
+    console.error(`${cmdName}: unknown provider: ${provider}`);
     process.exit(2);
   }
-  const modelEnv = { opencode: 'OPENCODE_MODEL', codex: 'CODEX_MODEL', claude: 'CLAUDE_MODEL', antigravity: 'AGY_MODEL' };
-  const env = model ? { ...process.env, [modelEnv[provider]]: model } : process.env;
+  const spec = providerEnv(provider);
+  const env = { ...process.env };
+  if (spec && model) env[spec.model] = model;
+  else if (model && !spec) console.error(`${cmdName}: model is not supported for provider: ${provider}`);
   const child = spawnSync(path.join(repoDir, bin), args, { cwd: workspace || process.cwd(), stdio: 'inherit', env });
   process.exit(child.status ?? 1);
 }
@@ -506,7 +519,7 @@ function showResult(target = '--last') {
     if (workspace) {
       const run = latestRun(workspace);
       if (!run) {
-        console.error('subagent: no matching runs found');
+        console.error(`${cmdName}: no matching runs found`);
         process.exit(1);
       }
       target = run.filename;
@@ -528,7 +541,7 @@ function openRun(argv) {
   const target = browser ? (argv[1] || '--last') : (argv[0] || '--last');
   const run = resolveRunTarget(target);
   if (!run?.filename) {
-    console.error('subagent: no matching runs found');
+    console.error(`${cmdName}: no matching runs found`);
     process.exit(1);
   }
   const baseUrl = (process.env.DASHBOARD_URL || 'http://localhost:4242').replace(/\/+$/, '');
@@ -536,7 +549,7 @@ function openRun(argv) {
   console.log(url);
   if (browser) {
     const child = spawnSync('xdg-open', [url], { stdio: 'ignore' });
-    if (child.status !== 0) console.error('subagent: xdg-open failed');
+    if (child.status !== 0) console.error(`${cmdName}: xdg-open failed`);
   }
 }
 
@@ -640,7 +653,7 @@ if (args[0] === 'doctor') {
 if (args[0] === 'dashboard') {
   if (args[1] === 'restart') runScript('scripts/restart-dashboard', args.slice(2));
   if (args.length > 1) {
-    console.error(`subagent: unknown dashboard command: ${args[1]}`);
+    console.error(`${cmdName}: unknown dashboard command: ${args[1]}`);
     process.exit(2);
   }
   await dashboardStatus();
@@ -649,7 +662,7 @@ if (args[0] === 'dashboard') {
 if (args[0] === 'last') {
   const run = latestRun(args[1]);
   if (!run) {
-    console.error('subagent: no matching runs found');
+    console.error(`${cmdName}: no matching runs found`);
     process.exit(1);
   }
   console.log(`${run.filename}\t${run.provider}\t${run.workspaceName}\t${run.sessionId || 'new'}\t${run.outcome || 'unknown'}`);
@@ -791,6 +804,6 @@ if (providers.has(args[0])) runProvider(args[0], args.slice(1));
 const workspace = resolveWorkspace(args[0]);
 if (workspace && providers.has(args[1])) runProvider(args[1], args.slice(2), workspace);
 
-console.error(`subagent: unknown command, provider, or workspace: ${args[0]}`);
+console.error(`${cmdName}: unknown command, provider, or workspace: ${args[0]}`);
 usage();
 process.exit(2);

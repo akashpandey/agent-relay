@@ -10,6 +10,9 @@ if command -v node >/dev/null 2>&1; then
   canonical_workspace="$(node "$repo_dir/scripts/workspace-canonical.mjs" "$workspace" 2>/dev/null || true)"
 fi
 timeout_seconds="${CODEX_TIMEOUT:-7200}"
+# ponytail: timeout_spec is the duration literal for `timeout`/RuntimeMaxSec;
+# invalid or zero values drop both instead of corrupting the systemd property.
+case "$timeout_seconds" in ''|*[!0-9]*) timeout_spec='' ;; *) timeout_spec="${timeout_seconds}s" ;; esac
 
 # Prevent hanging network commands from blocking subprocess cleanup
 export PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-5}"
@@ -82,49 +85,6 @@ else
   user_prompt="$(cat)"
 fi
 
-export CI="${CI:-1}"
-export npm_config_yes="${npm_config_yes:-true}"
-export npm_config_fund="${npm_config_fund:-false}"
-export npm_config_audit="${npm_config_audit:-false}"
-export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
-export GIT_TERMINAL_PROMPT="${GIT_TERMINAL_PROMPT:-0}"
-export PAGER="${PAGER:-cat}"
-export GIT_PAGER="${GIT_PAGER:-cat}"
-export SYSTEMD_PAGER="${SYSTEMD_PAGER:-cat}"
-
-prompt="You are running as a non-interactive coding agent.
-Workspace: $workspace
-
-Rules:
-- Treat the workspace above as the project root.
-- Write requested files under that workspace unless the prompt gives a different absolute path.
-- Run all commands in non-interactive batch mode (e.g. use 'npx -y', avoid interactive stdin/prompts).
-- After editing, summarize changed files and verification commands.
-- Use outcome=done only when the requested task is complete and verification passed or was explicitly unnecessary.
-- CRITICAL: Your absolute last turn MUST end with this exact JSON structure (no text or markdown after it):
-\`\`\`json
-{
-  \"outcome\": \"done\",
-  \"summary\": \"Brief explanation of what was done.\",
-  \"changedFiles\": [\"path/to/file\"],
-  \"verification\": [
-    {
-      \"command\": \"npm test\",
-      \"status\": \"passed\",
-      \"reason\": \"All tests passed\"
-    }
-  ],
-  \"blockers\": [],
-  \"incomplete\": [],
-  \"nextSteps\": []
-}
-\`\`\`
-outcome must be: done | partial | blocked | failed.
-verification status must be: passed | failed | skipped.
-
-Task:
-$user_prompt"
-
 log_flag="${CODEX_LOGS:-1}"
 sandbox="${CODEX_SANDBOX:-workspace-write}"
 codex_bin="${AGENT_RELAY_CODEX_BIN:-${SUBAGENT_CODEX_BIN:-$(command -v codex 2>/dev/null || echo "codex")}}"
@@ -159,8 +119,9 @@ stop_subagent() {
   fi
 }
 done_provider="codex"
-done_model="${CODEX_MODEL:-default}"
 . "$repo_dir/scripts/finalize-run.sh"
+. "$repo_dir/scripts/wrapper-lib.sh"
+completion_marker='hook: Stop Completed'
 
 resolve_codex_model() {
   raw_model="${1:-}"
@@ -191,6 +152,7 @@ if [ -n "${CODEX_MODEL:-}" ]; then
     CODEX_MODEL="$resolved_codex_model"
   fi
 fi
+done_model="${CODEX_MODEL:-default}"
 
 set -- --ask-for-approval never exec --json --cd "$workspace" --sandbox "$sandbox" --skip-git-repo-check
 if [ "$resume_session" = "--last" ] || [ "$resume_session" = "last" ]; then
@@ -200,7 +162,7 @@ elif [ -n "$resume_session" ] && [ "$resume_session" != "new" ]; then
 fi
 [ -z "${CODEX_MODEL:-}" ] || set -- "$@" --model "$CODEX_MODEL"
 [ -z "${CODEX_EFFORT:-}" ] || set -- "$@" -c "model_reasoning_effort=\"$CODEX_EFFORT\""
-set -- "$@" "$prompt"
+set -- "$@" "$(agent_prompt "$workspace" "$user_prompt")"
 
 if [ "$log_flag" = "1" ]; then
   if [ -n "$canonical_workspace" ] && [ "$canonical_workspace" != "$workspace" ]; then
@@ -209,139 +171,6 @@ if [ "$log_flag" = "1" ]; then
   echo "codex-agent: workspace=$workspace model=${CODEX_MODEL:-default} effort=${CODEX_EFFORT:-default} sandbox=$sandbox session=${resume_session:-new} timeout=${timeout_seconds}s run_log=$log_file" >&2
 fi
 
-# ponytail: a separate process group makes timeout cleanup cover ordinary children.
-before_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
-printf 'agent: provider=codex workspace=%s model=%s session=%s\nagent-unit: %s\nTask:\n%s\n\n---\n\n' \
-  "$workspace" "${CODEX_MODEL:-default}" "${resume_session:-new}" "$done_unit" "$user_prompt" > "$log_file"
-
-# Register run start in SQLite database immediately
-mark_output_start
-if command -v node >/dev/null 2>&1; then
-  node "$repo_dir/scripts/subagent-tracker.js" start "$(basename "$log_file")" "$$" "codex" "${CODEX_MODEL:-default}" "$workspace" "${resume_session:-new}" "$user_prompt" >/dev/null 2>&1 || true
-fi
-
-if [ "$use_systemd" -eq 1 ]; then
-  systemd-run --user --pipe --working-directory="$workspace" --setenv=PATH="$PATH" --wait --collect --quiet --unit="$unit" --property=KillMode=control-group --property=RuntimeMaxSec="${timeout_seconds}s" "$codex_bin" "$@" >>"$log_file" 2>&1 &
-elif [ "$timeout_seconds" -gt 0 ] 2>/dev/null && command -v timeout >/dev/null 2>&1; then
-  setsid timeout --foreground "${timeout_seconds}s" "$codex_bin" "$@" >>"$log_file" 2>&1 &
-else
-  setsid "$codex_bin" "$@" >>"$log_file" 2>&1 &
-fi
-cmd_pid=$!
-tail -f "$log_file" &
-tail_pid=$!
-
-# Background watchdog: reap hanging runtime if task completed but lingering event-loop handles prevent exit
-(
-  while kill -0 "$cmd_pid" 2>/dev/null; do
-    sleep 2
-    if grep -qE 'hook: Stop Completed' "$log_file" 2>/dev/null || \
-       awk '/^---$/{f=1; next} f' "$log_file" 2>/dev/null | grep -qE '(\\"|")outcome(\\"|"):[[:space:]]*(\\"|")(done|partial|blocked|failed)'; then
-      grace=6
-      while [ "$grace" -gt 0 ] && kill -0 "$cmd_pid" 2>/dev/null; do
-        sleep 1
-        grace=$((grace - 1))
-      done
-      if kill -0 "$cmd_pid" 2>/dev/null; then
-        touch "${log_file}.reaped"
-        if [ "$use_systemd" -eq 1 ]; then
-          systemctl --user stop "$unit" >/dev/null 2>&1 || true
-        elif command -v pkill >/dev/null 2>&1; then
-          pkill -TERM -g "$cmd_pid" >/dev/null 2>&1 || true
-          sleep 1
-          pkill -KILL -g "$cmd_pid" >/dev/null 2>&1 || true
-        fi
-      fi
-      break
-    fi
-  done
-) &
-watchdog_pid=$!
-
-set +e
-wait "$cmd_pid"
-status=$?
-set -e
-
-kill "$watchdog_pid" >/dev/null 2>&1 || true
-wait "$watchdog_pid" 2>/dev/null || true
-kill "$tail_pid" >/dev/null 2>&1 || true
-wait "$tail_pid" 2>/dev/null || true
-
-if [ -f "${log_file}.reaped" ]; then
-  rm -f "${log_file}.reaped"
-  if [ "$status" -ne 0 ]; then
-    if [ "$log_flag" = "1" ]; then
-      echo "codex-agent: process reaped after task completion (lingering event-loop handles)" >&2
-    fi
-    status=0
-  fi
-fi
-if [ "$use_systemd" -eq 1 ]; then
-  systemctl --user stop "$unit" >/dev/null 2>&1 || true
-elif command -v pkill >/dev/null 2>&1; then
-  pkill -TERM -g "$cmd_pid" >/dev/null 2>&1 || true
-  sleep 1
-  pkill -KILL -g "$cmd_pid" >/dev/null 2>&1 || true
-fi
-
-# Clean up orphaned processes in the workspace (only in non-systemd fallback mode)
-if [ "$use_systemd" -eq 0 ]; then
-  workspace_real="$(cd "$workspace" && pwd -P)"
-  after_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
-  new_pids=""
-  for pid in $after_pids; do
-    case " $before_pids " in
-      *" $pid "*) ;;
-      *) new_pids="$new_pids $pid" ;;
-    esac
-  done
-
-  for sig in TERM KILL; do
-    if [ "$sig" = "KILL" ]; then
-      sleep 1
-    fi
-    for pid in $new_pids; do
-      [ "$pid" = "$$" ] && continue
-      pid_cmd="$([ -f "/proc/$pid/cmdline" ] && cat "/proc/$pid/cmdline" 2>/dev/null | tr '\0' ' ' || true)"
-      case "$pid_cmd" in
-        *-subagent*|*systemd-run*|*claude*|*codex*|*opencode*|*antigravity*|*agy*)
-          continue
-          ;;
-      esac
-      pid_cwd="$(readlink "/proc/$pid/cwd" 2>/dev/null || true)"
-      if [ -z "$pid_cwd" ]; then
-        continue
-      fi
-      case "$pid_cwd" in
-        "$workspace_real"|"$workspace_real"/*)
-          kill "-$sig" "$pid" >/dev/null 2>&1 || true
-          ;;
-      esac
-    done
-  done
-fi
-
-# Write completion sentinel file (.done)
-done_file="${log_file%.log}.done"
-sess_id="$(grep -oE '"session_id":"[^"]+"' "$log_file" 2>/dev/null | head -n 1 | cut -d'"' -f4 || grep -iE '^session id:' "$log_file" 2>/dev/null | head -n 1 | awk '{print $3}' || echo "${resume_session:-new}")"
-if [ -z "$sess_id" ]; then
-  sess_id="$(grep -iE '^session id:' "$log_file" 2>/dev/null | head -n 1 | awk '{print $3}' || echo "${resume_session:-new}")"
-fi
-write_done "$status"
-
-# Automatically ingest subagent session to claude-mem (non-blocking)
-if [ -f "$done_file" ] && command -v bun >/dev/null 2>&1; then
-  bun "$repo_dir/scripts/ingest-to-claude-mem.js" "$done_file" >/dev/null 2>&1 &
-fi
-
-# Register run completion in SQLite database
-if command -v node >/dev/null 2>&1; then
-  node "$repo_dir/scripts/subagent-tracker.js" complete "$(basename "$log_file")" "$status" "$sess_id" >/dev/null 2>&1 || true
-fi
-
-if [ "$log_flag" = "1" ]; then
-  echo "codex-agent: finished status=$status ($([ "$status" -eq 0 ] && echo "completed" || echo "failed")) session=$sess_id" >&2
-fi
-
-exit "$status"
+provider_name="codex"
+runner_bin="$codex_bin"
+run_agent_runtime "$@"

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { getFilteredRuns, getRun, getWorkspacesFromDb, upsertRun } from '../dashboard/db.js';
 import { buildRunCommands } from '../dashboard/commands.js';
 import { resolveWorkspacePath, configuredWorkspaceEntries } from '../dashboard/workspaces.js';
+import { knownWorkspaces, resolveWorkspace, runLogFromText as runLogFromTextShared } from './runs-shared.mjs';
 import { findLatestWorkspaceSession, buildRelayTakeoverPrompt, getWorkspaceGitContext } from './relay-handoff.mjs';
 import { loadRoutingConfig, matchRoute } from './routing-config.mjs';
 import {
@@ -17,6 +18,7 @@ import {
   parseLogMetadata,
 } from '../dashboard/parser.js';
 import { probeModel } from './model-probe.mjs';
+import { applyProviderEnv } from './provider-env.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const repoDir = path.resolve(path.dirname(__filename), '..');
@@ -263,20 +265,6 @@ const tools = [
   },
 ];
 
-function knownWorkspaces() {
-  const byPath = new Map();
-  for (const ws of getWorkspacesFromDb()) byPath.set(ws.path, ws);
-  for (const ws of configuredWorkspaceEntries()) {
-    const actual = path.resolve(ws.path);
-    byPath.set(actual, { totalRuns: 0, activeRuns: 0, ...byPath.get(actual), path: actual, name: ws.name });
-  }
-  return [...byPath.values()];
-}
-
-function resolveWorkspace(value) {
-  return resolveWorkspacePath(value, knownWorkspaces());
-}
-
 function executionWorkspace(value) {
   const workspace = value ? resolveWorkspace(value) : process.cwd();
   if (!workspace) throw new Error('unknown workspace: ' + value);
@@ -310,9 +298,14 @@ function resolveRunTarget(target = '--last') {
   const indexed = getRun(path.basename(target));
   if (indexed) return refreshRun(indexed);
   if (/^\d+$/.test(target)) {
+    const startMs = procStartWallMs(Number(target));
     for (const provider of providers) {
-      const run = launchedRun(Number(target), provider);
-      if (run) return run;
+      const filename = fs.readdirSync(logsDir).sort().reverse()
+        .find(f => f.endsWith(`-${provider}-${target}.log`)
+          // A recycled pid outlives its old log; require the log to have been
+          // created after the current process started.
+          && (!startMs || fs.statSync(path.join(logsDir, f)).birthtimeMs >= startMs - 2000));
+      if (filename) return refreshRun(getRun(filename) || { filename });
     }
     return null;
   }
@@ -365,6 +358,21 @@ function processIdentity(pid) {
   } catch { return null; }
 }
 
+// Wall-clock start time of a pid from /proc (boot-relative ticks -> ms). Locale-free.
+// ponytail: assumes CLK_TCK=100 (constant on stock Linux); switch to getconf CLK_TCK if ever wrong.
+function procStartWallMs(pid) {
+  try {
+    const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8').split(') ').at(-1).split(' ');
+    const ticks = Number(stat[19]); // field 22 = starttime
+    if (!Number.isFinite(ticks) || ticks <= 0) return null;
+    const uptimeS = Number(fs.readFileSync('/proc/uptime', 'utf8').split(' ')[0]);
+    if (!Number.isFinite(uptimeS)) return null;
+    return Date.now() - uptimeS * 1000 + (ticks / 100) * 1000;
+  } catch {
+    return null;
+  }
+}
+
 function startCommand(command, options = {}) {
   const child = spawn(command[0], command.slice(1), {
     cwd: repoDir, env: process.env, stdio: ['ignore', 'pipe', 'pipe'], ...options,
@@ -380,11 +388,21 @@ function startCommand(command, options = {}) {
   return { child, completion };
 }
 
-function launchedRun(pid, provider, previousLogs = new Set()) {
+function launchedRun(pid, provider, previousLogs = new Set(), knownFilename = null) {
   if (!pid || !fs.existsSync(logsDir)) return null;
+  // Deterministic: the wrapper echoes run_log=<file> on stderr, captured at launch.
+  if (knownFilename && knownFilename.endsWith(`-${provider}-${pid}.log`) && fs.existsSync(path.join(logsDir, knownFilename))) {
+    return refreshRun(getRun(knownFilename) || { filename: knownFilename });
+  }
   const filename = fs.readdirSync(logsDir).sort().reverse().find(f => !previousLogs.has(f) && f.endsWith(`-${provider}-${pid}.log`));
   return filename ? refreshRun(getRun(filename) || { filename }) : null;
 }
+
+// Resolve a log filename from wrapper stderr's cached run_log marker text.
+// Delegate lives in runs-shared.mjs so it stays unit-testable.
+const runLogFromText = (text, provider, pid) =>
+  runLogFromTextShared(text, provider, pid, logsDir);
+
 
 async function callTool(name, args = {}) {
   const tool = tools.find(tool => tool.name === name);
@@ -441,11 +459,8 @@ async function callTool(name, args = {}) {
       throw new Error(`agent wrapper not found: ${wrapperBin}`);
     }
 
-    if (args.model) {
-      if (args.provider === 'opencode') env.OPENCODE_MODEL = args.model;
-      else if (args.provider === 'codex') env.CODEX_MODEL = args.model;
-      else if (args.provider === 'claude') env.CLAUDE_MODEL = args.model;
-      else if (args.provider === 'antigravity') env.AGY_MODEL = args.model;
+    if (args.model || args.timeoutSeconds) {
+      applyProviderEnv(env, args.provider, { model: args.model, timeoutSeconds: args.timeoutSeconds });
     }
     if (args.effort) {
       if (args.provider === 'codex') env.CODEX_EFFORT = args.effort;
@@ -460,13 +475,6 @@ async function callTool(name, args = {}) {
       delete env.AGENT_RELAY_SESSION;
       delete env.SUBAGENT_SESSION;
     }
-    if (args.timeoutSeconds) {
-      if (args.provider === 'opencode') env.OPENCODE_TIMEOUT = String(args.timeoutSeconds);
-      else if (args.provider === 'codex') env.CODEX_TIMEOUT = String(args.timeoutSeconds);
-      else if (args.provider === 'claude') env.CLAUDE_TIMEOUT = String(args.timeoutSeconds);
-      else if (args.provider === 'antigravity') env.AGY_PRINT_TIMEOUT = `${args.timeoutSeconds}s`;
-    }
-
     const wrapperArgs = [];
     if (args.continueLatest) {
       wrapperArgs.push('--continue');
@@ -474,22 +482,51 @@ async function callTool(name, args = {}) {
     wrapperArgs.push(args.prompt);
 
     const previousLogs = new Set(fs.existsSync(logsDir) ? fs.readdirSync(logsDir) : []);
+    // Background launches redirect wrapper stdout/stderr into a temp capture file:
+    // wrappers announce run_log=<file> on stderr, giving a deterministic target
+    // instead of a log-dir diff (which races between concurrent launches).
+    const background = args.wait === false;
+    const captureFile = background
+      ? path.join(logsDir, `.launch-${process.pid}-${Date.now().toString(36)}.out`)
+      : null;
+    const captureFd = background ? fs.openSync(captureFile, 'a') : null;
+    let stderrHead = '';
+    let knownRun = null;
+    const collectStderr = chunk => {
+      stderrHead = (stderrHead + chunk.toString()).slice(-4096);
+      if (!knownRun && !background) {
+        const filename = runLogFromText(stderrHead, args.provider, child.pid);
+        if (filename) knownRun = refreshRun(getRun(filename) || { filename });
+      }
+    };
     const { child, completion } = startCommand([wrapperBin, ...wrapperArgs], {
       cwd: targetWorkspace, env, detached: true,
-      ...(args.wait === false ? { stdio: 'ignore' } : {}),
+      ...(background ? { stdio: ['ignore', captureFd, captureFd] } : {}),
     });
+    child.stderr?.on('data', collectStderr);
     await new Promise((resolve, reject) => {
       child.once('spawn', resolve);
       child.once('error', reject);
     });
-    if (args.wait === false) {
+    // Poll captured wrapper output for the run_log marker (up to ~2 s).
+    const knownFilename = background
+      ? async () => runLogFromText((await fs.promises.readFile(captureFile, 'utf8').catch(() => '')).toString(), args.provider, child.pid)
+      : async () => runLogFromText(stderrHead, args.provider, child.pid);
+    async function findRun(previousSet = previousLogs) {
+      for (let i = 0; i < 20; i++) {
+        const known = await knownFilename();
+        const run = launchedRun(child.pid, args.provider, previousSet, known);
+        if (run) return run;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return launchedRun(child.pid, args.provider, previousSet);
+    }
+    if (background) {
       // Background runs must not keep the MCP process alive through their pipes.
       child.unref();
-      let run = null;
-      for (let i = 0; i < 20 && !run; i++) {
-        run = launchedRun(child.pid, args.provider, previousLogs);
-        if (!run) await new Promise(resolve => setTimeout(resolve, 100));
-      }
+      fs.closeSync(captureFd);
+      const run = await findRun();
+      fs.rmSync(captureFile, { force: true });
       return {
         status: 'launched',
         pid: child.pid,
@@ -511,7 +548,7 @@ async function callTool(name, args = {}) {
         escalation = setTimeout(() => child.kill('SIGKILL'), 5000);
       };
       try {
-        const run = launchedRun(child.pid, args.provider, previousLogs);
+        const run = knownRun || launchedRun(child.pid, args.provider, previousLogs);
         if (run) {
           cancellation = callTool('kill_run', { target: run.filename })
             .then(result => { if (!result.killed && child.exitCode === null) stopChild(); })
@@ -531,13 +568,15 @@ async function callTool(name, args = {}) {
     // runs as the last node child of that shell -- on a loaded system it may not
     // have flushed the file yet. Poll up to 2 s before falling back to the raw
     // exit status so the caller never receives a spurious outcome='unknown'.
-    let run = launchedRun(child.pid, args.provider, previousLogs);
-    if (run && !run.result) {
-      const doneFile = run.filename && path.join(logsDir, run.filename.replace(/\.log$/, '.done'));
-      for (let i = 0; i < 20 && doneFile && !fs.existsSync(doneFile); i++) {
+    let run = launchedRun(child.pid, args.provider, previousLogs, knownRun?.filename);
+    // Re-parse after exit: the wrapper's finalization (.done) may flush slightly
+    // after the shell exits; a live-parsed result (e.g. blocked/running) is stale.
+    if (run) {
+      const doneFile = path.join(logsDir, run.filename.replace(/\.log$/, '.done'));
+      for (let i = 0; i < 20 && !fs.existsSync(doneFile); i++) {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
-      run = launchedRun(child.pid, args.provider, previousLogs);
+      run = launchedRun(child.pid, args.provider, previousLogs, run.filename);
     }
 
     if (run) {
@@ -611,7 +650,10 @@ async function callTool(name, args = {}) {
       } else if (provider === 'antigravity' && sessionId && sessionId !== 'new') {
         details = findAntigravityTranscript(sessionId, null, workspace);
       }
-    } catch {}
+    } catch (error) {
+      // Session reads are best-effort enrichment; a real bug should stay visible.
+      process.stderr.write(`agent-relay-mcp: session details lookup failed for ${provider}/${sessionId}: ${error?.message || error}\n`);
+    }
 
     if (details && (details.markdownSummary || details.task || details.tokens || details.toolCalls?.length || details.conversationId)) {
       return {
@@ -787,10 +829,13 @@ async function callTool(name, args = {}) {
 
     const identity = processIdentity(run.pid);
     const logFile = path.join(logsDir, run.filename);
-    const started = spawnSync('ps', ['-p', String(run.pid), '-o', 'lstart='], {
-      encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' },
-    });
-    const startedAt = Date.parse(started.stdout?.trim());
+    let startedAt = procStartWallMs(run.pid);
+    if (startedAt == null && !fs.existsSync('/proc')) {
+      // Non-Linux fallback: locale-normalized ps parse.
+      startedAt = Date.parse(spawnSync('ps', ['-p', String(run.pid), '-o', 'lstart='], {
+        encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' },
+      }).stdout?.trim());
+    }
     const logCreatedAt = fs.existsSync(logFile) ? fs.statSync(logFile).birthtimeMs : 0;
     if (!identity || !identity.includes(`${run.provider}-agent`) || !Number.isFinite(startedAt)
       || !logCreatedAt || startedAt > logCreatedAt + 2000) {

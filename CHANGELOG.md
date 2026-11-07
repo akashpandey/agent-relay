@@ -2,7 +2,25 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [1.6.0] - 2026-11-07
+
+### Fixed
+
+- `relay <provider> --model` with the `agy` alias silently wrote an env var named `undefined` and dropped the model; the shared `scripts/provider-env.mjs` map now serves both the CLI and MCP server, including per-provider timeout formats.
+- Codex runs no longer occasionally exit `stdin is not a terminal`: wrapper runtime moved into shared `scripts/wrapper-lib.sh`, and provider arguments are passed through explicitly (`run_agent_runtime "$@"`).
+- Background `run_agent` resolves the target run deterministically from the wrapper's `run_log=` stderr marker instead of diff-scanning `logs/` (races with concurrent launches and recycled PIDs could bind the result to the wrong run log).
+- Looking up a run by PID no longer matches stale logs from a recycled PID (`/proc` start-time guard).
+- `kill_run` process-identity check no longer depends on locale-specific `ps -o lstart=` parsing.
+- `relay install` no longer overwrites an unreadable/corrupt `~/.claude.json`, `opencode.json`, or Antigravity `mcp_config.json`; the failing provider is reported and left untouched. Non-object JSON is rejected the same way.
+- `install-skill` archives an existing real (non-symlink) `agent-relay` skill directory to `<target>.pre-relay-backup` instead of deleting it.
+- The installation TUI no longer crashes when stdin is not a terminal (arrow menus fall back to defaults), and its explicit dashboard choice (`docker` vs `background`) is now honored by `relay install` via `AGENT_RELAY_DASHBOARD_MODE` instead of always defaulting to Docker.
+
+### Changed
+
+- Dashboard live-terminal pane is now readable for `--json` runs: codex `item.completed`/`mcp_tool_call`/`command_execution`, Claude Code `assistant`/`user`/`system`, and OpenCode JSONL (`tool_use`/`text`/`step_*`) render as styled blocks (prose cards, EXEC lines with exit codes, dimmed compacted payloads with "(+N chars)" markers instead of raw JSON walls). OpenCode logfmt INFO event noise is hidden, WARN+ kept; ANSI rendering handles composed SGR sequences (`1;31m`, dim, resets) and drops non-color sequences; internal `agent-output-*` markers are hidden and wrapper banners are visually distinct. Regression coverage in `tests/test-terminal-format.mjs`.
+- The four provider wrappers share one runtime skeleton (`wrapper-lib.sh`): prompt scaffold, exec/watchdog/cleanup, and completion wrap-up. Provider specifics (args, model aliases, completion markers, session-id parsing, prompt rules) stay per wrapper; `.done` now records the resolved model id rather than the raw alias.
+- `relay`/`subagent` CLI error messages consistently use the configured CLI name instead of the legacy literal `subagent:`.
+- Session-details lookup failures in `get_session_history` are logged instead of silently swallowed.
 
 ## [1.5.1] - 2026-10-21
 

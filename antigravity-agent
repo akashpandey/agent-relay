@@ -5,6 +5,7 @@ script_path="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo
 repo_dir="$(cd "$(dirname "$script_path")" && pwd -P)"
 
 timeout="${AGY_PRINT_TIMEOUT:-120m}"
+timeout_spec="$timeout"
 workspace="$(pwd -P)"
 canonical_workspace=""
 if command -v node >/dev/null 2>&1; then
@@ -85,50 +86,6 @@ else
   user_prompt="$(cat)"
 fi
 
-export CI="${CI:-1}"
-export npm_config_yes="${npm_config_yes:-true}"
-export npm_config_fund="${npm_config_fund:-false}"
-export npm_config_audit="${npm_config_audit:-false}"
-export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
-export GIT_TERMINAL_PROMPT="${GIT_TERMINAL_PROMPT:-0}"
-export PAGER="${PAGER:-cat}"
-export GIT_PAGER="${GIT_PAGER:-cat}"
-export SYSTEMD_PAGER="${SYSTEMD_PAGER:-cat}"
-
-prompt="You are running as a non-interactive coding agent.
-Workspace: $workspace
-
-Rules:
-- Treat the workspace above as the project root.
-- Write requested files under that workspace unless the prompt gives a different absolute path.
-- Run all commands in non-interactive batch mode (e.g. use 'npx -y', avoid interactive stdin/prompts).
-- Do not put deliverables in Antigravity scratch.
-- After editing, summarize changed files and verification commands.
-- Use outcome=done only when the requested task is complete and verification passed or was explicitly unnecessary.
-- CRITICAL: Your absolute last turn MUST end with this exact JSON structure (no text or markdown after it):
-\`\`\`json
-{
-  \"outcome\": \"done\",
-  \"summary\": \"Brief explanation of what was done.\",
-  \"changedFiles\": [\"path/to/file\"],
-  \"verification\": [
-    {
-      \"command\": \"npm test\",
-      \"status\": \"passed\",
-      \"reason\": \"All tests passed\"
-    }
-  ],
-  \"blockers\": [],
-  \"incomplete\": [],
-  \"nextSteps\": []
-}
-\`\`\`
-outcome must be: done | partial | blocked | failed.
-verification status must be: passed | failed | skipped.
-
-Task:
-$user_prompt"
-
 log_flag="${AGY_LOGS:-1}"
 
 log_dir="${AGENT_RELAY_LOG_DIR:-${SUBAGENT_LOG_DIR:-$repo_dir/logs}}"
@@ -154,8 +111,15 @@ stop_subagent() {
   fi
 }
 done_provider="antigravity"
-done_model="${AGY_MODEL:-default}"
 . "$repo_dir/scripts/finalize-run.sh"
+. "$repo_dir/scripts/wrapper-lib.sh"
+completion_marker='"type":"result"'
+provider_outcome_re='"outcome"[[:space:]]*:[[:space:]]*"(done|partial|blocked|failed)".*"changedFiles"'
+
+provider_extract_session() {
+  sess_id="$(grep -oE '"conversation_id":"[^"]+"' "$log_file" 2>/dev/null | head -n 1 | cut -d'"' -f4 || echo "${resume_session:-new}")"
+}
+
 
 resolve_agy_model() {
   raw_model="${1:-}"
@@ -213,7 +177,7 @@ if [ -n "${AGY_MODEL:-}" ]; then
   fi
 fi
 
-set -- --print "$prompt" --output-format stream-json --project "$project_id" --dangerously-skip-permissions --print-timeout "$timeout"
+set -- --print "$(agent_prompt "$workspace" "$user_prompt")" --output-format stream-json --project "$project_id" --dangerously-skip-permissions --print-timeout "$timeout"
 
 if [ "${AGY_MODEL:-}" ]; then
   set -- --model "$AGY_MODEL" "$@"
@@ -243,145 +207,8 @@ fi
 # enough — `nohup cmd & disown` (or an agent's own detached-background
 # tooling) fully escapes the group into its own session, which is exactly
 # how a forgotten dev server survives the wrapper exiting.
-before_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
-
-printf 'agent: provider=antigravity workspace=%s model=%s session=%s\nagent-unit: %s\nTask:\n%s\n\n---\n\n' \
-  "$workspace" "${AGY_MODEL:-default}" "${resume_session:-new}" "$done_unit" "$user_prompt" > "$log_file"
-
-# Register run start in SQLite database immediately
-mark_output_start
-if command -v node >/dev/null 2>&1; then
-  node "$repo_dir/scripts/subagent-tracker.js" start "$(basename "$log_file")" "$$" "antigravity" "${AGY_MODEL:-default}" "$workspace" "${resume_session:-new}" "$user_prompt" >/dev/null 2>&1 || true
-fi
-
-if [ "$use_systemd" -eq 1 ]; then
-  systemd-run --user --pipe --working-directory="$workspace" --setenv=PATH="$PATH" --wait --collect --quiet --unit="$unit" --property=KillMode=control-group --property=RuntimeMaxSec="$timeout" "$agy_bin" "$@" >>"$log_file" 2>&1 &
-elif command -v timeout >/dev/null 2>&1; then
-  setsid timeout --foreground "$timeout" "$agy_bin" "$@" >>"$log_file" 2>&1 &
-else
-  setsid "$agy_bin" "$@" >>"$log_file" 2>&1 &
-fi
-cmd_pid=$!
-tail -f "$log_file" &
-tail_pid=$!
-
-# Background watchdog: reap hanging runtime if task completed but lingering event-loop handles prevent exit
-(
-  while kill -0 "$cmd_pid" 2>/dev/null; do
-    sleep 2
-    # Primary: agy stream-json emits "type":"result" on completion (not "event":"result").
-    # Fallback: require "outcome" AND "changedFiles" on the same line -- impossible
-    # to satisfy from a casual mention of the output format in the model's intro text.
-    if grep -qE '"type":"result"' "$log_file" 2>/dev/null || \
-       awk '/^---$/{f=1; next} f' "$log_file" 2>/dev/null | grep -qE '"outcome"[[:space:]]*:[[:space:]]*"(done|partial|blocked|failed)".*"changedFiles"'; then
-      grace=6
-      while [ "$grace" -gt 0 ] && kill -0 "$cmd_pid" 2>/dev/null; do
-        sleep 1
-        grace=$((grace - 1))
-      done
-      if kill -0 "$cmd_pid" 2>/dev/null; then
-        touch "${log_file}.reaped"
-        if [ "$use_systemd" -eq 1 ]; then
-          systemctl --user stop "$unit" >/dev/null 2>&1 || true
-        elif command -v pkill >/dev/null 2>&1; then
-          pkill -TERM -g "$cmd_pid" >/dev/null 2>&1 || true
-          sleep 1
-          pkill -KILL -g "$cmd_pid" >/dev/null 2>&1 || true
-        fi
-      fi
-      break
-    fi
-  done
-) &
-watchdog_pid=$!
-
-# ponytail: `wait` returns the waited-on process's exit status, which is
-# routinely nonzero (timeouts, model errors). Under `set -e` a bare `wait`
-# call there aborts the script on the spot — every cleanup line below it
-# would silently never run. set +e/-e brackets just this one call so the
-# real status still gets captured deliberately, not lost to errexit.
-set +e
-wait "$cmd_pid"
-status=$?
-set -e
-
-kill "$watchdog_pid" >/dev/null 2>&1 || true
-wait "$watchdog_pid" 2>/dev/null || true
-kill "$tail_pid" >/dev/null 2>&1 || true
-wait "$tail_pid" 2>/dev/null || true
-
-if [ -f "${log_file}.reaped" ]; then
-  rm -f "${log_file}.reaped"
-  if [ "$status" -ne 0 ]; then
-    if [ "$log_flag" = "1" ]; then
-      echo "antigravity-agent: process reaped after task completion (lingering event-loop handles)" >&2
-    fi
-    status=0
-  fi
-fi
-
-if [ "$use_systemd" -eq 1 ]; then
-  systemctl --user stop "$unit" >/dev/null 2>&1 || true
-elif command -v pkill >/dev/null 2>&1; then
-  pkill -TERM -g "$cmd_pid" >/dev/null 2>&1 || true
-  sleep 1
-  pkill -KILL -g "$cmd_pid" >/dev/null 2>&1 || true
-fi
-
-# Clean up orphaned processes in the workspace (only in non-systemd fallback mode)
-if [ "$use_systemd" -eq 0 ]; then
-  workspace_real="$(cd "$workspace" && pwd -P)"
-  after_pids="$(ls /proc 2>/dev/null | tr '\n' ' ')"
-  new_pids=""
-  for pid in $after_pids; do
-    case " $before_pids " in
-      *" $pid "*) ;;
-      *) new_pids="$new_pids $pid" ;;
-    esac
-  done
-
-  for sig in TERM KILL; do
-    if [ "$sig" = "KILL" ]; then
-      sleep 1
-    fi
-    for pid in $new_pids; do
-      [ "$pid" = "$$" ] && continue
-      pid_cmd="$([ -f "/proc/$pid/cmdline" ] && cat "/proc/$pid/cmdline" 2>/dev/null | tr '\0' ' ' || true)"
-      case "$pid_cmd" in
-        *-subagent*|*systemd-run*|*claude*|*codex*|*opencode*|*antigravity*|*agy*)
-          continue
-          ;;
-      esac
-      pid_cwd="$(readlink "/proc/$pid/cwd" 2>/dev/null || true)"
-      if [ -z "$pid_cwd" ]; then
-        continue
-      fi
-      case "$pid_cwd" in
-        "$workspace_real"|"$workspace_real"/*)
-          kill "-$sig" "$pid" >/dev/null 2>&1 || true
-          ;;
-      esac
-    done
-  done
-fi
-
-# Write completion sentinel file (.done)
-done_file="${log_file%.log}.done"
-conv_id="$(grep -oE '"conversation_id":"[^"]+"' "$log_file" 2>/dev/null | head -n 1 | cut -d'"' -f4 || echo "${resume_session:-new}")"
-write_done "$status"
-
-# Automatically ingest subagent session to claude-mem (non-blocking)
-if [ -f "$done_file" ] && command -v bun >/dev/null 2>&1; then
-  bun "$repo_dir/scripts/ingest-to-claude-mem.js" "$done_file" >/dev/null 2>&1 &
-fi
-
-# Register run completion in SQLite database
-if command -v node >/dev/null 2>&1; then
-  node "$repo_dir/scripts/subagent-tracker.js" complete "$(basename "$log_file")" "$status" "$conv_id" >/dev/null 2>&1 || true
-fi
-
-if [ "$log_flag" = "1" ]; then
-  echo "antigravity-agent: finished status=$status ($([ "$status" -eq 0 ] && echo "completed" || echo "failed")) session=$conv_id" >&2
-fi
-
-exit "$status"
+done_model="${AGY_MODEL:-default}"
+provider_name="antigravity"
+runner_bin="$agy_bin"
+provider_prompt_rules="Do not put deliverables in Antigravity scratch."
+run_agent_runtime "$@"

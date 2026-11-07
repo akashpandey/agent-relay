@@ -45,8 +45,9 @@ for target in \
   "$HOME/.config/opencode/skills/agent-relay" \
   "$HOME/.codex/skills/agent-relay"; do
   if [ -e "$target" ] && [ ! -L "$target" ]; then
-    echo "Replacing directory with symlink: $target"
-    rm -rf "$target"
+    backup="$target.pre-relay-backup"
+    echo "Backed up non-symlink directory: $target -> $backup"
+    mv "$target" "$backup"
   fi
   warn_symlink "$target" "$source_dir"
   mkdir -p "$(dirname -- "$target")"
