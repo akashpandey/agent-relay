@@ -129,10 +129,6 @@ const el = {
   modalStartTime: document.getElementById('modal-start-time'),
   modalDuration: document.getElementById('modal-duration'),
   modalBtnKill: document.getElementById('modal-btn-kill'),
-  btnModalCopyCli: document.getElementById('btn-modal-copy-cli'),
-  btnModalCopyContinue: document.getElementById('btn-modal-copy-continue'),
-  btnModalCopyRerun: document.getElementById('btn-modal-copy-rerun'),
-  btnModalCopyPrompt: document.getElementById('btn-modal-copy-prompt'),
   btnModalCopyLog: document.getElementById('btn-modal-copy-log'),
   btnModalDownloadLog: document.getElementById('btn-modal-download-log'),
   btnToggleFullscreen: document.getElementById('btn-toggle-fullscreen'),
@@ -653,7 +649,6 @@ function applyModalMetadata(meta) {
     }
   };
   el.btnTaskCopySmall.onclick = () => handleCopyTask(el.btnTaskCopySmall);
-  el.btnModalCopyPrompt.onclick = () => handleCopyTask(el.btnModalCopyPrompt);
 
   // Left Sidebar: CLI Command
   const effectiveCliCmd = meta.cliCommand || meta.runAgainCommand || '';
@@ -668,30 +663,6 @@ function applyModalMetadata(meta) {
     }
   };
   el.btnCliCopySmall.onclick = () => handleCopyCli(el.btnCliCopySmall);
-  el.btnModalCopyCli.onclick = () => handleCopyCli(el.btnModalCopyCli);
-
-  const continueCommand = meta.continuation?.agentContinueCommand || meta.continuation?.subagentContinueCommand || meta.continuation?.sameSessionCommand || '';
-  if (continueCommand) {
-    el.btnModalCopyContinue.style.display = 'inline-flex';
-    el.btnModalCopyContinue.onclick = () => {
-      copyToClipboard(continueCommand, 'Continue command copied!').then(ok => {
-        if (ok) flashButtonCopied(el.btnModalCopyContinue);
-      });
-    };
-  } else {
-    el.btnModalCopyContinue.style.display = 'none';
-  }
-
-  if (meta.runAgainCommand) {
-    el.btnModalCopyRerun.style.display = 'inline-flex';
-    el.btnModalCopyRerun.onclick = () => {
-      copyToClipboard(meta.runAgainCommand, 'Run-again command copied!').then(ok => {
-        if (ok) flashButtonCopied(el.btnModalCopyRerun);
-      });
-    };
-  } else {
-    el.btnModalCopyRerun.style.display = 'none';
-  }
 
   // Left Sidebar: Relay Takeover
   if (el.fsRelayCard && el.modalRelayActions) {
@@ -805,12 +776,8 @@ async function openWorkspaceModal(filename) {
   updateModalBodyLock();
 
   // Reset copy button handlers while run metadata is loading
-  el.btnModalCopyCli.onclick = () => showToast('Run details are loading...');
   el.btnCliCopySmall.onclick = () => showToast('Run details are loading...');
   el.btnTaskCopySmall.onclick = () => showToast('Run details are loading...');
-  el.btnModalCopyPrompt.onclick = () => showToast('Run details are loading...');
-  el.btnModalCopyContinue.style.display = 'none';
-  el.btnModalCopyRerun.style.display = 'none';
 
   try {
     const res = await fetch(`/api/runs/${encodeURIComponent(filename)}`);
