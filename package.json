@@ -48,6 +48,7 @@
     "dashboard/",
     "skills/",
     "docs/",
+    "!docs/assets/",
     "plugins/",
     ".claude-plugin/",
     ".agents/plugins/",
