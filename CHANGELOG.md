@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.9.0] - 2026-11-08
+
+### Changed
+
+- Dashboard run-details modal header trimmed to `Details | Stop Process | Copy Log | Raw Log` (`Copy CLI`/`Continue`/`Run Again`/`Copy Prompt` removed as duplicates of the sidebar copy buttons and CLI card).
+- npm package excludes `docs/assets/` (README media gifs/mp4); unpacked size 1.5 MB → 627 KB.
+
 ## [1.8.0] - 2026-11-08
 
 ### Added
