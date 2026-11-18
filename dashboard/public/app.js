@@ -999,7 +999,7 @@ async function startLogStream(filename) {
       if (data.chunk) {
         if (data.size) state.logTotalBytes = data.size;
         appendLogChunk(data.chunk);
-        renderTerminalLines();
+        scheduleTerminalRender();
       } else if (data.type === 'eof') {
         el.streamStatusBadge.innerHTML = '<span>●</span> Stream Finished';
         el.streamStatusBadge.style.color = 'var(--text-dim)';
@@ -1199,6 +1199,16 @@ function formatLogLine(rawLine) {
     } catch {}
   }
   return ansiToHtml(escapeHtml(rawLine));
+}
+
+// ponytail: full 5000-line innerHTML rebuild is too slow per SSE chunk; coalesce to ~4 renders/sec
+let terminalRenderTimer = null;
+function scheduleTerminalRender() {
+  if (terminalRenderTimer) return;
+  terminalRenderTimer = setTimeout(() => {
+    terminalRenderTimer = null;
+    if (state.selectedRun) renderTerminalLines();
+  }, 250);
 }
 
 function renderTerminalLines() {

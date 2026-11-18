@@ -364,11 +364,18 @@ export function registerRunComplete({ filename, exitCode, status, sessionId, end
 /**
  * Fast indexed queries
  */
+// ponytail: list/stats views only render summary fields; modal refetches full meta via /api/runs/:filename
+const LIST_STRIP_KEYS = ['diffs', 'toolCalls', 'result', 'filesModified', 'markdownSummary'];
+function toListRun(meta) {
+  if (meta) for (const k of LIST_STRIP_KEYS) delete meta[k];
+  return meta;
+}
+
 export function getAllRunsFromDb(limit = 1000, offset = 0) {
   const db = getDatabase();
   const stmt = db.prepare('SELECT * FROM runs ORDER BY start_time DESC LIMIT ? OFFSET ?');
   const rows = stmt.all(limit, offset);
-  return rows.map(r => rowToRunMeta(r, r.status === 'running'));
+  return rows.map(r => toListRun(rowToRunMeta(r, r.status === 'running')));
 }
 
 export function getFilteredRuns({ provider, status, outcome, workspace, rawWorkspace, sessionId, attention, q, since, until, limit = 50, offset = 0 }) {
@@ -426,7 +433,7 @@ export function getFilteredRuns({ provider, status, outcome, workspace, rawWorks
       total: filtered.length,
       limit,
       offset,
-      runs: filtered.slice(offset, offset + limit).map(r => rowToRunMeta(r, r.status === 'running'))
+      runs: filtered.slice(offset, offset + limit).map(r => toListRun(rowToRunMeta(r, r.status === 'running')))
     };
   }
 
@@ -443,7 +450,7 @@ export function getFilteredRuns({ provider, status, outcome, workspace, rawWorks
     total,
     limit,
     offset,
-    runs: rows.map(r => rowToRunMeta(r, r.status === 'running'))
+    runs: rows.map(r => toListRun(rowToRunMeta(r, r.status === 'running')))
   };
 }
 
@@ -472,16 +479,13 @@ export function getStatsFromDb() {
     byProvider[r.provider] = r.count;
   }
 
-  const recentRows = db.prepare('SELECT * FROM runs ORDER BY start_time DESC LIMIT 50').all();
-
   return {
     totalCount,
     activeCount: activeRows.length,
-    activeRuns: activeRows.map(r => rowToRunMeta(r, true)),
+    activeRuns: activeRows.map(r => toListRun(rowToRunMeta(r, true))),
     attentionCount,
     todayCount,
     byProvider,
-    recentRuns: recentRows.map(r => rowToRunMeta(r, r.status === 'running'))
   };
 }
 

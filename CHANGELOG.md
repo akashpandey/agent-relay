@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.10.0] - 2026-11-18
+
+### Fixed
+
+- Dashboard browser tab freezing/crashing while an agent run streams logs: per-chunk terminal re-renders (up to 5,000 lines of `innerHTML` per SSE chunk) now coalesce through a 250 ms debounce.
+- Dashboard API payloads trimmed: `/api/stats` no longer embeds the 50-run `recentRuns` list (1.5 MB → 2 KB); `/api/runs` list responses strip `diffs`, `toolCalls`, `result`, `filesModified`, `markdownSummary` (1.5 MB → 116 KB). Full metadata is still served per run by `/api/runs/:filename`.
+
 ## [1.9.0] - 2026-11-08
 
 ### Changed
