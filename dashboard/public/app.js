@@ -25,8 +25,12 @@ const ICONS = {
 };
 
 // --- Application State ---
-const INITIAL_LOG_TAIL_BYTES = 1024 * 1024;
-const MAX_TERMINAL_LINES = 5000;
+const INITIAL_LOG_TAIL_BYTES = 256 * 1024;
+const MAX_TERMINAL_LINES = 2000;
+const MAX_RAW_LINE_CHARS = 4096;
+const MAX_RENDERED_DIFF_CHARS = 120 * 1024;
+const MAX_RENDERED_DIFF_LINES = 1500;
+const MAX_RENDERED_TOOLS = 250;
 
 const state = {
   activeRuns: [],
@@ -36,9 +40,15 @@ const state = {
   danglingProcesses: [],
   selectedRun: null,
   selectedRowIndex: -1,
+  activeRunData: null,
+  filteredToolCalls: [],
   dashboardRefreshTimer: null,
   modalRefreshTimer: null,
   workspaceRefreshTimer: null,
+  lastStatsSig: null,
+  lastModalHeavySig: null,
+  dirtyModalTabs: new Set(['tools', 'markdown', 'diffs']),
+  pendingVisibilityRefresh: false,
   
   // Filters & Pagination
   filterProvider: 'all',
@@ -61,6 +71,7 @@ const state = {
   // Terminal
   activeLogStream: null,
   rawLogLines: [],
+  formattedLogLines: [],
   logPartialLine: '',
   logStartOffset: 0,
   logTotalBytes: 0,
@@ -385,6 +396,9 @@ function renderActiveCards(activeRuns) {
   }
 
   if (activeRuns.length === 0) {
+    if (el.activeContainer.querySelector('.empty-active-state')) {
+      return;
+    }
     el.activeContainer.innerHTML = `
       <div class="empty-active-state">
         <div class="standby-indicator">
@@ -451,7 +465,13 @@ function renderActiveCards(activeRuns) {
       const clock = card.querySelector('.active-clock');
       if (clock) {
         clock.dataset.start = run.startTime || '';
-        clock.innerHTML = `${ICONS.clock} <span>${escapeHtml(run.durationHuman || '0s')}</span>`;
+        const span = clock.querySelector('span');
+        const nextDur = run.durationHuman || '0s';
+        if (span) {
+          if (span.textContent !== nextDur) span.textContent = nextDur;
+        } else {
+          clock.innerHTML = `${ICONS.clock} <span>${escapeHtml(nextDur)}</span>`;
+        }
       }
       const actionText = card.querySelector('.active-action-text');
       if (actionText) {
@@ -562,7 +582,7 @@ function renderHistoryTable() {
         </div>
       </td>
       <td class="col-task">
-        <div class="task-preview-cell" title="${escapeHtml(run.fullTask || run.task)}">
+        <div class="task-preview-cell" title="${escapeHtml(run.task || '')}">
           ${escapeHtml(run.task || 'No task specified')}
         </div>
       </td>
@@ -704,30 +724,64 @@ function applyModalMetadata(meta) {
   }
   el.miniCost.textContent = meta.cost ? `$${meta.cost.toFixed(4)}` : '$0.00';
 
-  // Left Sidebar: Touched Files Chips
-  if (meta.filesModified && meta.filesModified.length > 0) {
-    el.modalFilesCount.textContent = meta.filesModified.length;
+  // Left Sidebar: Touched Files Count & Diff Badge
+  const filesModified = meta.filesModified || [];
+  if (filesModified.length > 0) {
+    el.modalFilesCount.textContent = filesModified.length;
     el.tabModalDiffsCount.style.display = 'inline-block';
-    el.tabModalDiffsCount.textContent = meta.filesModified.length;
-    el.modalFilesChips.innerHTML = meta.filesModified.map(f => `<span class="touched-file-chip">${escapeHtml(f)}</span>`).join('');
+    el.tabModalDiffsCount.textContent = filesModified.length;
   } else {
     el.modalFilesCount.textContent = '0';
     el.tabModalDiffsCount.style.display = 'none';
-    el.modalFilesChips.innerHTML = '<span style="color: var(--text-dim); font-size: 0.75rem;">No files modified</span>';
   }
 
-  // Right Viewport: Tools & Commands
-  renderToolsTab();
+  const tools = meta.toolCalls || [];
+  if (tools.length > 0) {
+    el.tabModalToolsCount.style.display = 'inline-block';
+    el.tabModalToolsCount.textContent = tools.length;
+  } else {
+    el.tabModalToolsCount.style.display = 'none';
+  }
 
-  // Right Viewport: Markdown Output
+  const heavySig = `${meta.filename}:${meta.status}:${tools.length}:${filesModified.length}:${(meta.diffs || '').length}:${(meta.markdownSummary || '').length}`;
+  if (heavySig !== state.lastModalHeavySig) {
+    state.lastModalHeavySig = heavySig;
+    if (filesModified.length > 0) {
+      el.modalFilesChips.innerHTML = filesModified.map(f => `<span class="touched-file-chip">${escapeHtml(f)}</span>`).join('');
+    } else {
+      el.modalFilesChips.innerHTML = '<span style="color: var(--text-dim); font-size: 0.75rem;">No files modified</span>';
+    }
+    state.dirtyModalTabs.add('tools');
+    state.dirtyModalTabs.add('markdown');
+    state.dirtyModalTabs.add('diffs');
+    renderActiveModalTabContent();
+  }
+}
+
+function renderMarkdownTab(meta) {
   if (meta.markdownSummary && !looksLikeRawLog(meta.markdownSummary)) {
     el.modalMarkdownContainer.innerHTML = renderMarkdownToHtml(meta.markdownSummary);
   } else if (!meta.isAlive) {
     el.modalMarkdownContainer.innerHTML = '<div class="markdown-empty">No structured markdown summary recorded for this run. Check the Live Terminal tab for full raw output.</div>';
+  } else {
+    el.modalMarkdownContainer.innerHTML = '<div class="markdown-empty">Run is in progress. Output summary will appear when complete.</div>';
   }
+}
 
-  // Right Viewport: Changed Files & Diffs
-  renderDiffsTab(meta);
+function renderActiveModalTabContent() {
+  const meta = state.activeRunData;
+  if (!meta) return;
+  const tab = state.activeModalTab;
+  if (tab === 'tools' && state.dirtyModalTabs.has('tools')) {
+    renderToolsTab();
+    state.dirtyModalTabs.delete('tools');
+  } else if (tab === 'markdown' && state.dirtyModalTabs.has('markdown')) {
+    renderMarkdownTab(meta);
+    state.dirtyModalTabs.delete('markdown');
+  } else if (tab === 'diffs' && state.dirtyModalTabs.has('diffs')) {
+    renderDiffsTab(meta);
+    state.dirtyModalTabs.delete('diffs');
+  }
 }
 
 async function refreshOpenModalData(filename) {
@@ -749,14 +803,37 @@ function updateModalBodyLock() {
 }
 
 async function openWorkspaceModal(filename) {
+  if (state.activeLogStream) {
+    state.activeLogStream.close();
+    state.activeLogStream = null;
+  }
+  if (state.modalPollInterval) {
+    clearInterval(state.modalPollInterval);
+    state.modalPollInterval = null;
+  }
+  if (state.modalRefreshTimer) {
+    clearTimeout(state.modalRefreshTimer);
+    state.modalRefreshTimer = null;
+  }
+  if (terminalRenderTimer) {
+    clearTimeout(terminalRenderTimer);
+    terminalRenderTimer = null;
+  }
+
   state.selectedRun = filename;
+  state.activeRunData = null;
+  state.filteredToolCalls = [];
+  state.lastModalHeavySig = null;
+  state.dirtyModalTabs = new Set(['tools', 'markdown', 'diffs']);
   state.rawLogLines = [];
+  state.formattedLogLines = [];
   state.logPartialLine = '';
   state.logStartOffset = 0;
   state.logTotalBytes = 0;
   state.logTruncatedLines = 0;
   state.logViewMode = 'live';
   el.modalTerminalContent.textContent = 'Loading log stream...';
+  el.modalToolsContainer.innerHTML = '';
   el.modalMarkdownContainer.innerHTML = '<div class="markdown-empty">Loading markdown summary...</div>';
   el.modalDiffContainer.innerHTML = '<div class="diff-empty">Loading diffs...</div>';
   el.modalFilesChips.innerHTML = '';
@@ -781,8 +858,9 @@ async function openWorkspaceModal(filename) {
 
   try {
     const res = await fetch(`/api/runs/${encodeURIComponent(filename)}`);
-    if (!res.ok) return;
+    if (!res.ok || state.selectedRun !== filename) return;
     const meta = await res.json();
+    if (state.selectedRun !== filename) return;
 
     state.toolFilterType = 'all';
     state.toolFilterQuery = '';
@@ -838,6 +916,8 @@ function renderToolsTab() {
     );
   }
 
+  state.filteredToolCalls = filtered;
+
   if (filtered.length === 0) {
     el.modalToolsContainer.innerHTML = `<div class="tools-empty">${tools.length === 0 ? 'No tools or shell commands recorded for this run.' : 'No tools match your filter.'}</div>`;
     return;
@@ -861,7 +941,8 @@ function renderToolsTab() {
     other: 'tool-badge-cmd',
   };
 
-  el.modalToolsContainer.innerHTML = filtered.map((t, idx) => {
+  const visibleTools = filtered.slice(0, MAX_RENDERED_TOOLS);
+  let html = visibleTools.map((t, idx) => {
     const icon = iconMap[t.type] || ICONS.tool;
     const badgeClass = badgeClassMap[t.type] || 'tool-badge-cmd';
     const escapedSummary = escapeHtml(t.summary || t.tool);
@@ -884,25 +965,29 @@ function renderToolsTab() {
     `;
   }).join('');
 
-  // Attach copy listeners
-  el.modalToolsContainer.querySelectorAll('.tool-btn-copy').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const idx = parseInt(btn.dataset.copyIdx, 10);
-      const item = filtered[idx];
-      if (item && item.detail) {
-        copyToClipboard(item.detail, 'Copied tool command!').then(ok => {
-          if (ok) {
-            btn.innerHTML = ICONS.check;
-            setTimeout(() => { btn.innerHTML = ICONS.copy; }, 1500);
-          }
-        });
-      }
-    });
-  });
+  if (filtered.length > MAX_RENDERED_TOOLS) {
+    html += `<div class="tools-empty" style="padding: 1rem;">Showing first ${MAX_RENDERED_TOOLS} of ${filtered.length} tool calls — use filter above to narrow results.</div>`;
+  }
+
+  el.modalToolsContainer.innerHTML = html;
 }
 
 function closeWorkspaceModal() {
   state.selectedRun = null;
+  state.activeRunData = null;
+  state.filteredToolCalls = [];
+  state.lastModalHeavySig = null;
+  state.dirtyModalTabs = new Set(['tools', 'markdown', 'diffs']);
+  state.rawLogLines = [];
+  state.formattedLogLines = [];
+  state.logPartialLine = '';
+  state.logStartOffset = 0;
+  state.logTotalBytes = 0;
+  state.logTruncatedLines = 0;
+  if (terminalRenderTimer) {
+    clearTimeout(terminalRenderTimer);
+    terminalRenderTimer = null;
+  }
   if (state.modalPollInterval) {
     clearInterval(state.modalPollInterval);
     state.modalPollInterval = null;
@@ -911,13 +996,19 @@ function closeWorkspaceModal() {
     clearTimeout(state.modalRefreshTimer);
     state.modalRefreshTimer = null;
   }
-  el.workspaceModalOverlay.classList.remove('open');
-  el.workspaceModal.classList.remove('open');
-  updateModalBodyLock();
+  el.workspaceModalOverlay?.classList?.remove('open');
+  el.workspaceModal?.classList?.remove('open');
+  if (typeof document !== 'undefined') updateModalBodyLock();
   if (state.activeLogStream) {
     state.activeLogStream.close();
     state.activeLogStream = null;
   }
+  if (el.modalTerminalContent) el.modalTerminalContent.textContent = '';
+  if (el.modalToolsContainer) el.modalToolsContainer.innerHTML = '';
+  if (el.modalMarkdownContainer) el.modalMarkdownContainer.innerHTML = '';
+  if (el.modalDiffContainer) el.modalDiffContainer.innerHTML = '';
+  if (el.modalFilesChips) el.modalFilesChips.innerHTML = '';
+  if (el.modalRelayActions) el.modalRelayActions.innerHTML = '';
 }
 
 function toggleFullscreenModal() {
@@ -931,18 +1022,25 @@ function switchModalTab(tabId) {
   state.activeModalTab = tabId;
   el.fsTabs.forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
   el.fsTabPanes.forEach(p => p.classList.toggle('active', p.id === `modal-pane-${tabId}`));
+  renderActiveModalTabContent();
 }
 
 async function startLogStream(filename) {
   if (state.activeLogStream) {
     state.activeLogStream.close();
+    state.activeLogStream = null;
   }
   if (state.modalPollInterval) {
     clearInterval(state.modalPollInterval);
     state.modalPollInterval = null;
   }
+  if (terminalRenderTimer) {
+    clearTimeout(terminalRenderTimer);
+    terminalRenderTimer = null;
+  }
 
   state.rawLogLines = [];
+  state.formattedLogLines = [];
   state.logPartialLine = '';
   state.logTruncatedLines = 0;
   state.logViewMode = 'live';
@@ -954,12 +1052,14 @@ async function startLogStream(filename) {
   let streamOffset = 0;
   try {
     const res = await fetch(`/api/logs/${encodeURIComponent(filename)}?tailBytes=${INITIAL_LOG_TAIL_BYTES}`);
+    if (state.selectedRun !== filename) return;
     if (res.ok) {
       const fullText = await res.text();
+      if (state.selectedRun !== filename) return;
       state.logStartOffset = Number(res.headers.get('X-Log-Offset') || 0);
       state.logTotalBytes = Number(res.headers.get('X-Log-Size') || 0);
       streamOffset = state.logTotalBytes || (state.logStartOffset + new TextEncoder().encode(fullText).length);
-      appendLogChunk(fullText, true);
+      appendLogChunk(fullText, true, state.logStartOffset > 0);
       renderTerminalLines();
     } else if (res.status === 404) {
       el.modalTerminalContent.innerHTML = `<div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 2.5rem; color: var(--text-dim); text-align: center; font-size: 0.9rem;">${ICONS.alertTriangle} <span>Log file not found on disk (may have been pruned or was a test run).</span></div>`;
@@ -971,10 +1071,20 @@ async function startLogStream(filename) {
     console.warn('Initial log fetch failed:', e);
   }
 
+  if (state.selectedRun !== filename) return;
+
+  if (!state.activeRunData?.isAlive) {
+    el.streamStatusBadge.innerHTML = '<span>●</span> Stream Finished';
+    el.streamStatusBadge.style.color = 'var(--text-dim)';
+    return;
+  }
+
   // Safety fallback; normal metadata updates come from /api/events.
   state.modalPollInterval = setInterval(() => {
     if (state.selectedRun === filename) {
-      refreshOpenModalData(filename);
+      if (typeof document === 'undefined' || !document.hidden) {
+        refreshOpenModalData(filename);
+      }
     } else {
       clearInterval(state.modalPollInterval);
       state.modalPollInterval = null;
@@ -985,6 +1095,10 @@ async function startLogStream(filename) {
   state.activeLogStream = sse;
 
   sse.onmessage = (e) => {
+    if (state.selectedRun !== filename) {
+      sse.close();
+      return;
+    }
     try {
       const data = JSON.parse(e.data);
       if (data.type === 'error') {
@@ -994,6 +1108,7 @@ async function startLogStream(filename) {
         el.streamStatusBadge.innerHTML = '<span>●</span> Log Unavailable';
         el.streamStatusBadge.style.color = 'var(--text-dim)';
         sse.close();
+        if (state.activeLogStream === sse) state.activeLogStream = null;
         return;
       }
       if (data.chunk) {
@@ -1003,9 +1118,16 @@ async function startLogStream(filename) {
       } else if (data.type === 'eof') {
         el.streamStatusBadge.innerHTML = '<span>●</span> Stream Finished';
         el.streamStatusBadge.style.color = 'var(--text-dim)';
+        sse.close();
+        if (state.activeLogStream === sse) state.activeLogStream = null;
         if (state.modalPollInterval) {
           clearInterval(state.modalPollInterval);
           state.modalPollInterval = null;
+        }
+        if (terminalRenderTimer) {
+          clearTimeout(terminalRenderTimer);
+          terminalRenderTimer = null;
+          renderTerminalLines();
         }
         refreshOpenModalData(filename);
         fetchStats();
@@ -1017,6 +1139,10 @@ async function startLogStream(filename) {
   sse.onerror = () => {
     el.streamStatusBadge.innerHTML = '<span>●</span> Stream Finished';
     el.streamStatusBadge.style.color = 'var(--text-dim)';
+    if (!state.activeRunData?.isAlive) {
+      sse.close();
+      if (state.activeLogStream === sse) state.activeLogStream = null;
+    }
   };
 }
 
@@ -1047,7 +1173,7 @@ function formatCodexItem(item) {
     if (contract && (contract.outcome || contract.summary)) {
       return `<div class="term-msg term-done"><span class="stream-badge stream-complete">COMPLETED</span> <span style="color: var(--success); font-weight: 600;">${escapeHtml(String(contract.outcome || 'done'))}</span><br>${clipEscaped(contract.summary, 600)}</div>`;
     }
-    return `<div class="term-msg">${escapeHtml(text)}</div>`;
+    return `<div class="term-msg">${clipEscaped(text, 4000)}</div>`;
   }
   if (it.type === 'command_execution') {
     out.push(`<div class="term-exec">${streamBadge('EXEC')} <span style="color: var(--badge-opencode); font-weight: 600;">bash</span> ${dimText(clipEscaped(it.command || '', 220))}` +
@@ -1076,7 +1202,7 @@ function formatCodexItem(item) {
 
 function formatClaudeBlocks(blocks) {
   return (blocks || []).map(block => {
-    if (block.type === 'text') return block.text ? `<div class="term-msg">${escapeHtml(block.text)}</div>` : '';
+    if (block.type === 'text') return block.text ? `<div class="term-msg">${clipEscaped(block.text, 4000)}</div>` : '';
     if (block.type === 'thinking') return block.thinking ? `<div class="term-exec term-thought">${streamBadge('THOUGHT')} ${clipEscaped(block.thinking, 400)}</div>` : '';
     if (block.type === 'tool_use') {
       return `<div class="term-exec">${streamBadge('TOOL')} <span style="color: var(--badge-claude); font-weight: 600;">${escapeHtml(block.name || '')}</span> ${dimText(clipEscaped(block.input ? JSON.stringify(block.input) : '', 160))}</div>`;
@@ -1117,14 +1243,14 @@ function formatLogLine(rawLine) {
         }
         if (su.step_type === 'agent_response') {
           if (su.text_delta) {
-            return escapeHtml(su.text_delta);
+            return clipEscaped(su.text_delta, 4000);
           }
           if (su.usage) {
             return `<span class="term-usage">[Step ${su.step_index || ''} Usage: ${su.usage.total_tokens || 0} tokens]</span>`;
           }
         }
         if (su.thought || su.thinking) {
-          return `<div style="color: var(--text-dim); padding: 2px 0 2px 8px; border-left: 2px solid rgba(255,255,255,0.15); margin: 3px 0;"><span class="stream-badge stream-thought">THOUGHT</span> ${escapeHtml(su.thought || su.thinking)}</div>`;
+          return `<div style="color: var(--text-dim); padding: 2px 0 2px 8px; border-left: 2px solid rgba(255,255,255,0.15); margin: 3px 0;"><span class="stream-badge stream-thought">THOUGHT</span> ${clipEscaped(su.thought || su.thinking, 600)}</div>`;
         }
         if (su.tool_calls && Array.isArray(su.tool_calls)) {
           return su.tool_calls.map(tc => `<div style="color: var(--badge-opencode); font-weight: 600;"><span class="stream-badge stream-tool">TOOL</span> ${escapeHtml(tc.name || 'tool')}(${escapeHtml(JSON.stringify(tc.args || {}).slice(0, 100))})</div>`).join('\n');
@@ -1135,7 +1261,7 @@ function formatLogLine(rawLine) {
         const respText = resObj.response || resObj.content || resObj.summary || resObj.output || (typeof obj.result === 'string' ? obj.result : '');
         const duration = resObj.duration_seconds ? ` (${Math.round(resObj.duration_seconds)}s)` : '';
         const tokens = resObj.usage?.total_tokens ? ` · ${formatNumber(resObj.usage.total_tokens)} tokens` : '';
-        return `\n<div style="padding: 8px 12px; background: rgba(34, 197, 94, 0.1); border-left: 3px solid var(--success); margin: 8px 0; border-radius: 4px;"><span class="stream-badge stream-complete">COMPLETED</span> <span style="color: var(--success); font-weight: 600;">Task Completed${duration}${tokens}</span>\n${escapeHtml(respText)}</div>`;
+        return `\n<div style="padding: 8px 12px; background: rgba(34, 197, 94, 0.1); border-left: 3px solid var(--success); margin: 8px 0; border-radius: 4px;"><span class="stream-badge stream-complete">COMPLETED</span> <span style="color: var(--success); font-weight: 600;">Task Completed${duration}${tokens}</span>\n${clipEscaped(respText, 4000)}</div>`;
       }
       // --- Codex stream-json ({"type": ...}) ---
       if (obj.type === 'thread.started') {
@@ -1190,20 +1316,27 @@ function formatLogLine(rawLine) {
       }
       if (obj.type === 'text') {
         const text = obj.part?.text ?? obj.text ?? '';
-        return text ? `<div class="term-msg">${escapeHtml(text)}</div>` : '';
+        return text ? `<div class="term-msg">${clipEscaped(text, 4000)}</div>` : '';
       }
       // Unknown structured event: show its type plus a short payload snippet
       // instead of a wall of raw JSON.
       const typeLabel = obj.type || obj.event || obj.kind || 'json';
-      return `<span class="term-usage">[compact ${escapeHtml(String(typeLabel))}]</span> <span class="term-dim">${clipEscaped(JSON.stringify(obj), 240)}</span>`;
+      return `<span class="term-usage">[compact ${escapeHtml(String(typeLabel))}]</span> <span class="term-dim">${clipEscaped(trimmed, 240)}</span>`;
     } catch {}
   }
-  return ansiToHtml(escapeHtml(rawLine));
+  const safeRaw = rawLine.length > 2000
+    ? `${rawLine.slice(0, 2000)} … (+${(rawLine.length - 2000).toLocaleString()} chars)`
+    : rawLine;
+  return ansiToHtml(escapeHtml(safeRaw));
 }
 
-// ponytail: full 5000-line innerHTML rebuild is too slow per SSE chunk; coalesce to ~4 renders/sec
+// ponytail: coalesce terminal innerHTML rebuilds to ~4 renders/sec and skip hidden tabs
 let terminalRenderTimer = null;
 function scheduleTerminalRender() {
+  if (typeof document !== 'undefined' && document.hidden) {
+    state.pendingVisibilityRefresh = true;
+    return;
+  }
   if (terminalRenderTimer) return;
   terminalRenderTimer = setTimeout(() => {
     terminalRenderTimer = null;
@@ -1213,16 +1346,43 @@ function scheduleTerminalRender() {
 
 function renderTerminalLines() {
   const query = state.filterLogQuery.toLowerCase();
-  let filtered = getRenderedLogLines();
+  const rawLines = state.rawLogLines;
+  const formattedLines = state.formattedLogLines;
+  let renderedHtmlParts = [];
+  let visibleCount = 0;
+
   if (query) {
-    filtered = filtered.filter(l => l.toLowerCase().includes(query));
+    for (let i = 0; i < rawLines.length; i++) {
+      if (rawLines[i].toLowerCase().includes(query)) {
+        visibleCount++;
+        if (formattedLines[i]) renderedHtmlParts.push(formattedLines[i]);
+      }
+    }
+    if (state.logPartialLine && state.logPartialLine.toLowerCase().includes(query)) {
+      const partialHtml = formatLogLine(state.logPartialLine);
+      if (partialHtml) {
+        visibleCount++;
+        renderedHtmlParts.push(partialHtml);
+      }
+    }
+  } else {
+    visibleCount = formattedLines.length;
+    renderedHtmlParts = formattedLines;
+    if (state.logPartialLine) {
+      const partialHtml = formatLogLine(state.logPartialLine);
+      if (partialHtml) {
+        renderedHtmlParts = [...formattedLines, partialHtml];
+        visibleCount++;
+      }
+    }
   }
 
   const hiddenText = state.logTruncatedLines > 0 ? ` · ${formatNumber(state.logTruncatedLines)} older hidden` : '';
-  el.logLinesCount.textContent = `${filtered.length} lines${hiddenText}`;
+  el.logLinesCount.textContent = `${visibleCount} lines${hiddenText}`;
   el.btnLoadOlderLog.disabled = state.logViewMode !== 'live' || !state.selectedRun || state.logStartOffset <= 0;
-  const rendered = filtered.map(l => formatLogLine(l)).filter(Boolean).join('\n');
-  el.modalTerminalContent.innerHTML = rendered || '<span style="color: var(--text-dim);">No output lines recorded.</span>';
+  el.modalTerminalContent.innerHTML = renderedHtmlParts.length > 0
+    ? renderedHtmlParts.join('\n')
+    : '<span style="color: var(--text-dim);">No output lines recorded.</span>';
 
   if (state.autoscroll) {
     el.modalTerminalBox.scrollTop = el.modalTerminalBox.scrollHeight;
@@ -1235,33 +1395,69 @@ function getRenderedLogLines() {
     : state.rawLogLines;
 }
 
-function appendLogChunk(chunk, reset = false) {
+function capRawLogLine(line) {
+  return line.length > MAX_RAW_LINE_CHARS
+    ? `${line.slice(0, MAX_RAW_LINE_CHARS)} … (+${(line.length - MAX_RAW_LINE_CHARS).toLocaleString()} chars)`
+    : line;
+}
+
+function appendLogChunk(chunk, reset = false, dropFirstPartial = false) {
   if (state.logViewMode !== 'live') return;
   if (reset) {
     state.rawLogLines = [];
+    state.formattedLogLines = [];
     state.logPartialLine = '';
   }
 
   const parts = (state.logPartialLine + chunk).split('\n');
   state.logPartialLine = parts.pop() || '';
-  state.rawLogLines.push(...parts);
+  if (dropFirstPartial && parts.length > 0) {
+    const dropped = parts.shift();
+    state.logStartOffset += new TextEncoder().encode(dropped + '\n').length;
+  }
+
+  for (const line of parts) {
+    const html = formatLogLine(line);
+    if (!html) continue;
+    state.rawLogLines.push(capRawLogLine(line));
+    state.formattedLogLines.push(html);
+  }
 
   if (state.rawLogLines.length > MAX_TERMINAL_LINES) {
     const removeCount = state.rawLogLines.length - MAX_TERMINAL_LINES;
     state.rawLogLines.splice(0, removeCount);
+    state.formattedLogLines.splice(0, removeCount);
     state.logTruncatedLines += removeCount;
   }
 }
 
 function prependLogChunk(chunk, nextOffset) {
   const lines = chunk.split('\n');
-  if (nextOffset > 0 && lines.length > 0) lines.shift();
-  state.rawLogLines.unshift(...lines.filter(Boolean));
-  state.logStartOffset = nextOffset;
+  let actualOffset = nextOffset;
+  if (nextOffset > 0 && lines.length > 0) {
+    const dropped = lines.shift();
+    const candidateOffset = nextOffset + new TextEncoder().encode(dropped + '\n').length;
+    if (candidateOffset < state.logStartOffset) {
+      actualOffset = candidateOffset;
+    }
+  }
+  const newRaw = [];
+  const newHtml = [];
+  for (const line of lines) {
+    if (!line) continue;
+    const html = formatLogLine(line);
+    if (!html) continue;
+    newRaw.push(capRawLogLine(line));
+    newHtml.push(html);
+  }
+  state.rawLogLines.unshift(...newRaw);
+  state.formattedLogLines.unshift(...newHtml);
+  state.logStartOffset = actualOffset;
 
   if (state.rawLogLines.length > MAX_TERMINAL_LINES) {
     const removeCount = state.rawLogLines.length - MAX_TERMINAL_LINES;
     state.rawLogLines.splice(-removeCount, removeCount);
+    state.formattedLogLines.splice(-removeCount, removeCount);
     state.logTruncatedLines += removeCount;
   }
 }
@@ -1308,7 +1504,8 @@ async function searchFullLog() {
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     const lines = (data.matches || []).map(m => `line ${m.line}: ${m.text}`);
     state.logViewMode = 'search';
-    state.rawLogLines = lines.length > 0 ? lines : [`No full-log matches for "${q}".`];
+    state.rawLogLines = lines.length > 0 ? lines.map(capRawLogLine) : [`No full-log matches for "${q}".`];
+    state.formattedLogLines = state.rawLogLines.map(l => formatLogLine(l)).filter(Boolean);
     state.logPartialLine = '';
     state.logTruncatedLines = 0;
     el.btnSearchFullLog.textContent = 'Back to Live';
@@ -1536,7 +1733,17 @@ function ansiToHtml(str) {
 
 function renderDiffToHtml(diffText) {
   if (!diffText) return '<div class="diff-empty">No diff captured.</div>';
-  const lines = diffText.split('\n');
+  let truncatedNotice = '';
+  let working = diffText;
+  if (working.length > MAX_RENDERED_DIFF_CHARS) {
+    working = working.slice(0, MAX_RENDERED_DIFF_CHARS);
+    truncatedNotice = `\n<span class="diff-line-header">… diff truncated in viewer (exceeded ${formatBytes(MAX_RENDERED_DIFF_CHARS)}; inspect Raw Log for full output) …</span>`;
+  }
+  const allLines = working.split('\n');
+  const lines = allLines.length > MAX_RENDERED_DIFF_LINES ? allLines.slice(0, MAX_RENDERED_DIFF_LINES) : allLines;
+  if (allLines.length > MAX_RENDERED_DIFF_LINES && !truncatedNotice) {
+    truncatedNotice = `\n<span class="diff-line-header">… diff truncated in viewer (${allLines.length - MAX_RENDERED_DIFF_LINES} more lines) …</span>`;
+  }
   return lines.map(line => {
     const escaped = escapeHtml(line);
     if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('diff --git')) {
@@ -1549,7 +1756,7 @@ function renderDiffToHtml(diffText) {
       return `<span class="diff-line-header">${escaped}</span>`;
     }
     return `<span class="diff-line-context">${escaped}</span>`;
-  }).join('\n');
+  }).join('\n') + truncatedNotice;
 }
 
 function renderDiffsTab(meta) {
@@ -1606,22 +1813,6 @@ function renderDiffsTab(meta) {
   }
 
   el.modalDiffContainer.innerHTML = html;
-
-  // Attach copy listeners for file paths
-  el.modalDiffContainer.querySelectorAll('.tool-btn-copy').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const p = btn.dataset.copyPath;
-      if (p) {
-        copyToClipboard(p, `Copied: ${p}`).then(ok => {
-          if (ok) {
-            btn.innerHTML = ICONS.check;
-            setTimeout(() => { btn.innerHTML = ICONS.copy; }, 1500);
-          }
-        });
-      }
-    });
-  });
 }
 
 function renderMarkdownToHtml(md) {
@@ -1946,6 +2137,56 @@ function initEventListeners() {
     });
   }
 
+  // Delegated copy listeners for modal tools & diffs (avoid per-card listener allocations)
+  if (el.modalToolsContainer) {
+    el.modalToolsContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('.tool-btn-copy');
+      if (!btn) return;
+      const idx = parseInt(btn.dataset.copyIdx, 10);
+      const item = state.filteredToolCalls?.[idx];
+      if (item && item.detail) {
+        copyToClipboard(item.detail, 'Copied tool command!').then(ok => {
+          if (ok) {
+            btn.innerHTML = ICONS.check;
+            setTimeout(() => { btn.innerHTML = ICONS.copy; }, 1500);
+          }
+        });
+      }
+    });
+  }
+
+  if (el.modalDiffContainer) {
+    el.modalDiffContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('.tool-btn-copy');
+      if (!btn) return;
+      e.stopPropagation();
+      const p = btn.dataset.copyPath;
+      if (p) {
+        copyToClipboard(p, `Copied: ${p}`).then(ok => {
+          if (ok) {
+            btn.innerHTML = ICONS.check;
+            setTimeout(() => { btn.innerHTML = ICONS.copy; }, 1500);
+          }
+        });
+      }
+    });
+  }
+
+  // Resume deferred refreshes when tab returns to foreground
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && state.pendingVisibilityRefresh) {
+      state.pendingVisibilityRefresh = false;
+      fetchStats();
+      fetchAnalytics();
+      fetchRuns();
+      fetchWorkspaces();
+      if (state.selectedRun) {
+        renderTerminalLines();
+        if (state.activeRunData?.isAlive) refreshOpenModalData(state.selectedRun);
+      }
+    }
+  });
+
   // Dangling Modal
   el.danglingChip.addEventListener('click', openDanglingModal);
   el.btnKillAllDangling.addEventListener('click', (e) => {
@@ -2050,9 +2291,22 @@ function initSSE() {
           if (el.kpiSuccessVal) el.kpiSuccessVal.textContent = `${data.analytics.successRate || 100}%`;
           if (el.attentionCount) el.attentionCount.textContent = data.analytics.attentionCount || 0;
         }
-        scheduleDashboardRefresh();
-        scheduleWorkspaceRefresh();
-        scheduleModalMetadataRefresh();
+
+        const statsSig = `${data.totalCount || 0}:${data.activeCount || 0}:${data.todayCount || 0}:${data.analytics?.attentionCount || 0}:${(data.activeRuns || []).map(r => `${r.filename}:${r.status}`).join(',')}`;
+        const sigChanged = statsSig !== state.lastStatsSig;
+        state.lastStatsSig = statsSig;
+
+        if (sigChanged) {
+          scheduleDashboardRefresh();
+          scheduleWorkspaceRefresh();
+        }
+        if (state.selectedRun && (
+          state.activeRunData?.isAlive ||
+          (data.activeRuns || []).some(r => r.filename === state.selectedRun) ||
+          sigChanged
+        )) {
+          scheduleModalMetadataRefresh();
+        }
       }
     } catch {}
   };
@@ -2073,6 +2327,7 @@ function initSSE() {
   // Keep the dashboard current while EventSource retries a broken connection.
   setInterval(() => {
     if (evtSource.readyState === EventSource.OPEN) return;
+    if (typeof document !== 'undefined' && document.hidden) return;
     fetchStats();
     fetchAnalytics();
     fetchRuns();
@@ -2082,6 +2337,10 @@ function initSSE() {
 }
 
 function scheduleDashboardRefresh() {
+  if (typeof document !== 'undefined' && document.hidden) {
+    state.pendingVisibilityRefresh = true;
+    return;
+  }
   if (state.dashboardRefreshTimer) return;
   state.dashboardRefreshTimer = setTimeout(() => {
     state.dashboardRefreshTimer = null;
@@ -2090,6 +2349,10 @@ function scheduleDashboardRefresh() {
 }
 
 function scheduleWorkspaceRefresh() {
+  if (typeof document !== 'undefined' && document.hidden) {
+    state.pendingVisibilityRefresh = true;
+    return;
+  }
   if (state.workspaceRefreshTimer) return;
   state.workspaceRefreshTimer = setTimeout(() => {
     state.workspaceRefreshTimer = null;
@@ -2098,7 +2361,12 @@ function scheduleWorkspaceRefresh() {
 }
 
 function scheduleModalMetadataRefresh() {
-  if (!state.selectedRun || state.modalRefreshTimer) return;
+  if (!state.selectedRun) return;
+  if (typeof document !== 'undefined' && document.hidden) {
+    state.pendingVisibilityRefresh = true;
+    return;
+  }
+  if (state.modalRefreshTimer) return;
   state.modalRefreshTimer = setTimeout(() => {
     const filename = state.selectedRun;
     state.modalRefreshTimer = null;
@@ -2117,6 +2385,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Tick duration timers every second
   setInterval(() => {
+    if (document.hidden) return;
     document.querySelectorAll('.active-clock').forEach(clockEl => {
       const startTimeIso = clockEl.dataset.start;
       if (startTimeIso) {
@@ -2124,7 +2393,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const diffSec = Math.max(0, Math.round((Date.now() - startMs) / 1000));
         const m = Math.floor(diffSec / 60);
         const s = diffSec % 60;
-        clockEl.innerHTML = `${ICONS.clock} <span>${m}m ${s}s</span>`;
+        const text = `${m}m ${s}s`;
+        const span = clockEl.querySelector('span');
+        if (span) {
+          if (span.textContent !== text) span.textContent = text;
+        } else {
+          clockEl.innerHTML = `${ICONS.clock} <span>${text}</span>`;
+        }
       }
     });
   }, 1000);

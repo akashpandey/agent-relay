@@ -498,9 +498,10 @@ const server = http.createServer(async (req, res) => {
     const offset = parseInt(parsedUrl.searchParams.get('offset') || '0', 10);
 
     const result = getFilteredRuns({ provider, status, outcome, workspace, attention, q, limit, offset });
+    const runs = (result.runs || []).map(({ fullTask, ...rest }) => rest);
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(result));
+    res.end(JSON.stringify({ ...result, runs }));
     return;
   }
 
@@ -697,7 +698,7 @@ const server = http.createServer(async (req, res) => {
   // GET /api/logs/:filename/stream
   if (pathname.startsWith('/api/logs/') && pathname.endsWith('/stream') && req.method === 'GET') {
     const filename = decodeURIComponent(pathname.replace('/api/logs/', '').replace('/stream', ''));
-    const { filePath } = getSafeLogPath(filename);
+    const { safeFile, filePath } = getSafeLogPath(filename);
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -711,12 +712,45 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    const donePath = filePath.replace(/\.log$/, '.done');
     const initialSize = fs.statSync(filePath).size;
     const requestedOffset = parseInt(parsedUrl.searchParams.get('offset') || '0', 10);
     let currentPos = Number.isFinite(requestedOffset) && requestedOffset > 0
       ? Math.min(requestedOffset, initialSize)
       : 0;
+    let watcher = null;
+    let fallbackInterval = null;
+    let keepAliveInterval = null;
+    let closed = false;
+
+    const cleanup = () => {
+      if (closed) return;
+      closed = true;
+      if (watcher) {
+        watcher.close();
+        watcher = null;
+      }
+      if (fallbackInterval) {
+        clearInterval(fallbackInterval);
+        fallbackInterval = null;
+      }
+      if (keepAliveInterval) {
+        clearInterval(keepAliveInterval);
+        keepAliveInterval = null;
+      }
+    };
+
+    const isRunFinished = () => {
+      if (!fs.existsSync(donePath)) return false;
+      const syncState = getRunSyncState(safeFile);
+      if (syncState && syncState.status === 'running' && syncState.pid) {
+        return !isProcessRunning(syncState.pid, PROC_DIR).isAlive;
+      }
+      return true;
+    };
+
     const sendNewData = () => {
+      if (closed) return;
       try {
         if (!fs.existsSync(filePath)) return;
         const stat = fs.statSync(filePath);
@@ -730,28 +764,37 @@ const server = http.createServer(async (req, res) => {
 
           const chunk = buf.toString('utf8');
           res.write(`data: ${JSON.stringify({ type: 'data', chunk, size: stat.size })}\n\n`);
-          if (stat.size > currentPos) setImmediate(sendNewData);
+          if (stat.size > currentPos) {
+            setImmediate(sendNewData);
+            return;
+          }
+        }
+        if (currentPos >= stat.size && isRunFinished()) {
+          res.write(`data: ${JSON.stringify({ type: 'eof', size: stat.size })}\n\n`);
+          cleanup();
+          res.end();
         }
       } catch (err) {}
     };
 
     sendNewData();
+    if (closed) return;
 
-    let watcher = null;
     try {
       watcher = fs.watch(filePath, sendNewData);
     } catch {}
 
-    const fallbackInterval = watcher ? null : setInterval(sendNewData, 2000);
-    const keepAliveInterval = setInterval(() => {
+    fallbackInterval = watcher ? null : setInterval(sendNewData, 2000);
+    keepAliveInterval = setInterval(() => {
+      if (closed) return;
+      if (isRunFinished()) {
+        sendNewData();
+        return;
+      }
       res.write(`data: ${JSON.stringify({ type: 'ping' })}\n\n`);
     }, 15000);
 
-    req.on('close', () => {
-      if (watcher) watcher.close();
-      if (fallbackInterval) clearInterval(fallbackInterval);
-      clearInterval(keepAliveInterval);
-    });
+    req.on('close', cleanup);
     return;
   }
 

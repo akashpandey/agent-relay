@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.10.1] - 2026-11-19
+
+### Fixed
+
+- Dashboard browser memory usage & tab crash prevention:
+  - Terminal viewer tail fetch reduced from 1 MB to 256 KB, buffered visible lines capped at 2,000, raw line lengths capped, broken mid-line leading tail slices discarded, hidden noise lines skipped before buffering, and formatted HTML cached once per line instead of re-parsing JSON on every render/search.
+  - Completed runs no longer open log SSE streams or pollers; `/api/logs/:filename/stream` emits `eof` and closes cleanly once finished logs drain, and `EventSource` closes on completion/error instead of reconnecting in a loop.
+  - Closing the run workspace modal clears in-memory log buffers, timers, active streams, and modal tab DOM subtrees.
+  - Hidden modal tabs (`Tools & Commands`, `Output Summary`, `Changed Files & Diffs`) lazy-render on tab switch using a heavy-field fingerprint, cap rendered tool cards (`250`) and diff output (`120 KB` / `1,500` lines), and use delegated click handlers instead of per-button closures.
+  - `GET /api/runs` omits `fullTask` from list rows (still served by `/api/runs/:filename`), `stats_update` skips redundant history/workspace rebuilds on identical idle heartbeats, and background tabs (`document.hidden`) defer refreshes and clock ticks until visible.
+
 ## [1.10.0] - 2026-11-18
 
 ### Fixed
